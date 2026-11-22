@@ -25,6 +25,7 @@ import com.example.ui.screens.MaintenanceModeScreen
 import com.example.ui.screens.NoorAuthGateScreen
 import com.example.ui.theme.NoorTheme
 import com.example.viewmodel.AdminViewModel
+import com.example.viewmodel.EcosystemViewModel
 import com.example.viewmodel.NoorViewModel
 
 class MainActivity : ComponentActivity() {
@@ -38,13 +39,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val viewModel: NoorViewModel = viewModel()
             val adminViewModel: AdminViewModel = viewModel()
+            val ecosystemViewModel: EcosystemViewModel = viewModel()
             val prefs by viewModel.preferences.collectAsStateWithLifecycle()
             val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
             val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
             val resolvedRole by viewModel.resolvedAdminRole.collectAsStateWithLifecycle()
             val layoutDirection = if (prefs.language.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
-            val isFirebaseConfigured = remember { FirebaseAuthHelper.isFirebaseConfigured(applicationContext) }
-            var allowOfflineWhenUnconfigured by remember { mutableStateOf(false) }
+            var allowOfflineLocalMode by remember { mutableStateOf(false) }
             var adminBypassMaintenance by remember { mutableStateOf(false) }
 
             val pendingRoute = incomingShortcutRoute
@@ -61,13 +62,9 @@ class MainActivity : ComponentActivity() {
             ) {
                 NoorTheme(themeMode = prefs.themeMode) {
                     val user = currentUser
-                    if (user == null && (isFirebaseConfigured || !allowOfflineWhenUnconfigured)) {
+                    if (user == null && !allowOfflineLocalMode) {
                         NoorAuthGateScreen(
-                            onContinueOfflineWhenUnconfigured = if (!isFirebaseConfigured) {
-                                { allowOfflineWhenUnconfigured = true }
-                            } else {
-                                null
-                            }
+                            onContinueOfflineWhenUnconfigured = { allowOfflineLocalMode = true }
                         )
                     } else {
                         key(user?.uid ?: "offline_local") {
@@ -89,7 +86,8 @@ class MainActivity : ComponentActivity() {
                                 else -> {
                                     NoorAppShell(
                                         viewModel = viewModel,
-                                        adminViewModel = adminViewModel
+                                        adminViewModel = adminViewModel,
+                                        ecosystemViewModel = ecosystemViewModel
                                     )
                                 }
                             }

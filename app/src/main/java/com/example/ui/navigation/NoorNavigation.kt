@@ -96,11 +96,26 @@ import com.example.ui.screens.QuranScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.StatsScreen
 import com.example.ui.screens.TasbihScreen
+import com.example.ui.screens.ecosystem.EcosystemHubScreen
+import com.example.ui.screens.ecosystem.HalaqatScreen
+import com.example.ui.screens.ecosystem.HifzAiScreen
+import com.example.ui.screens.ecosystem.IslamicLibraryScreen
+import com.example.ui.screens.ecosystem.KhatmAndWorshipScreen
+import com.example.ui.screens.ecosystem.NoorDuaaScreen
+import com.example.ui.screens.ecosystem.NoorKidsScreen
+import com.example.ui.screens.ecosystem.NoorLocalAiScreen
+import com.example.ui.screens.ecosystem.NoorNotesScreen
+import com.example.ui.screens.ecosystem.NoorQuizScreen
+import com.example.ui.screens.ecosystem.NoorRadioScreen
+import com.example.ui.screens.ecosystem.NoorTafseerExplorerScreen
+import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
+import com.example.ui.screens.ecosystem.TajweedScreen
 import com.example.ui.theme.EmeraldDeep
 import com.example.ui.theme.GoldBright
 import com.example.ui.theme.GoldPrimary
 import com.example.ui.theme.LocalNoorColors
 import com.example.viewmodel.AdminViewModel
+import com.example.viewmodel.EcosystemViewModel
 import com.example.viewmodel.NoorViewModel
 
 object NoorRoutes {
@@ -124,6 +139,24 @@ object NoorRoutes {
     const val ADMIN_CENTER = "admin_center"
     const val QURAN_READER = "quran_reader/{surahNumber}"
     const val ADHKAR_DETAIL = "adhkar_detail/{categoryId}"
+
+    // NOOR Complete Islamic Ecosystem Routes
+    const val ECOSYSTEM_HUB = "ecosystem_hub"
+    const val HALAQAT = "halaqat"
+    const val HIFZ_AI = "hifz_ai"
+    const val LOCAL_AI = "local_ai"
+    const val LIBRARY = "library"
+    const val HADITH_LIB = "hadith_lib"
+    const val TAFSEER_EXPLORER = "tafseer_explorer"
+    const val TAJWEED = "tajweed"
+    const val KIDS = "kids"
+    const val KHATM = "khatm"
+    const val QUIZ = "quiz"
+    const val KIDS_QUIZ = "kids_quiz"
+    const val NOTES = "notes"
+    const val DUAA = "duaa"
+    const val RADIO = "radio"
+    const val OFFLINE_ADMIN = "offline_admin"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -149,7 +182,8 @@ private val bottomTabs = listOf(
 @Composable
 fun NoorAppShell(
     viewModel: NoorViewModel,
-    adminViewModel: AdminViewModel
+    adminViewModel: AdminViewModel,
+    ecosystemViewModel: EcosystemViewModel
 ) {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -158,6 +192,7 @@ fun NoorAppShell(
     val noorColors = LocalNoorColors.current
     val snackbarHostState = remember { SnackbarHostState() }
     val statusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
+    val ecosystemStatus by ecosystemViewModel.statusMessage.collectAsStateWithLifecycle()
     val audioState by viewModel.audioState.collectAsStateWithLifecycle()
     val resolvedRole by viewModel.resolvedAdminRole.collectAsStateWithLifecycle()
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
@@ -171,6 +206,13 @@ fun NoorAppShell(
         statusBanner?.let { msg ->
             snackbarHostState.showSnackbar(msg)
             viewModel.clearStatusBanner()
+        }
+    }
+
+    LaunchedEffect(ecosystemStatus) {
+        ecosystemStatus?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            ecosystemViewModel.clearStatusMessage()
         }
     }
 
@@ -356,7 +398,14 @@ fun NoorAppShell(
                                     onOpenFounderProfile = { navController.navigate(NoorRoutes.FOUNDER_PROFILE) },
                                     onOpenSupport = { navController.navigate(NoorRoutes.CONTACT_SUPPORT) },
                                     onOpenNotifications = { navController.navigate(NoorRoutes.NOTIFICATIONS) },
-                                    onOpenAdminCenter = { navController.navigate(NoorRoutes.ADMIN_CENTER) }
+                                    onOpenAdminCenter = { navController.navigate(NoorRoutes.ADMIN_CENTER) },
+                                    onOpenEcosystemHub = { navController.navigate(NoorRoutes.ECOSYSTEM_HUB) },
+                                    onOpenHalaqat = { navController.navigate(NoorRoutes.HALAQAT) },
+                                    onOpenHifzAi = { navController.navigate(NoorRoutes.HIFZ_AI) },
+                                    onOpenLocalAi = { navController.navigate(NoorRoutes.LOCAL_AI) },
+                                    onOpenLibrary = { navController.navigate(NoorRoutes.LIBRARY) },
+                                    onOpenKhatm = { navController.navigate(NoorRoutes.KHATM) },
+                                    onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -507,12 +556,129 @@ fun NoorAppShell(
                                     onOpenSupport = { navController.navigate(NoorRoutes.CONTACT_SUPPORT) },
                                     onOpenNotifications = { navController.navigate(NoorRoutes.NOTIFICATIONS) },
                                     onOpenAdminCenter = { navController.navigate(NoorRoutes.ADMIN_CENTER) },
-                                    onOpenAdhanSettings = { navController.navigate(NoorRoutes.ADHAN_SETTINGS) }
+                                    onOpenAdhanSettings = { navController.navigate(NoorRoutes.ADHAN_SETTINGS) },
+                                    onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) },
+                                    onOpenEcosystemHub = { navController.navigate(NoorRoutes.ECOSYSTEM_HUB) }
                                 )
                             }
                             composable(NoorRoutes.ADHAN_SETTINGS) {
                                 AdhanSettingsScreen(
                                     viewModel = viewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            // NOOR Complete Islamic Ecosystem Destinations
+                            composable(NoorRoutes.ECOSYSTEM_HUB) {
+                                EcosystemHubScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() },
+                                    onOpenHalaqat = { navController.navigate(NoorRoutes.HALAQAT) },
+                                    onOpenHifzAi = { navController.navigate(NoorRoutes.HIFZ_AI) },
+                                    onOpenLocalAi = { navController.navigate(NoorRoutes.LOCAL_AI) },
+                                    onOpenLibrary = { navController.navigate(NoorRoutes.LIBRARY) },
+                                    onOpenTajweed = { navController.navigate(NoorRoutes.TAJWEED) },
+                                    onOpenKids = { navController.navigate(NoorRoutes.KIDS) },
+                                    onOpenKhatm = { navController.navigate(NoorRoutes.KHATM) },
+                                    onOpenQuiz = { navController.navigate(NoorRoutes.QUIZ) },
+                                    onOpenNotes = { navController.navigate(NoorRoutes.NOTES) },
+                                    onOpenHadith = { navController.navigate(NoorRoutes.HADITH_LIB) },
+                                    onOpenTafseer = { navController.navigate(NoorRoutes.TAFSEER_EXPLORER) },
+                                    onOpenDuaa = { navController.navigate(NoorRoutes.DUAA) },
+                                    onOpenRadio = { navController.navigate(NoorRoutes.RADIO) },
+                                    onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) }
+                                )
+                            }
+                            composable(NoorRoutes.HALAQAT) {
+                                HalaqatScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.HIFZ_AI) {
+                                HifzAiScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.LOCAL_AI) {
+                                NoorLocalAiScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.LIBRARY) {
+                                IslamicLibraryScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.HADITH_LIB) {
+                                IslamicLibraryScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() },
+                                    initialCategory = "HADITH"
+                                )
+                            }
+                            composable(NoorRoutes.TAFSEER_EXPLORER) {
+                                NoorTafseerExplorerScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.TAJWEED) {
+                                TajweedScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.KIDS) {
+                                NoorKidsScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { s -> navController.navigate(NoorRoutes.quranReader(s)) },
+                                    onOpenKidsQuiz = { navController.navigate(NoorRoutes.KIDS_QUIZ) }
+                                )
+                            }
+                            composable(NoorRoutes.KHATM) {
+                                val currentPage = com.example.data.local.catalog.SurahCatalog.findSurah(prefs.lastReadSurah).startPage
+                                KhatmAndWorshipScreen(
+                                    viewModel = ecosystemViewModel,
+                                    currentReaderPage = currentPage,
+                                    onBack = { navController.popBackStack() },
+                                    onOpenQuran = { navigateToTab(NoorRoutes.QURAN) }
+                                )
+                            }
+                            composable(NoorRoutes.QUIZ) {
+                                NoorQuizScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.KIDS_QUIZ) {
+                                NoorQuizScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() },
+                                    initialCategory = "KIDS"
+                                )
+                            }
+                            composable(NoorRoutes.NOTES) {
+                                NoorNotesScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { s -> navController.navigate(NoorRoutes.quranReader(s)) }
+                                )
+                            }
+                            composable(NoorRoutes.DUAA) {
+                                NoorDuaaScreen(onBack = { navController.popBackStack() })
+                            }
+                            composable(NoorRoutes.RADIO) {
+                                NoorRadioScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.OFFLINE_ADMIN) {
+                                OfflineSuperAdminScreen(
+                                    viewModel = ecosystemViewModel,
                                     onBack = { navController.popBackStack() }
                                 )
                             }

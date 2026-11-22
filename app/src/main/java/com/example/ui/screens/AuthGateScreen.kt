@@ -226,6 +226,25 @@ fun NoorAuthGateScreen(
                         color = Color.White.copy(alpha = 0.6f),
                         textAlign = TextAlign.Center
                     )
+
+                    if (onContinueOfflineWhenUnconfigured != null) {
+                        OutlinedButton(
+                            onClick = onContinueOfflineWhenUnconfigured,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("offline_local_mode_button"),
+                            shape = RoundedCornerShape(18.dp)
+                        ) {
+                            Icon(Icons.Rounded.VerifiedUser, contentDescription = null, tint = GoldBright)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = L10n.pick(lang, "المتابعة بدون إنترنت (وضع نور المحلي)", "Continue Offline (Local NOOR Mode)"),
+                                fontWeight = FontWeight.Bold,
+                                color = GoldBright
+                            )
+                        }
+                    }
                 } else if (onContinueOfflineWhenUnconfigured != null) {
                     Button(
                         onClick = onContinueOfflineWhenUnconfigured,

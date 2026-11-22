@@ -41,6 +41,10 @@ import androidx.compose.material.icons.rounded.SupportAgent
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.WbSunny
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LocalLibrary
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -111,7 +115,14 @@ fun HomeScreen(
     onOpenFounderProfile: () -> Unit,
     onOpenSupport: () -> Unit,
     onOpenNotifications: () -> Unit,
-    onOpenAdminCenter: () -> Unit
+    onOpenAdminCenter: () -> Unit,
+    onOpenEcosystemHub: () -> Unit = {},
+    onOpenHalaqat: () -> Unit = {},
+    onOpenHifzAi: () -> Unit = {},
+    onOpenLocalAi: () -> Unit = {},
+    onOpenLibrary: () -> Unit = {},
+    onOpenKhatm: () -> Unit = {},
+    onOpenOfflineAdmin: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -322,6 +333,63 @@ fun HomeScreen(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+                }
+            }
+        }
+
+        // 2B. NOOR Complete Islamic Ecosystem Quick Launch Card (Strictly Additive)
+        item {
+            LiquidGlassCard(
+                strong = true,
+                goldBorder = true,
+                contentPadding = PaddingValues(14.dp),
+                onClick = onOpenEcosystemHub,
+                modifier = Modifier.testTag("home_ecosystem_hub_card")
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = L10n.pick(lang, "منظومة نور المتكاملة (بدون إنترنت)", "NOOR Complete Ecosystem (Offline)"),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = noorColors.goldAccent
+                        )
+                        Text(
+                            text = L10n.pick(lang, "الحلقات · الحفظ الذكي · الذكاء المحلي · المكتبة · الختمة · الإدارة", "Halaqat · Hifz AI · Local AI · Library · Khatm · Local Admin"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Text(
+                        text = L10n.pick(lang, "الكل ←", "All →"),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = noorColors.goldAccent
+                    )
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeEcoMiniTile(L10n.pick(lang, "الحلقات", "Halaqat"), Icons.Rounded.Groups, onOpenHalaqat, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "الحفظ", "Hifz AI"), Icons.Rounded.Mic, onOpenHifzAi, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "نور AI", "Local AI"), Icons.Rounded.Psychology, onOpenLocalAi, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "المكتبة", "Library"), Icons.Rounded.LocalLibrary, onOpenLibrary, Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeEcoMiniTile(L10n.pick(lang, "الختمة والصيام", "Khatm"), Icons.Rounded.NightsStay, onOpenKhatm, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "الإدارة المحلية", "Local Admin"), Icons.Rounded.AdminPanelSettings, onOpenOfflineAdmin, Modifier.weight(1f))
                 }
             }
         }
@@ -968,3 +1036,34 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
+
+@Composable
+private fun HomeEcoMiniTile(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val noorColors = LocalNoorColors.current
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(EmeraldPrimary.copy(alpha = 0.16f))
+            .border(1.dp, GoldPrimary.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 6.dp, vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Icon(icon, contentDescription = label, tint = noorColors.goldAccent, modifier = Modifier.size(20.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+

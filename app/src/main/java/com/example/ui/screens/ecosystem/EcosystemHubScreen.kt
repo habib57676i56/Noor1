@@ -1,0 +1,316 @@
+package com.example.ui.screens.ecosystem
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AdminPanelSettings
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Book
+import androidx.compose.material.icons.rounded.ChildCare
+import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LocalLibrary
+import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Quiz
+import androidx.compose.material.icons.rounded.Radio
+import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.VolunteerActivism
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.components.LiquidGlassCard
+import com.example.ui.components.NoorScreenHeader
+import com.example.ui.components.NoorSectionHeader
+import com.example.ui.i18n.L10n
+import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.theme.EmeraldDeep
+import com.example.ui.theme.EmeraldPrimary
+import com.example.ui.theme.GoldBright
+import com.example.ui.theme.GoldPrimary
+import com.example.ui.theme.LocalNoorColors
+import com.example.viewmodel.EcosystemViewModel
+
+private data class EcosystemModuleItem(
+    val titleAr: String,
+    val titleEn: String,
+    val subtitleAr: String,
+    val subtitleEn: String,
+    val icon: ImageVector,
+    val accent: Color,
+    val testTag: String,
+    val onClick: () -> Unit
+)
+
+@Composable
+fun EcosystemHubScreen(
+    viewModel: EcosystemViewModel,
+    onBack: () -> Unit,
+    onOpenHalaqat: () -> Unit,
+    onOpenHifzAi: () -> Unit,
+    onOpenLocalAi: () -> Unit,
+    onOpenLibrary: () -> Unit,
+    onOpenTajweed: () -> Unit,
+    onOpenKids: () -> Unit,
+    onOpenKhatm: () -> Unit,
+    onOpenQuiz: () -> Unit,
+    onOpenNotes: () -> Unit,
+    onOpenHadith: () -> Unit,
+    onOpenTafseer: () -> Unit,
+    onOpenDuaa: () -> Unit,
+    onOpenRadio: () -> Unit,
+    onOpenOfflineAdmin: () -> Unit
+) {
+    val lang = LocalAppLanguage.current
+    val noorColors = LocalNoorColors.current
+    val circles by viewModel.circles.collectAsStateWithLifecycle()
+    val students by viewModel.students.collectAsStateWithLifecycle()
+    val books by viewModel.libraryBooks.collectAsStateWithLifecycle()
+    val aiKb by viewModel.approvedAiKnowledge.collectAsStateWithLifecycle()
+    val khatmPlans by viewModel.khatmPlans.collectAsStateWithLifecycle()
+
+    val coreLearning = listOf(
+        EcosystemModuleItem(
+            "حلقات نور", "NOOR Halaqat",
+            "إدارة الحلقات والطلاب والمعلمين والتسميع", "Circles, Students, Teachers & Assessments",
+            Icons.Rounded.Groups, EmeraldPrimary, "hub_halaqat", onOpenHalaqat
+        ),
+        EcosystemModuleItem(
+            "الحفظ الذكي", "NOOR Hifz AI",
+            "تسميع مباشر واختبارات الحفظ والآيات الضعيفة", "Live Mic Check, Hidden Tests & Schedules",
+            Icons.Rounded.Mic, GoldPrimary, "hub_hifz_ai", onOpenHifzAi
+        ),
+        EcosystemModuleItem(
+            "نور الذكي المحلي", "NOOR Local AI",
+            "إجابات إسلامية موثّقة ١٠٠٪ بدون إنترنت", "100% Offline Cited Islamic Q&A",
+            Icons.Rounded.Psychology, Color(0xFF1A9A6F), "hub_local_ai", onOpenLocalAi
+        ),
+        EcosystemModuleItem(
+            "مكتبة نور الإسلامية", "NOOR Library",
+            "تفسير، حديث، فقه، سيرة واستيراد كتب محلية", "Tafseer, Hadith, Fiqh, Seerah & Import",
+            Icons.Rounded.LocalLibrary, Color(0xFFD9B464), "hub_library", onOpenLibrary
+        )
+    )
+
+    val quranAndEducation = listOf(
+        EcosystemModuleItem(
+            "تجويد نور", "NOOR Tajweed",
+            "أحكام التجويد بأمثلة قرآنية وصوتية واختبارات", "Rules, Audio Ayahs & Quizzes",
+            Icons.Rounded.RecordVoiceOver, EmeraldPrimary, "hub_tajweed", onOpenTajweed
+        ),
+        EcosystemModuleItem(
+            "ختمة نور والصيام", "Khatm & Fasting",
+            "خطط ختم القرآن وتتبع صيام السنة والقضاء", "Multiple Khatm Plans & Sunnah Fasting",
+            Icons.Rounded.NightsStay, GoldPrimary, "hub_khatm", onOpenKhatm
+        ),
+        EcosystemModuleItem(
+            "مسابقات نور", "NOOR Quiz",
+            "اختبارات إسلامية وقرآنية بثلاثة مستويات", "Offline Quizzes (Easy/Medium/Hard)",
+            Icons.Rounded.Quiz, Color(0xFF2FC291), "hub_quiz", onOpenQuiz
+        ),
+        EcosystemModuleItem(
+            "ملاحظات القرآن", "NOOR Notes",
+            "خواطرك ومفضلاتك على الآيات دون تعديل المصحف", "Personal Ayah Notes & Collections",
+            Icons.Rounded.EditNote, GoldPrimary, "hub_notes", onOpenNotes
+        ),
+        EcosystemModuleItem(
+            "نور للأطفال", "NOOR Kids",
+            "قصار السور والأدعية والقصص بإشراف الوالدين", "Short Surahs, Stories & Parent Controls",
+            Icons.Rounded.ChildCare, Color(0xFF26B37E), "hub_kids", onOpenKids
+        )
+    )
+
+    val referencesAndAdmin = listOf(
+        EcosystemModuleItem(
+            "أحاديث نور", "NOOR Hadith",
+            "مختارات الأحاديث الصحيحة وشرحها", "Verified Hadith & Explanations",
+            Icons.Rounded.Book, EmeraldPrimary, "hub_hadith", onOpenHadith
+        ),
+        EcosystemModuleItem(
+            "تفسير نور", "NOOR Tafseer",
+            "تفسير ميسر للآيات وأسباب النزول", "Concise Tafseer & Asbab al-Nuzul",
+            Icons.Rounded.MenuBook, GoldPrimary, "hub_tafseer", onOpenTafseer
+        ),
+        EcosystemModuleItem(
+            "أدعية نور", "NOOR Duaa",
+            "أدعية قرآنية ونبوية صحيحة وموثّقة", "Authentic Quranic & Prophetic Duas",
+            Icons.Rounded.VolunteerActivism, Color(0xFF1A9A6F), "hub_duaa", onOpenDuaa
+        ),
+        EcosystemModuleItem(
+            "إذاعة نور القرآنية", "NOOR Radio",
+            "بث مباشر لإذاعات القرآن الكريم والتفسير", "Live Quran & Tafseer Radio Streams",
+            Icons.Rounded.Radio, GoldPrimary, "hub_radio", onOpenRadio
+        ),
+        EcosystemModuleItem(
+            "الإدارة العامة المحلية", "Offline Super Admin",
+            "إدارة محلية كاملة وصلاحيات ونسخ احتياطي JSON", "Local RBAC Admin, KB & JSON Backup",
+            Icons.Rounded.AdminPanelSettings, Color(0xFFE4AA44), "hub_offline_admin", onOpenOfflineAdmin
+        )
+    )
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        NoorScreenHeader(
+            title = L10n.pick(lang, "منظومة نور المتكاملة", "NOOR Islamic Ecosystem"),
+            subtitle = L10n.pick(
+                lang,
+                "منصة إسلامية شاملة تعمل دون إنترنت بالكامل ومجانية دون اشتراكات",
+                "Complete Offline-First Islamic Platform — Zero Subscriptions"
+            ),
+            onBack = onBack
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 110.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            item {
+                LiquidGlassCard(strong = true, goldBorder = true) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(CircleShape)
+                                .background(Brush.radialGradient(listOf(GoldPrimary, EmeraldDeep))),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Rounded.AutoAwesome, contentDescription = null, tint = Color.White)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = L10n.pick(lang, "جاهز للعمل المحلي الكامل", "100% Offline-Ready Ecosystem"),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = noorColors.goldAccent
+                            )
+                            Text(
+                                text = L10n.pick(
+                                    lang,
+                                    "حلقات: ${circles.size} · طلاب: ${students.size} · كتب: ${books.size} · معرفة ذكية: ${aiKb.size} · ختمات: ${khatmPlans.size}",
+                                    "Circles: ${circles.size} · Students: ${students.size} · Books: ${books.size} · AI KB: ${aiKb.size} · Khatm: ${khatmPlans.size}"
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            item {
+                NoorSectionHeader(
+                    title = L10n.pick(lang, "الأنظمة الأساسية (الحلقات والحفظ والذكاء والمكتبة)", "Core Learning Systems")
+                )
+            }
+            item {
+                ModuleGrid(items = coreLearning)
+            }
+
+            item {
+                NoorSectionHeader(
+                    title = L10n.pick(lang, "التعليم والعبادات والأسرة", "Quran Education, Worship & Family")
+                )
+            }
+            item {
+                ModuleGrid(items = quranAndEducation)
+            }
+
+            item {
+                NoorSectionHeader(
+                    title = L10n.pick(lang, "المراجع الإسلامية والإدارة المحلية", "Islamic References & Local Admin")
+                )
+            }
+            item {
+                ModuleGrid(items = referencesAndAdmin)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModuleGrid(items: List<EcosystemModuleItem>) {
+    val lang = LocalAppLanguage.current
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        items.chunked(2).forEach { rowItems ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowItems.forEach { item ->
+                    LiquidGlassCard(
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag(item.testTag),
+                        contentPadding = PaddingValues(14.dp),
+                        onClick = item.onClick
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(item.accent.copy(alpha = 0.18f))
+                                .border(1.dp, item.accent.copy(alpha = 0.45f), RoundedCornerShape(12.dp)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(item.icon, contentDescription = item.titleEn, tint = item.accent, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = L10n.pick(lang, item.titleAr, item.titleEn),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = L10n.pick(lang, item.subtitleAr, item.subtitleEn),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (rowItems.size == 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}

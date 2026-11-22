@@ -9,6 +9,7 @@ import com.example.data.local.db.NoorDatabase
 import com.example.data.local.prefs.UserPreferencesRepository
 import com.example.data.remote.OverpassApiService
 import com.example.data.remote.QuranApiService
+import com.example.data.repository.EcosystemRepository
 import com.example.data.repository.NoorRepository
 import com.example.notifications.NoorNotificationHelper
 import com.example.shortcuts.NoorShortcutManager
@@ -30,6 +31,9 @@ class NoorApplication : Application() {
         private set
 
     lateinit var adhanAudioPlayer: AdhanAudioPlayer
+        private set
+
+    lateinit var ecosystemRepository: EcosystemRepository
         private set
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -77,8 +81,14 @@ class NoorApplication : Application() {
             }
         }
         adhanAudioPlayer = AdhanAudioPlayer(applicationContext)
+        ecosystemRepository = EcosystemRepository(
+            dao = db.ecosystemDao(),
+            noorDao = db.noorDao(),
+            appContext = applicationContext
+        )
 
         appScope.launch {
+            runCatching { ecosystemRepository.ensureSeeded() }
             runCatching {
                 val p = prefs.getPreferencesOnce()
                 NoorShortcutManager.publishShortcuts(applicationContext, p)

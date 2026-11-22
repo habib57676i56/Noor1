@@ -82,7 +82,9 @@ fun SettingsScreen(
     onOpenSupport: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenAdminCenter: () -> Unit,
-    onOpenAdhanSettings: () -> Unit = {}
+    onOpenAdhanSettings: () -> Unit = {},
+    onOpenOfflineAdmin: () -> Unit = {},
+    onOpenEcosystemHub: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -438,6 +440,44 @@ fun SettingsScreen(
                     }
                     TextButton(onClick = onOpenAdhanSettings) {
                         Text(L10n.pick(lang, "تخصيص", "Customize"), color = noorColors.goldAccent)
+                    }
+                }
+            }
+        }
+
+        // 2c. Offline Local Super Admin & Ecosystem Hub Card
+        item {
+            LiquidGlassCard(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .testTag("settings_offline_admin_card"),
+                goldBorder = true,
+                onClick = onOpenOfflineAdmin
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.AdminPanelSettings, contentDescription = null, tint = noorColors.goldAccent)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = L10n.pick(lang, "الإدارة العامة المحلية (بدون إنترنت)", "Offline Local Super Admin"),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = noorColors.goldAccent
+                            )
+                            Text(
+                                text = L10n.pick(lang, "إدارة المعرفة المحلية، الحلقات، الصلاحيات والنسخ الاحتياطي JSON", "Local RBAC, AI KB Import, Halaqat & JSON Backup"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    TextButton(onClick = onOpenEcosystemHub) {
+                        Text(L10n.pick(lang, "المنظومة", "Hub"), color = noorColors.goldAccent)
                     }
                 }
             }
