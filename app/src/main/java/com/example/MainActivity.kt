@@ -1,10 +1,12 @@
 package com.example
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +17,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.data.cloud.FirebaseAuthHelper
+import com.example.shortcuts.NoorShortcutManager
 import com.example.ui.admin.AdminControlCenterScreen
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.navigation.NoorAppShell
@@ -25,9 +28,13 @@ import com.example.viewmodel.AdminViewModel
 import com.example.viewmodel.NoorViewModel
 
 class MainActivity : ComponentActivity() {
+
+    private var incomingShortcutRoute by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        incomingShortcutRoute = intent?.getStringExtra(NoorShortcutManager.EXTRA_SHORTCUT_ROUTE)
         setContent {
             val viewModel: NoorViewModel = viewModel()
             val adminViewModel: AdminViewModel = viewModel()
@@ -39,6 +46,14 @@ class MainActivity : ComponentActivity() {
             val isFirebaseConfigured = remember { FirebaseAuthHelper.isFirebaseConfigured(applicationContext) }
             var allowOfflineWhenUnconfigured by remember { mutableStateOf(false) }
             var adminBypassMaintenance by remember { mutableStateOf(false) }
+
+            val pendingRoute = incomingShortcutRoute
+            LaunchedEffect(pendingRoute) {
+                if (!pendingRoute.isNullOrBlank()) {
+                    viewModel.dispatchShortcutRoute(pendingRoute)
+                    incomingShortcutRoute = null
+                }
+            }
 
             CompositionLocalProvider(
                 LocalAppLanguage provides prefs.language,
@@ -82,6 +97,15 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val route = intent.getStringExtra(NoorShortcutManager.EXTRA_SHORTCUT_ROUTE)
+        if (!route.isNullOrBlank()) {
+            incomingShortcutRoute = route
         }
     }
 }

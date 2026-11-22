@@ -4,4 +4,14 @@
     <string name="notification_channel_prayer_desc">Alerts for daily prayer times and pre-prayer reminders</string>
     <string name="notification_channel_reminder_name">Daily Reminders</string>
     <string name="notification_channel_reminder_desc">Reminders for Morning/Evening Adhkar, Quran reading, and Tasbih</string>
+    <string name="widget_prayer_times_desc">Daily Prayer Times &amp; Live Countdown</string>
+    <string name="widget_quran_player_desc">Quran Audio Player &amp; Quick Controls</string>
+    <string name="widget_refresh_cd">Refresh prayer times</string>
+    <string name="widget_prev_cd">Previous Surah or Ayah</string>
+    <string name="widget_play_pause_cd">Play or pause Quran recitation</string>
+    <string name="widget_next_cd">Next Surah or Ayah</string>
+    <string name="shortcut_resume_short">Resume Reading</string>
+    <string name="shortcut_resume_long">Resume Last Quran Reading</string>
+    <string name="shortcut_prayers_short">Prayer Times</string>
+    <string name="shortcut_prayers_long">Open Daily Prayer Times</string>
 </resources>

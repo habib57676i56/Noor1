@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -11,10 +12,18 @@ import android.os.VibratorManager
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.NoorApplication
+import com.example.audio.AdhanAudioPlayer
+import com.example.audio.AdhanCatalog
+import com.example.audio.AdhanImportResult
+import com.example.audio.AdhanPlaybackService
+import com.example.audio.AdhanVoiceOption
 import com.example.audio.AudioPlaybackState
+import com.example.audio.CustomAdhanRecord
 import com.example.audio.DhikrTtsHelper
+import com.example.audio.LiveRecitationState
 import com.example.audio.QuranAudioPlayer
 import com.example.audio.QuranAudioService
+import com.example.audio.QuranLiveRecitationListener
 import com.example.data.cloud.AdminRole
 import com.example.data.cloud.AppAnnouncementDoc
 import com.example.data.cloud.CmsContentCategory
@@ -69,9 +78,15 @@ import com.example.domain.prayer.PrayerTimeCalculator
 import com.example.location.LocationHelper
 import com.example.notifications.NoorAlarmScheduler
 import com.example.notifications.NoorNotificationHelper
+import com.example.notifications.PrayerNotificationController
+import com.example.shortcuts.NoorShortcutManager
+import com.example.widgets.PrayerTimesWidgetProvider
+import com.example.widgets.QuranPlayerWidgetProvider
 import com.google.firebase.auth.FirebaseUser
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -128,8 +143,17 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo: NoorRepository = (application as NoorApplication).repository
     private val cloudRepo: NoorCloudRepository = (application as NoorApplication).cloudRepository
-    private val quranAudioPlayer = QuranAudioPlayer()
+    private val quranAudioPlayer: QuranAudioPlayer = (application as NoorApplication).quranAudioPlayer
+    private val adhanAudioPlayer: AdhanAudioPlayer = (application as NoorApplication).adhanAudioPlayer
+    private val liveRecitationListener = QuranLiveRecitationListener(application)
     private val dhikrTtsHelper = DhikrTtsHelper(application)
+
+    val liveRecitationState: StateFlow<LiveRecitationState> = liveRecitationListener.state
+    val previewingAdhanVoiceId: StateFlow<String?> = adhanAudioPlayer.playingVoiceId
+    val adhanPreviewBuffering: StateFlow<Boolean> = adhanAudioPlayer.isBuffering
+
+    private val _pendingShortcutRoute = MutableStateFlow<String?>(null)
+    val pendingShortcutRoute: StateFlow<String?> = _pendingShortcutRoute.asStateFlow()
 
     // --- NOOR 3.0 Auth, RBAC, Live Cloud Config, Announcements & CMS Streams ---
     val currentUser: StateFlow<FirebaseUser?> = FirebaseAuthHelper.observeAuthState()
@@ -434,7 +458,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         )
         _downloadedAudioIds.value = repo.listDownloadedAudioIds()
 
-        // Keep background media foreground service synced with live audio playback state
+        // Keep background media foreground service & Home Screen widget synced with live audio playback state
         viewModelScope.launch {
             audioState.collect { st ->
                 val app = getApplication<Application>()
@@ -445,6 +469,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     QuranAudioService.stopService(app)
                 }
+                QuranPlayerWidgetProvider.requestUpdate(app)
             }
         }
 
@@ -471,7 +496,11 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                     tasbihHydrated = true
                 }
                 quranAudioPlayer.setPlaybackSpeed(prefs.audioPlaybackSpeed)
-                NoorAlarmScheduler.rescheduleAll(getApplication(), prefs)
+                val app = getApplication<Application>()
+                NoorAlarmScheduler.rescheduleAll(app, prefs)
+                NoorShortcutManager.publishShortcuts(app, prefs)
+                PrayerTimesWidgetProvider.requestUpdate(app)
+                QuranPlayerWidgetProvider.requestUpdate(app)
             }
         }
     }
@@ -1048,9 +1077,157 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // --- Smart Update: Home Screen Shortcut Routing ---
+    fun dispatchShortcutRoute(route: String?) {
+        if (!route.isNullOrBlank()) {
+            _pendingShortcutRoute.value = route
+        }
+    }
+
+    fun consumeShortcutRoute() {
+        _pendingShortcutRoute.value = null
+    }
+
+    // --- Smart Update: Persistent Prayer Notification & Quran Auto-Scroll Speed ---
+    fun setPersistentPrayerNotificationEnabled(enabled: Boolean) = viewModelScope.launch {
+        repo.prefs.setPersistentPrayerNotificationEnabled(enabled)
+        val updated = preferences.value.copy(persistentPrayerNotificationEnabled = enabled)
+        PrayerNotificationController.updateOrCancel(getApplication(), updated)
+    }
+
+    fun setQuranAutoScrollSpeed(speed: Float) = viewModelScope.launch {
+        repo.prefs.setQuranAutoScrollSpeed(speed)
+    }
+
+    // --- Smart Update: Advanced Adhan Sound Customization ---
+    fun setAdhanSoundEnabled(enabled: Boolean) = viewModelScope.launch {
+        repo.prefs.setAdhanSoundEnabled(enabled)
+    }
+
+    fun setAdhanRespectSilentMode(respect: Boolean) = viewModelScope.launch {
+        repo.prefs.setAdhanRespectSilentMode(respect)
+    }
+
+    fun setDefaultAdhanVoice(voiceId: String) = viewModelScope.launch {
+        repo.prefs.setDefaultAdhanVoice(voiceId)
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        val voice = AdhanCatalog.resolveVoice(voiceId, preferences.value.customAdhanRecords)
+        _statusBanner.value = if (isAr) {
+            "تم اعتماد صوت الأذان: ${voice.nameAr}"
+        } else {
+            "Default Adhan voice saved: ${voice.nameEn}"
+        }
+    }
+
+    fun setPrayerSpecificAdhanVoice(prayer: PrayerName, voiceId: String) = viewModelScope.launch {
+        repo.prefs.setPrayerSpecificAdhanVoice(prayer, voiceId)
+    }
+
+    fun previewOrStopAdhan(voice: AdhanVoiceOption) {
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        adhanAudioPlayer.playVoice(
+            voice = voice,
+            isAlarmPlayback = false,
+            onFallbackNotice = {
+                _statusBanner.value = if (isAr) {
+                    "تعذّر تشغيل الملف المحدد — تم تشغيل النغمة الافتراضية"
+                } else {
+                    "Selected Adhan source unavailable — playing default tone"
+                }
+            }
+        )
+    }
+
+    fun stopAdhanPreview() {
+        adhanAudioPlayer.stop()
+    }
+
+    fun testAdhanPlaybackNow(prayer: PrayerName = PrayerName.FAJR) {
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        val label = PrayerNotificationController.prayerLabel(prayer, isAr)
+        AdhanPlaybackService.startAdhan(
+            context = getApplication(),
+            prayer = prayer,
+            title = if (isAr) "تجربة أذان $label" else "Adhan Preview · $label",
+            body = if (isAr) "اضغط إيقاف الأذان لإنهاء التجربة" else "Tap Stop Adhan to end test"
+        )
+    }
+
+    fun stopActiveAdhanAlarm() {
+        AdhanPlaybackService.stopAdhan(getApplication())
+        adhanAudioPlayer.stop()
+    }
+
+    fun importCustomAdhanAudio(uri: Uri) = viewModelScope.launch {
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        val result = withContext(Dispatchers.IO) {
+            AdhanCatalog.importFromUri(getApplication(), uri)
+        }
+        when (result) {
+            is AdhanImportResult.Success -> {
+                repo.prefs.addCustomAdhanRecord(result.record)
+                repo.prefs.setDefaultAdhanVoice(result.record.id)
+                _statusBanner.value = if (isAr) {
+                    "تم استيراد صوت الأذان بنجاح: ${result.record.displayName}"
+                } else {
+                    "Imported Adhan audio: ${result.record.displayName}"
+                }
+            }
+            is AdhanImportResult.Error -> {
+                _statusBanner.value = if (isAr) result.messageAr else result.messageEn
+            }
+        }
+    }
+
+    fun deleteCustomAdhanRecord(record: CustomAdhanRecord) = viewModelScope.launch {
+        if (adhanAudioPlayer.playingVoiceId.value == record.id) {
+            adhanAudioPlayer.stop()
+        }
+        withContext(Dispatchers.IO) {
+            AdhanCatalog.deleteImportedFile(record)
+        }
+        repo.prefs.removeCustomAdhanRecord(record.id)
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        _statusBanner.value = if (isAr) "تم حذف الملف الصوتي المستورد" else "Imported Adhan audio removed"
+    }
+
+    // --- Smart Update: Live On-Device Quran Audio Recognition (Listen & Follow) ---
+    fun syncLiveTrackerSurah(surahNumber: Int, verses: List<QuranVerse>, initialAyah: Int? = null) {
+        liveRecitationListener.loadSurahContext(surahNumber, verses, initialAyah)
+    }
+
+    fun startLiveRecitationTracking() {
+        // Pause Quran media playback if active so microphone hears the reciter clearly
+        if (quranAudioPlayer.state.value.isPlaying) {
+            quranAudioPlayer.pause()
+        }
+        liveRecitationListener.startListening()
+    }
+
+    fun pauseLiveRecitationTracking() {
+        liveRecitationListener.pauseListening()
+    }
+
+    fun resumeLiveRecitationTracking() {
+        if (quranAudioPlayer.state.value.isPlaying) {
+            quranAudioPlayer.pause()
+        }
+        liveRecitationListener.resumeListening()
+    }
+
+    fun stopLiveRecitationTracking() {
+        liveRecitationListener.stopListening()
+    }
+
+    fun clearCrossSurahJumpTarget() {
+        liveRecitationListener.clearCrossSurahJumpTarget()
+    }
+
     override fun onCleared() {
         super.onCleared()
-        quranAudioPlayer.stop()
+        // Keep quranAudioPlayer running in background via QuranAudioService so playback survives Activity closure!
+        liveRecitationListener.stopListening()
+        adhanAudioPlayer.stop()
         dhikrTtsHelper.shutdown()
     }
 }

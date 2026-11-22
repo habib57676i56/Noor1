@@ -18,6 +18,8 @@ class BootCompletedReceiver : BroadcastReceiver() {
                 try {
                     val prefs = UserPreferencesRepository(context).getPreferencesOnce()
                     NoorAlarmScheduler.rescheduleAll(context, prefs)
+                    com.example.shortcuts.NoorShortcutManager.publishShortcuts(context, prefs)
+                    com.example.widgets.QuranPlayerWidgetProvider.requestUpdate(context)
                 } finally {
                     pendingResult.finish()
                 }

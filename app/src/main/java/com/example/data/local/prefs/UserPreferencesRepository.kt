@@ -10,6 +10,9 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.audio.AdhanCatalog
+import com.example.audio.CustomAdhanRecord
+import com.example.audio.PerPrayerAdhanConfig
 import com.example.domain.model.AppLanguage
 import com.example.domain.model.AsrMadhhab
 import com.example.domain.model.CalculationMethod
@@ -85,7 +88,14 @@ data class UserPreferences(
     // Personal Worship Goals & Dashboard Config
     val dailyQuranGoalVerses: Int = 15,
     val dailyTasbihGoal: Int = 100,
-    val homeConfig: HomeDashboardConfig = HomeDashboardConfig()
+    val homeConfig: HomeDashboardConfig = HomeDashboardConfig(),
+    // Advanced Adhan Customization, Persistent Notification & Quran Auto-Scroll
+    val adhanSoundEnabled: Boolean = true,
+    val adhanRespectSilentMode: Boolean = true,
+    val adhanConfig: PerPrayerAdhanConfig = PerPrayerAdhanConfig(),
+    val customAdhanRecords: List<CustomAdhanRecord> = emptyList(),
+    val persistentPrayerNotificationEnabled: Boolean = true,
+    val quranAutoScrollSpeed: Float = 1.0f
 ) {
     fun isPrayerNotificationEnabled(prayer: PrayerName): Boolean = when (prayer) {
         PrayerName.FAJR -> notifyFajr
@@ -173,6 +183,18 @@ class UserPreferencesRepository(private val context: Context) {
         val HOME_SHOW_QURAN = booleanPreferencesKey("home_show_quran")
         val HOME_SHOW_AUDIO = booleanPreferencesKey("home_show_audio")
         val HOME_SHOW_EVENTS = booleanPreferencesKey("home_show_events")
+
+        val ADHAN_SOUND_ENABLED = booleanPreferencesKey("adhan_sound_enabled")
+        val ADHAN_RESPECT_SILENT = booleanPreferencesKey("adhan_respect_silent")
+        val ADHAN_DEFAULT_VOICE = stringPreferencesKey("adhan_default_voice")
+        val ADHAN_FAJR_VOICE = stringPreferencesKey("adhan_fajr_voice")
+        val ADHAN_DHUHR_VOICE = stringPreferencesKey("adhan_dhuhr_voice")
+        val ADHAN_ASR_VOICE = stringPreferencesKey("adhan_asr_voice")
+        val ADHAN_MAGHRIB_VOICE = stringPreferencesKey("adhan_maghrib_voice")
+        val ADHAN_ISHA_VOICE = stringPreferencesKey("adhan_isha_voice")
+        val ADHAN_CUSTOM_RECORDS = stringPreferencesKey("adhan_custom_records")
+        val PERSISTENT_PRAYER_NOTIF = booleanPreferencesKey("persistent_prayer_notif")
+        val QURAN_AUTO_SCROLL_SPEED = floatPreferencesKey("quran_auto_scroll_speed")
     }
 
     val preferencesFlow: Flow<UserPreferences> = context.noorDataStore.data.map { p ->
@@ -251,7 +273,20 @@ class UserPreferencesRepository(private val context: Context) {
                 showQuranProgress = p[Keys.HOME_SHOW_QURAN] ?: true,
                 showRecentAudio = p[Keys.HOME_SHOW_AUDIO] ?: true,
                 showUpcomingEvent = p[Keys.HOME_SHOW_EVENTS] ?: true
-            )
+            ),
+            adhanSoundEnabled = p[Keys.ADHAN_SOUND_ENABLED] ?: true,
+            adhanRespectSilentMode = p[Keys.ADHAN_RESPECT_SILENT] ?: true,
+            adhanConfig = PerPrayerAdhanConfig(
+                defaultVoiceId = p[Keys.ADHAN_DEFAULT_VOICE] ?: AdhanCatalog.DEFAULT_VOICE_ID,
+                fajrVoiceId = p[Keys.ADHAN_FAJR_VOICE] ?: "",
+                dhuhrVoiceId = p[Keys.ADHAN_DHUHR_VOICE] ?: "",
+                asrVoiceId = p[Keys.ADHAN_ASR_VOICE] ?: "",
+                maghribVoiceId = p[Keys.ADHAN_MAGHRIB_VOICE] ?: "",
+                ishaVoiceId = p[Keys.ADHAN_ISHA_VOICE] ?: ""
+            ),
+            customAdhanRecords = AdhanCatalog.decodeCustomRecords(p[Keys.ADHAN_CUSTOM_RECORDS] ?: ""),
+            persistentPrayerNotificationEnabled = p[Keys.PERSISTENT_PRAYER_NOTIF] ?: true,
+            quranAutoScrollSpeed = p[Keys.QURAN_AUTO_SCROLL_SPEED] ?: 1.0f
         )
     }
 
@@ -435,6 +470,63 @@ class UserPreferencesRepository(private val context: Context) {
             it[Keys.HOME_SHOW_AUDIO] = config.showRecentAudio
             it[Keys.HOME_SHOW_EVENTS] = config.showUpcomingEvent
         }
+    }
+
+    suspend fun setAdhanSoundEnabled(enabled: Boolean) {
+        context.noorDataStore.edit { it[Keys.ADHAN_SOUND_ENABLED] = enabled }
+    }
+
+    suspend fun setAdhanRespectSilentMode(respect: Boolean) {
+        context.noorDataStore.edit { it[Keys.ADHAN_RESPECT_SILENT] = respect }
+    }
+
+    suspend fun setDefaultAdhanVoice(voiceId: String) {
+        context.noorDataStore.edit { it[Keys.ADHAN_DEFAULT_VOICE] = voiceId }
+    }
+
+    suspend fun setPrayerSpecificAdhanVoice(prayer: PrayerName, voiceId: String) {
+        context.noorDataStore.edit {
+            when (prayer) {
+                PrayerName.FAJR -> it[Keys.ADHAN_FAJR_VOICE] = voiceId
+                PrayerName.DHUHR -> it[Keys.ADHAN_DHUHR_VOICE] = voiceId
+                PrayerName.ASR -> it[Keys.ADHAN_ASR_VOICE] = voiceId
+                PrayerName.MAGHRIB -> it[Keys.ADHAN_MAGHRIB_VOICE] = voiceId
+                PrayerName.ISHA -> it[Keys.ADHAN_ISHA_VOICE] = voiceId
+                PrayerName.SUNRISE -> Unit
+            }
+        }
+    }
+
+    suspend fun addCustomAdhanRecord(record: CustomAdhanRecord) {
+        context.noorDataStore.edit { prefs ->
+            val existing = AdhanCatalog.decodeCustomRecords(prefs[Keys.ADHAN_CUSTOM_RECORDS] ?: "")
+            val updated = existing.filterNot { it.id == record.id } + record
+            prefs[Keys.ADHAN_CUSTOM_RECORDS] = AdhanCatalog.encodeCustomRecords(updated)
+        }
+    }
+
+    suspend fun removeCustomAdhanRecord(recordId: String) {
+        context.noorDataStore.edit { prefs ->
+            val existing = AdhanCatalog.decodeCustomRecords(prefs[Keys.ADHAN_CUSTOM_RECORDS] ?: "")
+            val updated = existing.filterNot { it.id == recordId }
+            prefs[Keys.ADHAN_CUSTOM_RECORDS] = AdhanCatalog.encodeCustomRecords(updated)
+            if (prefs[Keys.ADHAN_DEFAULT_VOICE] == recordId) {
+                prefs[Keys.ADHAN_DEFAULT_VOICE] = AdhanCatalog.DEFAULT_VOICE_ID
+            }
+            if (prefs[Keys.ADHAN_FAJR_VOICE] == recordId) prefs[Keys.ADHAN_FAJR_VOICE] = ""
+            if (prefs[Keys.ADHAN_DHUHR_VOICE] == recordId) prefs[Keys.ADHAN_DHUHR_VOICE] = ""
+            if (prefs[Keys.ADHAN_ASR_VOICE] == recordId) prefs[Keys.ADHAN_ASR_VOICE] = ""
+            if (prefs[Keys.ADHAN_MAGHRIB_VOICE] == recordId) prefs[Keys.ADHAN_MAGHRIB_VOICE] = ""
+            if (prefs[Keys.ADHAN_ISHA_VOICE] == recordId) prefs[Keys.ADHAN_ISHA_VOICE] = ""
+        }
+    }
+
+    suspend fun setPersistentPrayerNotificationEnabled(enabled: Boolean) {
+        context.noorDataStore.edit { it[Keys.PERSISTENT_PRAYER_NOTIF] = enabled }
+    }
+
+    suspend fun setQuranAutoScrollSpeed(speed: Float) {
+        context.noorDataStore.edit { it[Keys.QURAN_AUTO_SCROLL_SPEED] = speed.coerceIn(0.4f, 3.0f) }
     }
 
     suspend fun restoreFromPreferences(prefs: UserPreferences) {

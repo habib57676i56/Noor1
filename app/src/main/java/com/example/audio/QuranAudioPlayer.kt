@@ -1,6 +1,12 @@
 package com.example.audio
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.PlaybackParams
 import android.os.Build
@@ -41,7 +47,14 @@ data class AudioPlaybackState(
         get() = currentTrack != null || playingSurah != null || isBuffering || isPlaying
 }
 
-class QuranAudioPlayer {
+/**
+ * Application-scoped Quran & Islamic Audio Player with:
+ * - Real Android AudioFocus management (pauses on calls/loss, ducks on transient duck, resumes cleanly)
+ * - ACTION_AUDIO_BECOMING_NOISY headphone/Bluetooth disconnect protection
+ * - Real queue navigation (Next / Previous / Seek / Repeat / Sleep Timer)
+ * - Background persistence across Activity closure via QuranAudioService + MediaSession
+ */
+class QuranAudioPlayer(private val appContext: Context? = null) {
     private var mediaPlayer: MediaPlayer? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var progressJob: Job? = null
@@ -51,9 +64,65 @@ class QuranAudioPlayer {
     private var activeQueueIndex: Int = -1
     private var localFileResolver: ((String) -> String?)? = null
     private var onTrackStartedCallback: ((AudioTrackItem) -> Unit)? = null
+    private var onStateChangedCallback: ((AudioPlaybackState) -> Unit)? = null
+
+    private val audioManager: AudioManager? =
+        appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private var focusRequest: AudioFocusRequest? = null
+    private var resumeOnFocusGain: Boolean = false
+    private var noisyReceiverRegistered: Boolean = false
 
     private val _state = MutableStateFlow(AudioPlaybackState())
     val state: StateFlow<AudioPlaybackState> = _state.asStateFlow()
+
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                pause()
+            }
+        }
+    }
+
+    private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            AudioManager.AUDIOFOCUS_LOSS -> {
+                resumeOnFocusGain = false
+                pause()
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                if (_state.value.isPlaying) {
+                    resumeOnFocusGain = true
+                    pause()
+                }
+            }
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                try {
+                    mediaPlayer?.setVolume(0.25f, 0.25f)
+                } catch (_: Exception) {
+                }
+            }
+            AudioManager.AUDIOFOCUS_GAIN -> {
+                try {
+                    mediaPlayer?.setVolume(1.0f, 1.0f)
+                } catch (_: Exception) {
+                }
+                if (resumeOnFocusGain) {
+                    resumeOnFocusGain = false
+                    resume()
+                }
+            }
+        }
+    }
+
+    private fun updateState(transform: (AudioPlaybackState) -> AudioPlaybackState) {
+        val next = transform(_state.value)
+        _state.value = next
+        onStateChangedCallback?.invoke(next)
+    }
+
+    fun setStateListener(listener: ((AudioPlaybackState) -> Unit)?) {
+        onStateChangedCallback = listener
+    }
 
     fun configureCallbacks(
         resolveLocalFile: (trackId: String) -> String?,
@@ -76,28 +145,33 @@ class QuranAudioPlayer {
 
     private fun playTrackInternal(track: AudioTrackItem, speed: Float) {
         releasePlayerOnly()
+        requestAudioFocus()
+        registerNoisyReceiver()
+
         val localPath = localFileResolver?.invoke(track.id)
         val source = localPath ?: track.audioUrl
         val isLocal = localPath != null
 
-        _state.value = _state.value.copy(
-            isPlaying = false,
-            isBuffering = true,
-            currentTrack = track,
-            playingSurah = track.surahNumber,
-            playingAyah = null,
-            titleAr = track.titleAr,
-            titleEn = track.titleEn,
-            subtitleAr = track.subtitleAr,
-            subtitleEn = track.subtitleEn,
-            currentPositionMs = 0L,
-            durationMs = 0L,
-            playbackSpeed = speed,
-            isOfflineFile = isLocal,
-            hasNext = activeQueueIndex + 1 < activeQueue.size || _state.value.repeatMode == AudioRepeatMode.REPEAT_ALL,
-            hasPrevious = activeQueueIndex > 0,
-            errorMessage = null
-        )
+        updateState {
+            it.copy(
+                isPlaying = false,
+                isBuffering = true,
+                currentTrack = track,
+                playingSurah = track.surahNumber,
+                playingAyah = track.ayahNumber,
+                titleAr = track.titleAr,
+                titleEn = track.titleEn,
+                subtitleAr = track.subtitleAr,
+                subtitleEn = track.subtitleEn,
+                currentPositionMs = 0L,
+                durationMs = 0L,
+                playbackSpeed = speed,
+                isOfflineFile = isLocal,
+                hasNext = activeQueueIndex + 1 < activeQueue.size || it.repeatMode == AudioRepeatMode.REPEAT_ALL,
+                hasPrevious = activeQueueIndex > 0,
+                errorMessage = null
+            )
+        }
         onTrackStartedCallback?.invoke(track)
 
         try {
@@ -112,11 +186,13 @@ class QuranAudioPlayer {
                 setOnPreparedListener { player ->
                     applySpeed(player, _state.value.playbackSpeed)
                     player.start()
-                    _state.value = _state.value.copy(
-                        isPlaying = true,
-                        isBuffering = false,
-                        durationMs = player.duration.coerceAtLeast(0).toLong()
-                    )
+                    updateState {
+                        it.copy(
+                            isPlaying = true,
+                            isBuffering = false,
+                            durationMs = player.duration.coerceAtLeast(0).toLong()
+                        )
+                    }
                     startProgressPolling()
                 }
                 setOnCompletionListener {
@@ -124,22 +200,26 @@ class QuranAudioPlayer {
                 }
                 setOnErrorListener { _, _, _ ->
                     progressJob?.cancel()
-                    _state.value = _state.value.copy(
-                        isPlaying = false,
-                        isBuffering = false,
-                        errorMessage = "Audio stream unavailable offline or network error"
-                    )
+                    updateState {
+                        it.copy(
+                            isPlaying = false,
+                            isBuffering = false,
+                            errorMessage = "Audio stream unavailable offline or network error"
+                        )
+                    }
                     true
                 }
                 prepareAsync()
             }
             mediaPlayer = mp
         } catch (_: Exception) {
-            _state.value = _state.value.copy(
-                isPlaying = false,
-                isBuffering = false,
-                errorMessage = "Unable to start audio playback"
-            )
+            updateState {
+                it.copy(
+                    isPlaying = false,
+                    isBuffering = false,
+                    errorMessage = "Unable to start audio playback"
+                )
+            }
         }
     }
 
@@ -159,11 +239,15 @@ class QuranAudioPlayer {
             }
             else -> {
                 progressJob?.cancel()
-                _state.value = _state.value.copy(
-                    isPlaying = false,
-                    isBuffering = false,
-                    currentPositionMs = _state.value.durationMs
-                )
+                abandonAudioFocus()
+                unregisterNoisyReceiver()
+                updateState {
+                    it.copy(
+                        isPlaying = false,
+                        isBuffering = false,
+                        currentPositionMs = it.durationMs
+                    )
+                }
             }
         }
     }
@@ -203,26 +287,30 @@ class QuranAudioPlayer {
         onCompleted: (() -> Unit)? = null
     ) {
         releasePlayerOnly()
+        requestAudioFocus()
+        registerNoisyReceiver()
         activeQueue = emptyList()
         activeQueueIndex = -1
 
-        _state.value = _state.value.copy(
-            isPlaying = false,
-            isBuffering = true,
-            currentTrack = null,
-            playingSurah = surahNumber,
-            playingAyah = ayahNumber,
-            titleAr = titleAr,
-            titleEn = titleEn,
-            subtitleAr = reciterNameAr,
-            subtitleEn = reciterNameEn,
-            currentPositionMs = 0L,
-            durationMs = 0L,
-            isOfflineFile = false,
-            hasNext = false,
-            hasPrevious = false,
-            errorMessage = null
-        )
+        updateState {
+            it.copy(
+                isPlaying = false,
+                isBuffering = true,
+                currentTrack = null,
+                playingSurah = surahNumber,
+                playingAyah = ayahNumber,
+                titleAr = titleAr,
+                titleEn = titleEn,
+                subtitleAr = reciterNameAr,
+                subtitleEn = reciterNameEn,
+                currentPositionMs = 0L,
+                durationMs = 0L,
+                isOfflineFile = false,
+                hasNext = false,
+                hasPrevious = false,
+                errorMessage = null
+            )
+        }
 
         try {
             val mp = MediaPlayer().apply {
@@ -236,11 +324,13 @@ class QuranAudioPlayer {
                 setOnPreparedListener { player ->
                     applySpeed(player, _state.value.playbackSpeed)
                     player.start()
-                    _state.value = _state.value.copy(
-                        isPlaying = true,
-                        isBuffering = false,
-                        durationMs = player.duration.coerceAtLeast(0).toLong()
-                    )
+                    updateState {
+                        it.copy(
+                            isPlaying = true,
+                            isBuffering = false,
+                            durationMs = player.duration.coerceAtLeast(0).toLong()
+                        )
+                    }
                     startProgressPolling()
                 }
                 setOnCompletionListener {
@@ -259,28 +349,32 @@ class QuranAudioPlayer {
                         )
                     } else {
                         progressJob?.cancel()
-                        _state.value = _state.value.copy(isPlaying = false, isBuffering = false)
+                        updateState { it.copy(isPlaying = false, isBuffering = false) }
                         onCompleted?.invoke()
                     }
                 }
                 setOnErrorListener { _, _, _ ->
                     progressJob?.cancel()
-                    _state.value = _state.value.copy(
-                        isPlaying = false,
-                        isBuffering = false,
-                        errorMessage = "Audio playback unavailable offline or network error"
-                    )
+                    updateState {
+                        it.copy(
+                            isPlaying = false,
+                            isBuffering = false,
+                            errorMessage = "Audio playback unavailable offline or network error"
+                        )
+                    }
                     true
                 }
                 prepareAsync()
             }
             mediaPlayer = mp
         } catch (_: Exception) {
-            _state.value = _state.value.copy(
-                isPlaying = false,
-                isBuffering = false,
-                errorMessage = "Unable to stream recitation"
-            )
+            updateState {
+                it.copy(
+                    isPlaying = false,
+                    isBuffering = false,
+                    errorMessage = "Unable to stream recitation"
+                )
+            }
         }
     }
 
@@ -289,14 +383,14 @@ class QuranAudioPlayer {
         try {
             val clamped = positionMs.coerceIn(0L, _state.value.durationMs.coerceAtLeast(0L))
             mp.seekTo(clamped.toInt())
-            _state.value = _state.value.copy(currentPositionMs = clamped)
+            updateState { it.copy(currentPositionMs = clamped) }
         } catch (_: Exception) {
         }
     }
 
     fun setPlaybackSpeed(speed: Float) {
         val clamped = speed.coerceIn(0.75f, 1.5f)
-        _state.value = _state.value.copy(playbackSpeed = clamped)
+        updateState { it.copy(playbackSpeed = clamped) }
         mediaPlayer?.let { applySpeed(it, clamped) }
     }
 
@@ -317,42 +411,59 @@ class QuranAudioPlayer {
             AudioRepeatMode.REPEAT_ONE -> AudioRepeatMode.REPEAT_ALL
             AudioRepeatMode.REPEAT_ALL -> AudioRepeatMode.OFF
         }
-        _state.value = _state.value.copy(
-            repeatMode = next,
-            hasNext = activeQueueIndex + 1 < activeQueue.size || next == AudioRepeatMode.REPEAT_ALL
-        )
+        updateState {
+            it.copy(
+                repeatMode = next,
+                hasNext = activeQueueIndex + 1 < activeQueue.size || next == AudioRepeatMode.REPEAT_ALL
+            )
+        }
         return next
     }
 
     fun setSleepTimerMinutes(minutes: Int?) {
         sleepTimerJob?.cancel()
         if (minutes == null || minutes <= 0) {
-            _state.value = _state.value.copy(sleepTimerRemainingSec = null)
+            updateState { it.copy(sleepTimerRemainingSec = null) }
             return
         }
         var remaining = minutes * 60
-        _state.value = _state.value.copy(sleepTimerRemainingSec = remaining)
+        updateState { it.copy(sleepTimerRemainingSec = remaining) }
         sleepTimerJob = scope.launch {
             while (isActive && remaining > 0) {
                 delay(1000L)
                 remaining -= 1
-                _state.value = _state.value.copy(sleepTimerRemainingSec = remaining)
+                updateState { it.copy(sleepTimerRemainingSec = remaining) }
             }
             if (remaining <= 0) {
-                pauseIfPlaying()
-                _state.value = _state.value.copy(sleepTimerRemainingSec = null)
+                pause()
+                updateState { it.copy(sleepTimerRemainingSec = null) }
             }
         }
     }
 
-    private fun pauseIfPlaying() {
+    fun pause() {
         val mp = mediaPlayer ?: return
         try {
             if (mp.isPlaying) {
                 mp.pause()
-                _state.value = _state.value.copy(isPlaying = false)
+                updateState { it.copy(isPlaying = false) }
             }
         } catch (_: Exception) {
+        }
+    }
+
+    fun resume() {
+        val mp = mediaPlayer ?: return
+        try {
+            if (!mp.isPlaying) {
+                requestAudioFocus()
+                registerNoisyReceiver()
+                mp.start()
+                updateState { it.copy(isPlaying = true) }
+                startProgressPolling()
+            }
+        } catch (_: Exception) {
+            stop()
         }
     }
 
@@ -360,12 +471,9 @@ class QuranAudioPlayer {
         val mp = mediaPlayer ?: return
         try {
             if (mp.isPlaying) {
-                mp.pause()
-                _state.value = _state.value.copy(isPlaying = false)
+                pause()
             } else {
-                mp.start()
-                _state.value = _state.value.copy(isPlaying = true)
-                startProgressPolling()
+                resume()
             }
         } catch (_: Exception) {
             stop()
@@ -380,16 +488,85 @@ class QuranAudioPlayer {
                 if (mp != null) {
                     try {
                         if (mp.isPlaying) {
-                            _state.value = _state.value.copy(
-                                currentPositionMs = mp.currentPosition.coerceAtLeast(0).toLong(),
-                                durationMs = mp.duration.coerceAtLeast(0).toLong()
-                            )
+                            updateState {
+                                it.copy(
+                                    currentPositionMs = mp.currentPosition.coerceAtLeast(0).toLong(),
+                                    durationMs = mp.duration.coerceAtLeast(0).toLong()
+                                )
+                            }
                         }
                     } catch (_: Exception) {
                     }
                 }
                 delay(500L)
             }
+        }
+    }
+
+    private fun requestAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val attrs = AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .build()
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(attrs)
+                    .setAcceptsDelayedFocusGain(true)
+                    .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                    .build()
+                focusRequest = req
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(
+                    audioFocusChangeListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN
+                )
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun abandonAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                focusRequest?.let { am.abandonAudioFocusRequest(it) }
+                focusRequest = null
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(audioFocusChangeListener)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun registerNoisyReceiver() {
+        val ctx = appContext ?: return
+        if (noisyReceiverRegistered) return
+        try {
+            val filter = IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ctx.registerReceiver(noisyReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                ctx.registerReceiver(noisyReceiver, filter)
+            }
+            noisyReceiverRegistered = true
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun unregisterNoisyReceiver() {
+        val ctx = appContext ?: return
+        if (!noisyReceiverRegistered) return
+        try {
+            ctx.unregisterReceiver(noisyReceiver)
+        } catch (_: Exception) {
+        } finally {
+            noisyReceiverRegistered = false
         }
     }
 
@@ -407,12 +584,17 @@ class QuranAudioPlayer {
 
     fun stop() {
         sleepTimerJob?.cancel()
+        resumeOnFocusGain = false
         releasePlayerOnly()
+        abandonAudioFocus()
+        unregisterNoisyReceiver()
         activeQueue = emptyList()
         activeQueueIndex = -1
-        _state.value = AudioPlaybackState(
-            playbackSpeed = _state.value.playbackSpeed,
-            repeatMode = _state.value.repeatMode
-        )
+        updateState {
+            AudioPlaybackState(
+                playbackSpeed = it.playbackSpeed,
+                repeatMode = it.repeatMode
+            )
+        }
     }
 }

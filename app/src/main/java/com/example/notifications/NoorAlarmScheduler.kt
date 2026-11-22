@@ -18,6 +18,8 @@ object NoorAlarmScheduler {
     const val EXTRA_BODY = "extra_body"
     const val EXTRA_CHANNEL = "extra_channel"
     const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
+    const val EXTRA_IS_EXACT_PRAYER = "extra_is_exact_prayer"
+    const val EXTRA_PRAYER_KEY = "extra_prayer_key"
 
     private const val REQ_PRAYER_BASE = 2000
     private const val REQ_PRE_PRAYER_BASE = 2100
@@ -63,7 +65,9 @@ object NoorAlarmScheduler {
                     triggerAtMillis = targetTime,
                     channelId = NoorNotificationHelper.CHANNEL_PRAYER,
                     title = if (isArabic) "حان الآن موعد صلاة $pNameAr" else "Time for $pNameEn Prayer",
-                    body = if (isArabic) "حيّ على الصلاة — ${prefs.cityNameAr}" else "It is time for $pNameEn in ${prefs.cityNameEn}"
+                    body = if (isArabic) "حيّ على الصلاة — ${prefs.cityNameAr}" else "It is time for $pNameEn in ${prefs.cityNameEn}",
+                    isExactPrayer = true,
+                    prayerKey = prayer.name
                 )
 
                 if (prefs.prePrayerAlertMinutes > 0) {
@@ -119,6 +123,10 @@ object NoorAlarmScheduler {
             if (isArabic) "تذكير التسبيح" else "Tasbih Reminder",
             if (isArabic) "سبحان الله والحمد لله والله أكبر" else "SubhanAllah, Alhamdulillah, Allahu Akbar"
         )
+
+        // Sync persistent prayer notification bar and Prayer Times Home Screen Widget
+        PrayerNotificationController.updateOrCancel(context, prefs)
+        com.example.widgets.PrayerTimesWidgetProvider.requestUpdate(context)
     }
 
     private fun scheduleDailyReminder(
@@ -162,13 +170,19 @@ object NoorAlarmScheduler {
         triggerAtMillis: Long,
         channelId: String,
         title: String,
-        body: String
+        body: String,
+        isExactPrayer: Boolean = false,
+        prayerKey: String? = null
     ) {
         val intent = Intent(context, NoorAlarmReceiver::class.java).apply {
             putExtra(EXTRA_TITLE, title)
             putExtra(EXTRA_BODY, body)
             putExtra(EXTRA_CHANNEL, channelId)
             putExtra(EXTRA_NOTIFICATION_ID, requestCode)
+            putExtra(EXTRA_IS_EXACT_PRAYER, isExactPrayer)
+            if (prayerKey != null) {
+                putExtra(EXTRA_PRAYER_KEY, prayerKey)
+            }
         }
         val pendingIntent = PendingIntent.getBroadcast(
             context,

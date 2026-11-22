@@ -4,4 +4,14 @@
     <string name="notification_channel_prayer_desc">تنبيهات دخول أوقات الصلاة والتذكير قبلها</string>
     <string name="notification_channel_reminder_name">التذكيرات اليومية</string>
     <string name="notification_channel_reminder_desc">تذكيرات أذكار الصباح والمساء والقرآن والتسبيح</string>
+    <string name="widget_prayer_times_desc">مواقيت الصلاة اليومية والعد التنازلي المباشر</string>
+    <string name="widget_quran_player_desc">مشغل القرآن الكريم والتحكم السريع بالتلاوة</string>
+    <string name="widget_refresh_cd">تحديث مواقيت الصلاة</string>
+    <string name="widget_prev_cd">السورة أو الآية السابقة</string>
+    <string name="widget_play_pause_cd">تشغيل أو إيقاف تلاوة القرآن</string>
+    <string name="widget_next_cd">السورة أو الآية التالية</string>
+    <string name="shortcut_resume_short">متابعة القراءة</string>
+    <string name="shortcut_resume_long">متابعة آخر موضع قراءة في القرآن</string>
+    <string name="shortcut_prayers_short">مواقيت الصلاة</string>
+    <string name="shortcut_prayers_long">عرض مواقيت الصلاة اليوم</string>
 </resources>

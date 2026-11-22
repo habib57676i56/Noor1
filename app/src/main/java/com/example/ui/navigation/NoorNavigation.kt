@@ -72,10 +72,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.audio.AudioPlaybackState
+import com.example.shortcuts.NoorShortcutManager
 import com.example.ui.admin.AdminControlCenterScreen
 import com.example.ui.components.IslamicGeometricBackground
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.screens.AdhanSettingsScreen
 import com.example.ui.screens.AdhkarDetailScreen
 import com.example.ui.screens.AdhkarScreen
 import com.example.ui.screens.AudioLibraryScreen
@@ -115,6 +117,7 @@ object NoorRoutes {
     const val CALENDAR = "calendar"
     const val STATS = "stats"
     const val SETTINGS = "settings"
+    const val ADHAN_SETTINGS = "adhan_settings"
     const val FOUNDER_PROFILE = "founder_profile"
     const val CONTACT_SUPPORT = "contact_support"
     const val NOTIFICATIONS = "notifications"
@@ -157,6 +160,8 @@ fun NoorAppShell(
     val statusBanner by viewModel.statusBanner.collectAsStateWithLifecycle()
     val audioState by viewModel.audioState.collectAsStateWithLifecycle()
     val resolvedRole by viewModel.resolvedAdminRole.collectAsStateWithLifecycle()
+    val prefs by viewModel.preferences.collectAsStateWithLifecycle()
+    val pendingShortcut by viewModel.pendingShortcutRoute.collectAsStateWithLifecycle()
 
     LaunchedEffect(resolvedRole) {
         adminViewModel.syncAuthorizedRole(resolvedRole)
@@ -181,6 +186,36 @@ fun NoorAppShell(
             }
             launchSingleTop = true
             restoreState = true
+        }
+    }
+
+    // Handle Android App Shortcuts, Notification taps, and Home Screen Widget deep-links
+    LaunchedEffect(pendingShortcut) {
+        val target = pendingShortcut ?: return@LaunchedEffect
+        viewModel.consumeShortcutRoute()
+        when (target) {
+            NoorShortcutManager.TARGET_QURAN -> navigateToTab(NoorRoutes.QURAN)
+            NoorShortcutManager.TARGET_RESUME_READING -> {
+                navController.navigate(NoorRoutes.quranReader(prefs.lastReadSurah.coerceIn(1, 114))) {
+                    launchSingleTop = true
+                }
+            }
+            NoorShortcutManager.TARGET_START_LISTENING -> {
+                if (!audioState.isPlaying) {
+                    viewModel.playFullSurahWithReciter(prefs.lastReadSurah.coerceIn(1, 114), prefs.quranReciter)
+                }
+                navController.navigate(NoorRoutes.AUDIO_LIBRARY) { launchSingleTop = true }
+            }
+            NoorShortcutManager.TARGET_AUDIO_LIBRARY -> {
+                navController.navigate(NoorRoutes.AUDIO_LIBRARY) { launchSingleTop = true }
+            }
+            NoorShortcutManager.TARGET_PRAYER_TIMES -> navigateToTab(NoorRoutes.PRAYERS)
+            NoorShortcutManager.TARGET_QIBLA -> {
+                navController.navigate(NoorRoutes.QIBLA) { launchSingleTop = true }
+            }
+            NoorShortcutManager.TARGET_ADHAN_SETTINGS -> {
+                navController.navigate(NoorRoutes.ADHAN_SETTINGS) { launchSingleTop = true }
+            }
         }
     }
 
@@ -346,7 +381,13 @@ fun NoorAppShell(
                                 QuranReaderScreen(
                                     surahNumber = surahNum,
                                     viewModel = viewModel,
-                                    onBack = { navController.popBackStack() }
+                                    onBack = { navController.popBackStack() },
+                                    onNavigateToSurah = { nextSurah ->
+                                        navController.navigate(NoorRoutes.quranReader(nextSurah.coerceIn(1, 114))) {
+                                            popUpTo(NoorRoutes.QURAN_READER) { inclusive = true }
+                                            launchSingleTop = true
+                                        }
+                                    }
                                 )
                             }
                             composable(NoorRoutes.ADHKAR) {
@@ -465,7 +506,14 @@ fun NoorAppShell(
                                     onOpenFounderProfile = { navController.navigate(NoorRoutes.FOUNDER_PROFILE) },
                                     onOpenSupport = { navController.navigate(NoorRoutes.CONTACT_SUPPORT) },
                                     onOpenNotifications = { navController.navigate(NoorRoutes.NOTIFICATIONS) },
-                                    onOpenAdminCenter = { navController.navigate(NoorRoutes.ADMIN_CENTER) }
+                                    onOpenAdminCenter = { navController.navigate(NoorRoutes.ADMIN_CENTER) },
+                                    onOpenAdhanSettings = { navController.navigate(NoorRoutes.ADHAN_SETTINGS) }
+                                )
+                            }
+                            composable(NoorRoutes.ADHAN_SETTINGS) {
+                                AdhanSettingsScreen(
+                                    viewModel = viewModel,
+                                    onBack = { navController.popBackStack() }
                                 )
                             }
                         }

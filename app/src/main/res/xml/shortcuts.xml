@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_resume"
+        android:shortcutId="noor_static_resume"
+        android:shortcutLongLabel="@string/shortcut_resume_long"
+        android:shortcutShortLabel="@string/shortcut_resume_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.example.MainActivity"
+            android:targetPackage="com.aistudio.noorislamic.slcwho">
+            <extra
+                android:name="extra_shortcut_route"
+                android:value="resume_reading" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_prayer"
+        android:shortcutId="noor_static_prayers"
+        android:shortcutLongLabel="@string/shortcut_prayers_long"
+        android:shortcutShortLabel="@string/shortcut_prayers_short">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetClass="com.example.MainActivity"
+            android:targetPackage="com.aistudio.noorislamic.slcwho">
+            <extra
+                android:name="extra_shortcut_route"
+                android:value="prayers" />
+        </intent>
+    </shortcut>
+</shortcuts>

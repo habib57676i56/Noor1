@@ -27,10 +27,12 @@ import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.SupportAgent
 import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,7 +60,9 @@ import com.example.domain.model.AppLanguage
 import com.example.domain.model.PrayerName
 import com.example.domain.model.QuranReciter
 import com.example.domain.model.ThemeMode
+import com.example.audio.AdhanCatalog
 import com.example.notifications.NoorNotificationHelper
+import com.example.shortcuts.NoorShortcutManager
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
@@ -77,7 +81,8 @@ fun SettingsScreen(
     onOpenFounderProfile: () -> Unit,
     onOpenSupport: () -> Unit,
     onOpenNotifications: () -> Unit,
-    onOpenAdminCenter: () -> Unit
+    onOpenAdminCenter: () -> Unit,
+    onOpenAdhanSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -397,6 +402,47 @@ fun SettingsScreen(
             }
         }
 
+        // 2b. Advanced Adhan Sound Customization Card
+        item {
+            val activeAdhanVoice = remember(prefs.adhanConfig.defaultVoiceId, prefs.customAdhanRecords) {
+                AdhanCatalog.resolveVoice(prefs.adhanConfig.defaultVoiceId, prefs.customAdhanRecords)
+            }
+            LiquidGlassCard(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .testTag("settings_adhan_sound_card"),
+                goldBorder = true,
+                onClick = onOpenAdhanSettings
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.VolumeUp, contentDescription = null, tint = noorColors.goldAccent)
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = L10n.pick(lang, "إعدادات أصوات الأذان والمؤذن", "Adhan Voice & Sound Settings"),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = noorColors.goldAccent
+                            )
+                            Text(
+                                text = L10n.pick(lang, activeAdhanVoice.nameAr, activeAdhanVoice.nameEn),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    TextButton(onClick = onOpenAdhanSettings) {
+                        Text(L10n.pick(lang, "تخصيص", "Customize"), color = noorColors.goldAccent)
+                    }
+                }
+            }
+        }
+
         // 3. Notifications & Reminders
         item {
             NoorSectionHeader(
@@ -407,6 +453,19 @@ fun SettingsScreen(
 
         item {
             LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                SettingsToggleRow(
+                    title = L10n.pick(lang, "مواقيت الصلاة في شريط الإشعارات (دائم)", "Persistent Prayer Times Bar"),
+                    checked = prefs.persistentPrayerNotificationEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                            !NoorNotificationHelper.hasNotificationPermission(context)
+                        ) {
+                            notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        }
+                        viewModel.setPersistentPrayerNotificationEnabled(enabled)
+                    }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = L10n.pick(lang, "التنبيه قبل الصلاة بـ", "Pre-Prayer Alert"),
                     style = MaterialTheme.typography.labelLarge,
@@ -501,6 +560,61 @@ fun SettingsScreen(
                     checked = prefs.tasbihSoundEnabled,
                     onCheckedChange = { viewModel.setTasbihSound(it) }
                 )
+            }
+        }
+
+        // 4b. Android Home Screen Shortcuts & Widgets Quick Pin
+        item {
+            LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.PushPin, contentDescription = null, tint = noorColors.goldAccent)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = L10n.pick(lang, "اختصارات الشاشة الرئيسية والويدجت", "Home Screen Shortcuts & Widgets"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = noorColors.goldAccent
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "اضغط مطولاً على أيقونة نور أو ثبّت الاختصارات والويدجت (مواقيت الصلاة / مشغل القرآن) على شاشة هاتفك.",
+                        "Long-press the NOOR app icon or pin quick shortcuts & widgets (Prayer Times / Quran Player) to your Home Screen."
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                val quickPins = listOf(
+                    NoorShortcutManager.TARGET_RESUME_READING to L10n.pick(lang, "متابعة القراءة", "Resume Reading"),
+                    NoorShortcutManager.TARGET_QURAN to L10n.pick(lang, "القرآن الكريم", "Open Quran"),
+                    NoorShortcutManager.TARGET_START_LISTENING to L10n.pick(lang, "الاستماع للقرآن", "Listen Quran"),
+                    NoorShortcutManager.TARGET_PRAYER_TIMES to L10n.pick(lang, "مواقيت الصلاة", "Prayer Times"),
+                    NoorShortcutManager.TARGET_QIBLA to L10n.pick(lang, "القبلة", "Qibla"),
+                    NoorShortcutManager.TARGET_ADHAN_SETTINGS to L10n.pick(lang, "الأذان", "Adhan")
+                )
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(quickPins) { (route, label) ->
+                        LiquidGlassChip(
+                            label = "+ $label",
+                            selected = false,
+                            onClick = {
+                                val pinned = NoorShortcutManager.requestPinShortcut(context, route, isAr)
+                                if (!pinned) {
+                                    viewModel.showBannerMessage(
+                                        L10n.pick(
+                                            lang,
+                                            "الاختصارات جاهزة — اضغط مطولاً على أيقونة نور في الشاشة الرئيسية",
+                                            "Shortcuts are active — long-press the NOOR icon on your Home Screen"
+                                        )
+                                    )
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
 
