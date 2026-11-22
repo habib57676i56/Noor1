@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.cloud.FirebaseAuthHelper
 import com.example.ui.admin.AdminControlCenterScreen
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.navigation.NoorAppShell
@@ -35,6 +36,8 @@ class MainActivity : ComponentActivity() {
             val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
             val resolvedRole by viewModel.resolvedAdminRole.collectAsStateWithLifecycle()
             val layoutDirection = if (prefs.language.isRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+            val isFirebaseConfigured = remember { FirebaseAuthHelper.isFirebaseConfigured(applicationContext) }
+            var allowOfflineWhenUnconfigured by remember { mutableStateOf(false) }
             var adminBypassMaintenance by remember { mutableStateOf(false) }
 
             CompositionLocalProvider(
@@ -43,10 +46,16 @@ class MainActivity : ComponentActivity() {
             ) {
                 NoorTheme(themeMode = prefs.themeMode) {
                     val user = currentUser
-                    if (user == null) {
-                        NoorAuthGateScreen()
+                    if (user == null && (isFirebaseConfigured || !allowOfflineWhenUnconfigured)) {
+                        NoorAuthGateScreen(
+                            onContinueOfflineWhenUnconfigured = if (!isFirebaseConfigured) {
+                                { allowOfflineWhenUnconfigured = true }
+                            } else {
+                                null
+                            }
+                        )
                     } else {
-                        key(user.uid) {
+                        key(user?.uid ?: "offline_local") {
                             when {
                                 globalConfig.maintenanceMode && adminBypassMaintenance && resolvedRole.isPrivileged -> {
                                     AdminControlCenterScreen(

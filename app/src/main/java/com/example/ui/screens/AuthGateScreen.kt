@@ -65,16 +65,19 @@ import kotlinx.coroutines.launch
  */
 @Composable
 fun NoorAuthGateScreen(
-    onSignedIn: () -> Unit = {}
+    onSignedIn: () -> Unit = {},
+    onContinueOfflineWhenUnconfigured: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val lang = LocalAppLanguage.current
+    val isFirebaseConfigured = remember(context) { FirebaseAuthHelper.isFirebaseConfigured(context) }
 
     var isSigningIn by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isFirebaseConfigured) {
+        if (!isFirebaseConfigured) return@LaunchedEffect
         isSigningIn = true
         when (FirebaseAuthHelper.attemptSilentAutoSignIn(context)) {
             is AuthResult.Success -> onSignedIn()
@@ -132,6 +135,28 @@ fun NoorAuthGateScreen(
                     textAlign = TextAlign.Center
                 )
 
+                if (!isFirebaseConfigured) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(GoldPrimary.copy(alpha = 0.14f))
+                            .border(1.dp, GoldPrimary.copy(alpha = 0.45f), RoundedCornerShape(16.dp))
+                            .padding(14.dp)
+                    ) {
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "تم بناء نسخة الـ APK هذه بدون ملف إعدادات Firebase (google-services.json). يمكنك متابعة استخدام القرآن والأذكار ومواقيت الصلاة محلياً الآن، أو بناء الـ APK مباشرة من AI Studio لتفعيل تسجيل الدخول عبر Google والمزامنة السحابية.",
+                                "This APK was built without Firebase config (google-services.json). You can use Quran, Adhkar, and Prayer Times offline now, or build the APK directly from AI Studio to enable Google Sign-In & cloud sync."
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = GoldBright,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
                 if (errorMessage != null) {
                     Text(
                         text = errorMessage!!,
@@ -143,63 +168,86 @@ fun NoorAuthGateScreen(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                Button(
-                    onClick = {
-                        if (isSigningIn) return@Button
-                        errorMessage = null
-                        scope.launch {
-                            isSigningIn = true
-                            when (val res = FirebaseAuthHelper.signInWithGoogleInteractive(context)) {
-                                is AuthResult.Success -> onSignedIn()
-                                is AuthResult.Cancelled -> Unit
-                                is AuthResult.NoCredential -> {
-                                    errorMessage = L10n.pick(
-                                        lang,
-                                        "لم يتم العثور على حساب Google مضاف على الجهاز. أضف حساب Google من إعدادات الجهاز ثم أعد المحاولة.",
-                                        "No Google account found on device. Add a Google account in device settings and try again."
-                                    )
+                if (isFirebaseConfigured) {
+                    Button(
+                        onClick = {
+                            if (isSigningIn) return@Button
+                            errorMessage = null
+                            scope.launch {
+                                isSigningIn = true
+                                when (val res = FirebaseAuthHelper.signInWithGoogleInteractive(context)) {
+                                    is AuthResult.Success -> onSignedIn()
+                                    is AuthResult.Cancelled -> Unit
+                                    is AuthResult.NoCredential -> {
+                                        errorMessage = L10n.pick(
+                                            lang,
+                                            "لم يتم العثور على حساب Google مضاف على الجهاز. أضف حساب Google من إعدادات الجهاز ثم أعد المحاولة.",
+                                            "No Google account found on device. Add a Google account in device settings and try again."
+                                        )
+                                    }
+                                    is AuthResult.Error -> {
+                                        errorMessage = res.message
+                                    }
                                 }
-                                is AuthResult.Error -> {
-                                    errorMessage = res.message
-                                }
+                                isSigningIn = false
                             }
-                            isSigningIn = false
+                        },
+                        enabled = !isSigningIn,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .testTag("google_sign_in_button"),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GoldPrimary,
+                            contentColor = EmeraldDeep
+                        )
+                    ) {
+                        if (isSigningIn) {
+                            CircularProgressIndicator(modifier = Modifier.size(22.dp), color = EmeraldDeep, strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Rounded.Login, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = L10n.pick(lang, "تسجيل الدخول عبر Google", "Sign in with Google"),
+                                fontWeight = FontWeight.ExtraBold,
+                                style = MaterialTheme.typography.titleSmall
+                            )
                         }
-                    },
-                    enabled = !isSigningIn,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp)
-                        .testTag("google_sign_in_button"),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = GoldPrimary,
-                        contentColor = EmeraldDeep
+                    }
+
+                    Text(
+                        text = L10n.pick(
+                            lang,
+                            "تسجيل دخول آمن وموثّق عبر Google لحماية بياناتك ومزامنة عباداتك",
+                            "Verified Google Sign-In protects your profile, support tickets, and cloud sync"
+                        ),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White.copy(alpha = 0.6f),
+                        textAlign = TextAlign.Center
                     )
-                ) {
-                    if (isSigningIn) {
-                        CircularProgressIndicator(modifier = Modifier.size(22.dp), color = EmeraldDeep, strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Rounded.Login, contentDescription = null)
+                } else if (onContinueOfflineWhenUnconfigured != null) {
+                    Button(
+                        onClick = onContinueOfflineWhenUnconfigured,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .testTag("offline_local_mode_button"),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GoldPrimary,
+                            contentColor = EmeraldDeep
+                        )
+                    ) {
+                        Icon(Icons.Rounded.VerifiedUser, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = L10n.pick(lang, "تسجيل الدخول عبر Google", "Sign in with Google"),
+                            text = L10n.pick(lang, "الدخول للوضع المحلي (بدون إنترنت)", "Continue in Offline Mode"),
                             fontWeight = FontWeight.ExtraBold,
                             style = MaterialTheme.typography.titleSmall
                         )
                     }
                 }
-
-                Text(
-                    text = L10n.pick(
-                        lang,
-                        "تسجيل دخول آمن وموثّق عبر Google لحماية بياناتك ومزامنة عباداتك",
-                        "Verified Google Sign-In protects your profile, support tickets, and cloud sync"
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = Color.White.copy(alpha = 0.6f),
-                    textAlign = TextAlign.Center
-                )
             }
         }
     }

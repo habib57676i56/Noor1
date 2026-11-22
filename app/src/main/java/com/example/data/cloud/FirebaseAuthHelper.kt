@@ -110,6 +110,9 @@ object FirebaseAuthHelper {
             ?.takeIf { it.isNotBlank() }
     }
 
+    fun isFirebaseConfigured(context: Context): Boolean =
+        resolveDefaultWebClientId(context) != null
+
     suspend fun attemptSilentAutoSignIn(activityContext: Context): AuthResult {
         val webClientId = resolveDefaultWebClientId(activityContext)
             ?: return AuthResult.NoCredential

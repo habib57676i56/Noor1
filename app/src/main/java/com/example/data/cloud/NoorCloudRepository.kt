@@ -27,6 +27,12 @@ class NoorCloudRepository(private val appContext: Context) {
     private val db: FirebaseFirestore by lazy { FirebaseFirestore.getInstance(databaseId) }
     private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
 
+    private fun currentUserOrNull(): FirebaseUser? = try {
+        FirebaseAuth.getInstance().currentUser
+    } catch (_: IllegalStateException) {
+        null
+    }
+
     private fun todayDateKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
     // -------------------------------------------------------------------------
@@ -37,7 +43,7 @@ class NoorCloudRepository(private val appContext: Context) {
         preferredLanguage: String,
         cityName: String
     ): Result<UserAccountDoc> {
-        val user = auth.currentUser ?: return Result.failure(IllegalStateException("Not authenticated"))
+        val user = currentUserOrNull() ?: return Result.failure(IllegalStateException("Not authenticated"))
         return try {
             val docRef = db.collection("users").document(user.uid)
             val snap = docRef.get().await()
@@ -494,7 +500,7 @@ class NoorCloudRepository(private val appContext: Context) {
         message: String,
         userNameFallback: String
     ): Result<String> {
-        val user = auth.currentUser ?: return Result.failure(IllegalStateException("Sign in required"))
+        val user = currentUserOrNull() ?: return Result.failure(IllegalStateException("Sign in required"))
         val docId = "tkt_${UUID.randomUUID().toString().take(10)}"
         return try {
             db.collection("support_tickets").document(docId).set(
@@ -586,7 +592,7 @@ class NoorCloudRepository(private val appContext: Context) {
     }
 
     suspend fun submitUserReport(targetType: String, targetId: String, reason: String): Result<String> {
-        val uid = auth.currentUser?.uid ?: return Result.failure(IllegalStateException("Sign in required"))
+        val uid = currentUserOrNull()?.uid ?: return Result.failure(IllegalStateException("Sign in required"))
         val docId = "rep_${UUID.randomUUID().toString().take(10)}"
         return try {
             db.collection("user_reports").document(docId).set(
@@ -631,7 +637,7 @@ class NoorCloudRepository(private val appContext: Context) {
         severity: String,
         details: String
     ) {
-        val user = auth.currentUser ?: return
+        val user = currentUserOrNull() ?: return
         val logId = "log_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(6)}"
         try {
             db.collection("audit_logs").document(logId).set(
@@ -673,7 +679,7 @@ class NoorCloudRepository(private val appContext: Context) {
         tasbihDelta: Long = 0L,
         section: String? = null
     ) {
-        if (auth.currentUser == null) return
+        if (currentUserOrNull() == null) return
         val key = todayDateKey()
         val updates = mutableMapOf<String, Any>(
             "dateKey" to key,
