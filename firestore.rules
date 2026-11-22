@@ -1,0 +1,360 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // NOOR 3.0 — Zero-Trust Security Rules & Enterprise RBAC
+    // =========================================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9._-]+$');
+    }
+
+    function isBootstrappedOwner() {
+      return isAuthenticated()
+        && request.auth.token.email == "mustafa20090520@gmail.com"
+        && request.auth.token.email_verified == true;
+    }
+
+    function adminDoc() {
+      return get(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function hasActiveAdminRecord() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && adminDoc().data.active == true;
+    }
+
+    function isSuperAdmin() {
+      return isBootstrappedOwner()
+        || (hasActiveAdminRecord() && adminDoc().data.role == 'SUPER_ADMIN');
+    }
+
+    function isAdmin() {
+      return isSuperAdmin()
+        || (hasActiveAdminRecord() && adminDoc().data.role in ['ADMIN', 'CONTENT_MODERATOR', 'SUPPORT_AGENT']);
+    }
+
+    function isContentManager() {
+      return isSuperAdmin()
+        || (hasActiveAdminRecord() && adminDoc().data.role in ['ADMIN', 'CONTENT_MODERATOR']);
+    }
+
+    function isSupportAdmin() {
+      return isSuperAdmin()
+        || (hasActiveAdminRecord() && adminDoc().data.role in ['ADMIN', 'SUPPORT_AGENT']);
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validators
+    // -------------------------------------------------------------------------
+
+    function isValidUserFields(data) {
+      return data.keys().hasOnly([
+        'uid', 'email', 'displayName', 'role', 'status', 'verified',
+        'preferredLanguage', 'cityName', 'adhkarCompleted', 'quranVersesRead',
+        'audioPlays', 'tasbihCount', 'lastActiveAt', 'createdAt', 'updatedAt'
+      ])
+      && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
+      && data.email is string && data.email.size() <= 254
+      && data.displayName is string && data.displayName.size() <= 100
+      && data.role in ['USER', 'SUPPORT_AGENT', 'CONTENT_MODERATOR', 'ADMIN', 'SUPER_ADMIN']
+      && data.status in ['ACTIVE', 'SUSPENDED', 'DELETED']
+      && data.verified is bool
+      && (!('preferredLanguage' in data) || (data.preferredLanguage is string && data.preferredLanguage.size() <= 10))
+      && (!('cityName' in data) || (data.cityName is string && data.cityName.size() <= 100))
+      && (!('adhkarCompleted' in data) || (data.adhkarCompleted is number && data.adhkarCompleted >= 0))
+      && (!('quranVersesRead' in data) || (data.quranVersesRead is number && data.quranVersesRead >= 0))
+      && (!('audioPlays' in data) || (data.audioPlays is number && data.audioPlays >= 0))
+      && (!('tasbihCount' in data) || (data.tasbihCount is number && data.tasbihCount >= 0))
+      && data.createdAt is timestamp && data.createdAt <= request.time
+      && data.updatedAt is timestamp && data.updatedAt <= request.time
+      && (!('lastActiveAt' in data) || (data.lastActiveAt is timestamp && data.lastActiveAt <= request.time));
+    }
+
+    function isValidUserCreate(data, userId) {
+      let allowedInitialRole = isBootstrappedOwner() ? 'SUPER_ADMIN' : 'USER';
+      return isValidUserFields(data)
+        && data.uid == userId
+        && data.role == allowedInitialRole
+        && data.status == 'ACTIVE'
+        && (isBootstrappedOwner() || data.verified == false);
+    }
+
+    function isValidUserSelfUpdate(newData, oldData) {
+      return isValidUserFields(newData)
+        && newData.uid == oldData.uid
+        && newData.email == oldData.email
+        && newData.role == oldData.role
+        && newData.status == oldData.status
+        && newData.verified == oldData.verified
+        && newData.createdAt == oldData.createdAt;
+    }
+
+    function isValidUserAdminUpdate(newData, oldData) {
+      let roleChanged = newData.role != oldData.role;
+      let isTargetBootstrappedOwner = oldData.email == "mustafa20090520@gmail.com";
+      return isValidUserFields(newData)
+        && newData.uid == oldData.uid
+        && newData.createdAt == oldData.createdAt
+        // Only Super Admin may change roles; nobody may demote or suspend the primary owner
+        && (!roleChanged || isSuperAdmin())
+        && (!isTargetBootstrappedOwner || (newData.role == 'SUPER_ADMIN' && newData.status == 'ACTIVE'));
+    }
+
+    function isValidAdminRoleDoc(data, adminUid) {
+      let isPrimaryOwner = data.email == "mustafa20090520@gmail.com";
+      return data.keys().hasOnly(['uid', 'email', 'role', 'permissions', 'active', 'grantedBy', 'updatedAt'])
+        && data.uid == adminUid
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 254
+        && data.role in ['SUPER_ADMIN', 'ADMIN', 'CONTENT_MODERATOR', 'SUPPORT_AGENT']
+        && (!('permissions' in data) || (data.permissions is list && data.permissions.size() <= 30))
+        && data.active is bool
+        && data.grantedBy is string && data.grantedBy.size() >= 1 && data.grantedBy.size() <= 128
+        && data.updatedAt is timestamp && data.updatedAt <= request.time
+        && (!isPrimaryOwner || (data.role == 'SUPER_ADMIN' && data.active == true));
+    }
+
+    function isValidCmsContent(data) {
+      return data.keys().hasOnly([
+        'category', 'subCategory', 'titleAr', 'titleEn', 'bodyAr', 'bodyEn',
+        'transliteration', 'sourceAr', 'sourceEn', 'gradingAr', 'gradingEn',
+        'repetitionCount', 'audioUrl', 'status', 'version', 'scheduledAtMillis',
+        'updatedBy', 'createdAt', 'updatedAt'
+      ])
+      && data.category is string && data.category.size() >= 1 && data.category.size() <= 64
+      && (!('subCategory' in data) || (data.subCategory is string && data.subCategory.size() <= 64))
+      && data.titleAr is string && data.titleAr.size() >= 1 && data.titleAr.size() <= 300
+      && (!('titleEn' in data) || (data.titleEn is string && data.titleEn.size() <= 300))
+      && data.bodyAr is string && data.bodyAr.size() >= 1 && data.bodyAr.size() <= 12000
+      && (!('bodyEn' in data) || (data.bodyEn is string && data.bodyEn.size() <= 12000))
+      && (!('transliteration' in data) || (data.transliteration is string && data.transliteration.size() <= 4000))
+      && data.sourceAr is string && data.sourceAr.size() >= 1 && data.sourceAr.size() <= 400
+      && (!('sourceEn' in data) || (data.sourceEn is string && data.sourceEn.size() <= 400))
+      && (!('gradingAr' in data) || (data.gradingAr is string && data.gradingAr.size() <= 120))
+      && (!('gradingEn' in data) || (data.gradingEn is string && data.gradingEn.size() <= 120))
+      && (!('repetitionCount' in data) || (data.repetitionCount is number && data.repetitionCount >= 1 && data.repetitionCount <= 1000))
+      && (!('audioUrl' in data) || (data.audioUrl is string && data.audioUrl.size() <= 500))
+      && data.status in ['DRAFT', 'REVIEW', 'VERIFIED', 'PUBLISHED']
+      && data.version is number && data.version >= 1
+      && (!('scheduledAtMillis' in data) || (data.scheduledAtMillis is number && data.scheduledAtMillis >= 0))
+      && data.updatedBy is string && data.updatedBy.size() >= 1 && data.updatedBy.size() <= 128
+      && data.createdAt is timestamp && data.createdAt <= request.time
+      && data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidCmsRevision(data) {
+      return data.keys().hasOnly([
+        'contentId', 'version', 'status', 'bodyAr', 'bodyEn', 'sourceAr',
+        'repetitionCount', 'changeSummary', 'editorUid', 'createdAt'
+      ])
+      && data.contentId is string && data.contentId.size() >= 1 && data.contentId.size() <= 128
+      && data.version is number && data.version >= 1
+      && data.status in ['DRAFT', 'REVIEW', 'VERIFIED', 'PUBLISHED']
+      && data.bodyAr is string && data.bodyAr.size() >= 1 && data.bodyAr.size() <= 12000
+      && (!('bodyEn' in data) || (data.bodyEn is string && data.bodyEn.size() <= 12000))
+      && (!('sourceAr' in data) || (data.sourceAr is string && data.sourceAr.size() <= 400))
+      && (!('repetitionCount' in data) || (data.repetitionCount is number && data.repetitionCount >= 1 && data.repetitionCount <= 1000))
+      && (!('changeSummary' in data) || (data.changeSummary is string && data.changeSummary.size() <= 500))
+      && data.editorUid == request.auth.uid
+      && data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidAppConfig(data) {
+      return data.keys().hasOnly([
+        'appNameAr', 'appNameEn', 'themePreset', 'defaultLanguage', 'supportedLanguages',
+        'maintenanceMode', 'maintenanceMessageAr', 'maintenanceMessageEn', 'minSupportedVersion',
+        'founderName', 'founderTitleAr', 'founderTitleEn', 'founderProjectAr', 'founderProjectEn',
+        'founderBioAr', 'founderBioEn', 'supportEmail', 'supportWhatsApp', 'supportTelegram',
+        'featureQuranEnabled', 'featureAudioEnabled', 'featureMosquesEnabled',
+        'featureQiblaEnabled', 'featureCalendarEnabled', 'defaultCalcMethod', 'defaultReciterId',
+        'updatedBy', 'updatedAt'
+      ])
+      && data.appNameEn is string && data.appNameEn.size() >= 1 && data.appNameEn.size() <= 60
+      && (!('appNameAr' in data) || (data.appNameAr is string && data.appNameAr.size() <= 60))
+      && data.maintenanceMode is bool
+      && data.updatedBy == request.auth.uid
+      && data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAnnouncement(data) {
+      return data.keys().hasOnly([
+        'titleAr', 'titleEn', 'bodyAr', 'bodyEn', 'kind', 'active',
+        'scheduledAtMillis', 'createdBy', 'createdAt'
+      ])
+      && data.titleAr is string && data.titleAr.size() >= 1 && data.titleAr.size() <= 200
+      && data.titleEn is string && data.titleEn.size() >= 1 && data.titleEn.size() <= 200
+      && data.bodyAr is string && data.bodyAr.size() >= 1 && data.bodyAr.size() <= 2000
+      && data.bodyEn is string && data.bodyEn.size() >= 1 && data.bodyEn.size() <= 2000
+      && data.kind in ['GENERAL', 'ISLAMIC_EVENT', 'APP_UPDATE', 'EMERGENCY']
+      && data.active is bool
+      && (!('scheduledAtMillis' in data) || (data.scheduledAtMillis is number && data.scheduledAtMillis >= 0))
+      && data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128
+      && data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidSupportTicketCreate(data) {
+      return data.keys().hasOnly([
+        'userId', 'userEmail', 'userName', 'ticketType', 'subject', 'message',
+        'status', 'adminReply', 'createdAt', 'updatedAt'
+      ])
+      && data.userId == request.auth.uid
+      && (!('userEmail' in data) || (data.userEmail is string && data.userEmail.size() <= 254))
+      && (!('userName' in data) || (data.userName is string && data.userName.size() <= 100))
+      && data.ticketType in ['SUPPORT', 'BUG', 'FEATURE', 'FEEDBACK']
+      && data.subject is string && data.subject.size() >= 2 && data.subject.size() <= 200
+      && data.message is string && data.message.size() >= 3 && data.message.size() <= 4000
+      && data.status == 'OPEN'
+      && (!('adminReply' in data) || data.adminReply == '')
+      && data.createdAt is timestamp && data.createdAt <= request.time
+      && data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidSupportTicketAdminUpdate(newData, oldData) {
+      return newData.keys().hasOnly([
+        'userId', 'userEmail', 'userName', 'ticketType', 'subject', 'message',
+        'status', 'adminReply', 'createdAt', 'updatedAt'
+      ])
+      && newData.userId == oldData.userId
+      && newData.createdAt == oldData.createdAt
+      && newData.status in ['OPEN', 'IN_PROGRESS', 'RESOLVED']
+      && (!('adminReply' in newData) || (newData.adminReply is string && newData.adminReply.size() <= 4000))
+      && newData.updatedAt is timestamp && newData.updatedAt <= request.time;
+    }
+
+    function isValidUserReportCreate(data) {
+      return data.keys().hasOnly(['reporterId', 'targetType', 'targetId', 'reason', 'status', 'resolutionNote', 'createdAt'])
+        && data.reporterId == request.auth.uid
+        && data.targetType is string && data.targetType.size() >= 1 && data.targetType.size() <= 64
+        && data.targetId is string && data.targetId.size() >= 1 && data.targetId.size() <= 128
+        && data.reason is string && data.reason.size() >= 3 && data.reason.size() <= 1500
+        && data.status == 'PENDING'
+        && (!('resolutionNote' in data) || data.resolutionNote == '')
+        && data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidUserReportUpdate(newData, oldData) {
+      return newData.keys().hasOnly(['reporterId', 'targetType', 'targetId', 'reason', 'status', 'resolutionNote', 'createdAt'])
+        && newData.reporterId == oldData.reporterId
+        && newData.createdAt == oldData.createdAt
+        && newData.status in ['PENDING', 'REVIEWED', 'DISMISSED', 'ACTION_TAKEN']
+        && (!('resolutionNote' in newData) || (newData.resolutionNote is string && newData.resolutionNote.size() <= 1000));
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasOnly(['actorUid', 'actorEmail', 'action', 'category', 'severity', 'details', 'createdAt'])
+        && data.actorUid == request.auth.uid
+        && (!('actorEmail' in data) || (data.actorEmail is string && data.actorEmail.size() <= 254))
+        && data.action is string && data.action.size() >= 2 && data.action.size() <= 150
+        && data.category in ['AUTH', 'USER_MGMT', 'CMS', 'SETTINGS', 'SECURITY', 'SYSTEM']
+        && data.severity in ['INFO', 'WARNING', 'CRITICAL']
+        && (!('details' in data) || (data.details is string && data.details.size() <= 2000))
+        && data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidAnalyticsDaily(data) {
+      return data.keys().hasOnly([
+        'dateKey', 'activeUsers', 'newRegistrations', 'quranVersesRead', 'adhkarCompleted',
+        'audioPlays', 'tasbihTaps', 'sectionHomeHits', 'sectionQuranHits',
+        'sectionAdhkarHits', 'sectionAudioHits', 'updatedAt'
+      ])
+      && data.dateKey is string && data.dateKey.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+      && (!('activeUsers' in data) || (data.activeUsers is number && data.activeUsers >= 0))
+      && (!('newRegistrations' in data) || (data.newRegistrations is number && data.newRegistrations >= 0))
+      && (!('quranVersesRead' in data) || (data.quranVersesRead is number && data.quranVersesRead >= 0))
+      && (!('adhkarCompleted' in data) || (data.adhkarCompleted is number && data.adhkarCompleted >= 0))
+      && (!('audioPlays' in data) || (data.audioPlays is number && data.audioPlays >= 0))
+      && (!('tasbihTaps' in data) || (data.tasbihTaps is number && data.tasbihTaps >= 0))
+      && (!('sectionHomeHits' in data) || (data.sectionHomeHits is number && data.sectionHomeHits >= 0))
+      && (!('sectionQuranHits' in data) || (data.sectionQuranHits is number && data.sectionQuranHits >= 0))
+      && (!('sectionAdhkarHits' in data) || (data.sectionAdhkarHits is number && data.sectionAdhkarHits >= 0))
+      && (!('sectionAudioHits' in data) || (data.sectionAudioHits is number && data.sectionAudioHits >= 0))
+      && data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Match Rules
+    // -------------------------------------------------------------------------
+
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserCreate(request.resource.data, userId);
+      allow update: if (isOwner(userId) && isValidUserSelfUpdate(request.resource.data, resource.data))
+        || (isAdmin() && isValidUserAdminUpdate(request.resource.data, resource.data));
+      allow delete: if isSuperAdmin() && resource.data.email != "mustafa20090520@gmail.com";
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isOwner(adminUid) || isAdmin();
+      allow list: if isAdmin();
+      allow create, update: if isSuperAdmin() && isValidId(adminUid) && isValidAdminRoleDoc(request.resource.data, adminUid);
+      allow delete: if isSuperAdmin() && resource.data.email != "mustafa20090520@gmail.com";
+    }
+
+    match /cms_content/{contentId} {
+      allow get, list: if (isAuthenticated() && resource.data.status == 'PUBLISHED') || isAdmin();
+      allow create, update: if isContentManager() && isValidId(contentId) && isValidCmsContent(request.resource.data);
+      allow delete: if isContentManager();
+    }
+
+    match /cms_revisions/{revisionId} {
+      allow get, list: if isAdmin();
+      allow create: if isContentManager() && isValidId(revisionId) && isValidCmsRevision(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /app_config/{configId} {
+      allow get, list: if isAuthenticated();
+      allow create, update: if isSuperAdmin() && isValidId(configId) && isValidAppConfig(request.resource.data);
+      allow delete: if false;
+    }
+
+    match /announcements/{announcementId} {
+      allow get, list: if (isAuthenticated() && resource.data.active == true) || isAdmin();
+      allow create, update: if isAdmin() && isValidId(announcementId) && isValidAnnouncement(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /support_tickets/{ticketId} {
+      allow get: if isAuthenticated() && (resource.data.userId == request.auth.uid || isSupportAdmin());
+      allow list: if isSupportAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidId(ticketId) && isValidSupportTicketCreate(request.resource.data);
+      allow update: if isSupportAdmin() && isValidSupportTicketAdminUpdate(request.resource.data, resource.data);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /user_reports/{reportId} {
+      allow get, list: if isAdmin() || (isAuthenticated() && resource.data.reporterId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidId(reportId) && isValidUserReportCreate(request.resource.data);
+      allow update: if isAdmin() && isValidUserReportUpdate(request.resource.data, resource.data);
+      allow delete: if isSuperAdmin();
+    }
+
+    match /audit_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create: if isAuthenticated() && isValidId(logId) && isValidAuditLog(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    match /analytics_daily/{dateKey} {
+      allow get, list: if isAdmin();
+      allow create, update: if isAuthenticated() && isValidId(dateKey) && isValidAnalyticsDaily(request.resource.data);
+      allow delete: if false;
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

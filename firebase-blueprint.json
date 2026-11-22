@@ -1,0 +1,250 @@
+{
+  "entities": {
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Registered NOOR user profile, role metadata, verification status, and worship activity counters (no passwords or auth secrets stored).",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string", "enum": ["USER", "SUPPORT_AGENT", "CONTENT_MODERATOR", "ADMIN", "SUPER_ADMIN"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "DELETED"] },
+        "verified": { "type": "boolean" },
+        "preferredLanguage": { "type": "string" },
+        "cityName": { "type": "string" },
+        "adhkarCompleted": { "type": "number" },
+        "quranVersesRead": { "type": "number" },
+        "audioPlays": { "type": "number" },
+        "tasbihCount": { "type": "number" },
+        "lastActiveAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "displayName", "role", "status", "verified", "createdAt", "updatedAt"]
+    },
+    "AdminRoleRecord": {
+      "title": "AdminRoleRecord",
+      "description": "RBAC privilege registry managed exclusively by the verified application owner / Super Admin.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "ADMIN", "CONTENT_MODERATOR", "SUPPORT_AGENT"] },
+        "permissions": { "type": "array", "items": { "type": "string" } },
+        "active": { "type": "boolean" },
+        "grantedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role", "active", "grantedBy", "updatedAt"]
+    },
+    "CmsContentItem": {
+      "title": "CmsContentItem",
+      "description": "Unified Islamic CMS content document supporting all 16 categories, verification workflow (DRAFT -> REVIEW -> VERIFIED -> PUBLISHED), and scheduling.",
+      "type": "object",
+      "properties": {
+        "category": { "type": "string" },
+        "subCategory": { "type": "string" },
+        "titleAr": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "bodyAr": { "type": "string" },
+        "bodyEn": { "type": "string" },
+        "transliteration": { "type": "string" },
+        "sourceAr": { "type": "string" },
+        "sourceEn": { "type": "string" },
+        "gradingAr": { "type": "string" },
+        "gradingEn": { "type": "string" },
+        "repetitionCount": { "type": "number" },
+        "audioUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["DRAFT", "REVIEW", "VERIFIED", "PUBLISHED"] },
+        "version": { "type": "number" },
+        "scheduledAtMillis": { "type": "number" },
+        "updatedBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["category", "titleAr", "bodyAr", "sourceAr", "status", "version", "updatedBy", "createdAt", "updatedAt"]
+    },
+    "CmsRevisionRecord": {
+      "title": "CmsRevisionRecord",
+      "description": "Immutable content revision snapshot for audit and rollback.",
+      "type": "object",
+      "properties": {
+        "contentId": { "type": "string" },
+        "version": { "type": "number" },
+        "status": { "type": "string" },
+        "bodyAr": { "type": "string" },
+        "bodyEn": { "type": "string" },
+        "sourceAr": { "type": "string" },
+        "repetitionCount": { "type": "number" },
+        "changeSummary": { "type": "string" },
+        "editorUid": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contentId", "version", "status", "bodyAr", "editorUid", "createdAt"]
+    },
+    "AppConfigDocument": {
+      "title": "AppConfigDocument",
+      "description": "Live-reflected global application configuration, Founder Profile, Contact Info, Feature Flags, and Maintenance Mode.",
+      "type": "object",
+      "properties": {
+        "appNameAr": { "type": "string" },
+        "appNameEn": { "type": "string" },
+        "themePreset": { "type": "string" },
+        "defaultLanguage": { "type": "string" },
+        "supportedLanguages": { "type": "array", "items": { "type": "string" } },
+        "maintenanceMode": { "type": "boolean" },
+        "maintenanceMessageAr": { "type": "string" },
+        "maintenanceMessageEn": { "type": "string" },
+        "minSupportedVersion": { "type": "string" },
+        "founderName": { "type": "string" },
+        "founderTitleAr": { "type": "string" },
+        "founderTitleEn": { "type": "string" },
+        "founderProjectAr": { "type": "string" },
+        "founderProjectEn": { "type": "string" },
+        "founderBioAr": { "type": "string" },
+        "founderBioEn": { "type": "string" },
+        "supportEmail": { "type": "string" },
+        "supportWhatsApp": { "type": "string" },
+        "supportTelegram": { "type": "string" },
+        "featureQuranEnabled": { "type": "boolean" },
+        "featureAudioEnabled": { "type": "boolean" },
+        "featureMosquesEnabled": { "type": "boolean" },
+        "featureQiblaEnabled": { "type": "boolean" },
+        "featureCalendarEnabled": { "type": "boolean" },
+        "defaultCalcMethod": { "type": "string" },
+        "defaultReciterId": { "type": "string" },
+        "updatedBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["appNameEn", "maintenanceMode", "updatedBy", "updatedAt"]
+    },
+    "AppAnnouncement": {
+      "title": "AppAnnouncement",
+      "description": "Owner-published global announcements, scheduled notices, Islamic event reminders, app updates, and emergency alerts.",
+      "type": "object",
+      "properties": {
+        "titleAr": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "bodyAr": { "type": "string" },
+        "bodyEn": { "type": "string" },
+        "kind": { "type": "string", "enum": ["GENERAL", "ISLAMIC_EVENT", "APP_UPDATE", "EMERGENCY"] },
+        "active": { "type": "boolean" },
+        "scheduledAtMillis": { "type": "number" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["titleAr", "titleEn", "bodyAr", "bodyEn", "kind", "active", "createdBy", "createdAt"]
+    },
+    "SupportTicket": {
+      "title": "SupportTicket",
+      "description": "User-submitted support request, bug report, feature suggestion, or feedback message.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "ticketType": { "type": "string", "enum": ["SUPPORT", "BUG", "FEATURE", "FEEDBACK"] },
+        "subject": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["OPEN", "IN_PROGRESS", "RESOLVED"] },
+        "adminReply": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "ticketType", "subject", "message", "status", "createdAt", "updatedAt"]
+    },
+    "UserReport": {
+      "title": "UserReport",
+      "description": "Content accuracy or abuse report reviewed by administrators.",
+      "type": "object",
+      "properties": {
+        "reporterId": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "REVIEWED", "DISMISSED", "ACTION_TAKEN"] },
+        "resolutionNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reporterId", "targetType", "targetId", "reason", "status", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security, login, and administrative action audit log.",
+      "type": "object",
+      "properties": {
+        "actorUid": { "type": "string" },
+        "actorEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "category": { "type": "string", "enum": ["AUTH", "USER_MGMT", "CMS", "SETTINGS", "SECURITY", "SYSTEM"] },
+        "severity": { "type": "string", "enum": ["INFO", "WARNING", "CRITICAL"] },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["actorUid", "action", "category", "severity", "createdAt"]
+    },
+    "DailyAnalytics": {
+      "title": "DailyAnalytics",
+      "description": "Real aggregated daily platform metrics.",
+      "type": "object",
+      "properties": {
+        "dateKey": { "type": "string" },
+        "activeUsers": { "type": "number" },
+        "newRegistrations": { "type": "number" },
+        "quranVersesRead": { "type": "number" },
+        "adhkarCompleted": { "type": "number" },
+        "audioPlays": { "type": "number" },
+        "tasbihTaps": { "type": "number" },
+        "sectionHomeHits": { "type": "number" },
+        "sectionQuranHits": { "type": "number" },
+        "sectionAdhkarHits": { "type": "number" },
+        "sectionAudioHits": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["dateKey", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserAccount",
+      "description": "User profiles and worship activity counters"
+    },
+    "/admins/{adminUid}": {
+      "schema": "AdminRoleRecord",
+      "description": "RBAC admin roles managed by the verified Owner"
+    },
+    "/cms_content/{contentId}": {
+      "schema": "CmsContentItem",
+      "description": "All 16 Islamic CMS content categories with verification workflow"
+    },
+    "/cms_revisions/{revisionId}": {
+      "schema": "CmsRevisionRecord",
+      "description": "Immutable content revision history"
+    },
+    "/app_config/{configId}": {
+      "schema": "AppConfigDocument",
+      "description": "Live global app configuration, Founder Profile, Contact Info, Maintenance Mode"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "AppAnnouncement",
+      "description": "Owner-managed global announcements and notifications"
+    },
+    "/support_tickets/{ticketId}": {
+      "schema": "SupportTicket",
+      "description": "User support, bug report, feature suggestion, and feedback tickets"
+    },
+    "/user_reports/{reportId}": {
+      "schema": "UserReport",
+      "description": "User-submitted reports for admin review"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "Immutable security and admin audit trail"
+    },
+    "/analytics_daily/{dateKey}": {
+      "schema": "DailyAnalytics",
+      "description": "Real daily ecosystem telemetry metrics"
+    }
+  }
+}
