@@ -99,15 +99,15 @@ object FirebaseAuthHelper {
 
     @Suppress("DiscouragedApi")
     private fun resolveDefaultWebClientId(context: Context): String? {
-        val resId = context.resources.getIdentifier(
-            "default_web_client_id",
-            "string",
-            context.packageName
-        )
-        if (resId == 0) return null
-        return runCatching { context.getString(resId) }
-            .getOrNull()
-            ?.takeIf { it.isNotBlank() }
+        val packagesToCheck = listOf(context.packageName, "com.example").distinct()
+        for (pkg in packagesToCheck) {
+            val resId = context.resources.getIdentifier("default_web_client_id", "string", pkg)
+            if (resId != 0) {
+                val value = runCatching { context.getString(resId) }.getOrNull()
+                if (!value.isNullOrBlank()) return value
+            }
+        }
+        return null
     }
 
     fun isFirebaseConfigured(context: Context): Boolean =
