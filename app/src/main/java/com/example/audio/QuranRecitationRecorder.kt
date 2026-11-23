@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.MediaRecorder
 import android.os.Build
@@ -35,6 +37,7 @@ data class RecitationRecordingState(
     val lastSavedFilePath: String? = null,
     val lastSavedDurationMs: Long = 0L,
     val lastSavedSizeBytes: Long = 0L,
+    val activeAudioSourceLabel: String = "",
     val errorAr: String? = null,
     val errorEn: String? = null
 ) {
@@ -54,14 +57,23 @@ data class RecordingPlaybackState(
 /**
  * Real Android MediaRecorder + MediaPlayer engine for Quran Hifz recitation recording and review.
  *
+ * Key guarantees:
+ * - Verifies BOTH microphone permission (`RECORD_AUDIO`) and microphone hardware availability.
+ * - Acquires Android AudioFocus (`AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE`) during recording and handles
+ *   interruptions (calls/focus loss) cleanly without leaving dangling locks or corrupt files.
+ * - Uses `MediaRecorder.AudioSource.VOICE_RECOGNITION` with automatic OEM fallback to
+ *   `MediaRecorder.AudioSource.MIC` so recording works reliably across all Android devices.
  * - Records high-clarity speech in M4A (MPEG-4 / AAC-LC, 44.1kHz, 96kbps) into app-private storage.
- * - Supports Start, Pause (API 24+), Resume, Stop, live elapsed timer, live microphone amplitude,
- *   file integrity verification (>1KB), and immediate playback review.
- * - Never simulates audio or produces empty placeholder files; always reports real errors clearly.
+ * - Verifies file existence & integrity (>1KB) before reporting success — never fakes recording!
  */
 class QuranRecitationRecorder(private val appContext: Context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val audioManager: AudioManager? =
+        appContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+    private var recordFocusRequest: AudioFocusRequest? = null
+    private var playbackFocusRequest: AudioFocusRequest? = null
+
     private var mediaRecorder: MediaRecorder? = null
     private var mediaPlayer: MediaPlayer? = null
     private var activeFile: File? = null
@@ -77,9 +89,30 @@ class QuranRecitationRecorder(private val appContext: Context) {
     private val _playbackState = MutableStateFlow(RecordingPlaybackState())
     val playbackState: StateFlow<RecordingPlaybackState> = _playbackState.asStateFlow()
 
+    private val recordFocusListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        onRecordAudioFocusChanged(focusChange)
+    }
+
+    internal fun onRecordAudioFocusChanged(focusChange: Int) {
+        if (focusChange == AudioManager.AUDIOFOCUS_LOSS ||
+            focusChange == AudioManager.AUDIOFOCUS_LOSS_TRANSIENT
+        ) {
+            if (_recordingState.value.status == RecitationRecordingStatus.RECORDING) {
+                if (!pauseRecording()) {
+                    stopRecording()
+                }
+            }
+        }
+    }
+
     fun hasMicrophonePermission(): Boolean =
         ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
+
+    fun hasMicrophoneHardware(): Boolean =
+        runCatching {
+            appContext.packageManager?.hasSystemFeature(PackageManager.FEATURE_MICROPHONE) ?: true
+        }.getOrDefault(true)
 
     fun recordingsDirectory(): File {
         val dir = File(appContext.filesDir, "hifz_recordings")
@@ -91,8 +124,18 @@ class QuranRecitationRecorder(private val appContext: Context) {
         if (!hasMicrophonePermission()) {
             _recordingState.value = _recordingState.value.copy(
                 status = RecitationRecordingStatus.ERROR,
+                amplitudeNormalized = 0f,
                 errorAr = "يرجى منح إذن الميكروفون أولاً لتسجيل تلاوتك.",
                 errorEn = "Microphone permission is required before recording."
+            )
+            return false
+        }
+        if (!hasMicrophoneHardware()) {
+            _recordingState.value = _recordingState.value.copy(
+                status = RecitationRecordingStatus.ERROR,
+                amplitudeNormalized = 0f,
+                errorAr = "لا يتوفر ميكروفون نشط على هذا الجهاز.",
+                errorEn = "No microphone hardware detected on this device."
             )
             return false
         }
@@ -100,48 +143,67 @@ class QuranRecitationRecorder(private val appContext: Context) {
         // Stop any active playback or stale recorder before starting fresh
         stopPlayback()
         releaseRecorderOnly(deleteIncompleteFile = false)
+        requestRecordingAudioFocus()
 
         val safePrefix = filePrefix.replace(Regex("[^a-zA-Z0-9_-]"), "_").take(32).ifBlank { "recitation" }
         val outputFile = File(recordingsDirectory(), "${safePrefix}_${System.currentTimeMillis()}.m4a")
 
-        return try {
-            val recorder = createMediaRecorder().apply {
-                setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
-                setAudioEncodingBitRate(96_000)
-                setAudioSamplingRate(44_100)
-                setAudioChannels(1)
-                setOutputFile(outputFile.absolutePath)
-                prepare()
-                start()
-            }
-            mediaRecorder = recorder
-            activeFile = outputFile
-            accumulatedElapsedMs = 0L
-            segmentStartTimeMs = System.currentTimeMillis()
+        // Try VOICE_RECOGNITION first (best speech clarity), then fall back to MIC on OEMs where
+        // VOICE_RECOGNITION is unsupported or locked by another service.
+        val audioSources = listOf(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION to "VOICE_RECOGNITION",
+            MediaRecorder.AudioSource.MIC to "MIC"
+        )
 
-            _recordingState.value = RecitationRecordingState(
-                status = RecitationRecordingStatus.RECORDING,
-                elapsedMs = 0L,
-                amplitudeNormalized = 0.05f,
-                lastSavedFilePath = _recordingState.value.lastSavedFilePath,
-                lastSavedDurationMs = _recordingState.value.lastSavedDurationMs,
-                lastSavedSizeBytes = _recordingState.value.lastSavedSizeBytes
-            )
-            startRecordingPolling()
-            true
-        } catch (e: Exception) {
-            runCatching { outputFile.delete() }
-            releaseRecorderOnly(deleteIncompleteFile = true)
-            _recordingState.value = _recordingState.value.copy(
-                status = RecitationRecordingStatus.ERROR,
-                amplitudeNormalized = 0f,
-                errorAr = "تعذّر بدء تسجيل الصوت (${e.localizedMessage ?: "خطأ بالميكروفون"}).",
-                errorEn = "Unable to start audio recording (${e.localizedMessage ?: "microphone error"})."
-            )
-            false
+        var lastError: Exception? = null
+        for ((audioSource, label) in audioSources) {
+            var candidate: MediaRecorder? = null
+            try {
+                if (outputFile.exists()) outputFile.delete()
+                candidate = createMediaRecorder().apply {
+                    setAudioSource(audioSource)
+                    setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                    setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                    setAudioEncodingBitRate(96_000)
+                    setAudioSamplingRate(44_100)
+                    setAudioChannels(1)
+                    setOutputFile(outputFile.absolutePath)
+                    prepare()
+                    start()
+                }
+                mediaRecorder = candidate
+                activeFile = outputFile
+                accumulatedElapsedMs = 0L
+                segmentStartTimeMs = System.currentTimeMillis()
+
+                _recordingState.value = RecitationRecordingState(
+                    status = RecitationRecordingStatus.RECORDING,
+                    elapsedMs = 0L,
+                    amplitudeNormalized = 0f,
+                    lastSavedFilePath = _recordingState.value.lastSavedFilePath,
+                    lastSavedDurationMs = _recordingState.value.lastSavedDurationMs,
+                    lastSavedSizeBytes = _recordingState.value.lastSavedSizeBytes,
+                    activeAudioSourceLabel = label
+                )
+                startRecordingPolling()
+                return true
+            } catch (e: Exception) {
+                lastError = e
+                runCatching { candidate?.reset() }
+                runCatching { candidate?.release() }
+                runCatching { outputFile.delete() }
+            }
         }
+
+        abandonRecordingAudioFocus()
+        releaseRecorderOnly(deleteIncompleteFile = true)
+        _recordingState.value = _recordingState.value.copy(
+            status = RecitationRecordingStatus.ERROR,
+            amplitudeNormalized = 0f,
+            errorAr = "تعذّر بدء تسجيل الصوت (${lastError?.localizedMessage ?: "الميكروفون مشغول أو غير متاح"}).",
+            errorEn = "Unable to start audio recording (${lastError?.localizedMessage ?: "microphone busy or unavailable"})."
+        )
+        return false
     }
 
     fun pauseRecording(): Boolean {
@@ -166,7 +228,7 @@ class QuranRecitationRecorder(private val appContext: Context) {
                 errorEn = null
             )
             true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             _recordingState.value = _recordingState.value.copy(
                 errorAr = "تعذّر إيقاف التسجيل مؤقتاً.",
                 errorEn = "Could not pause recording."
@@ -180,6 +242,7 @@ class QuranRecitationRecorder(private val appContext: Context) {
         if (_recordingState.value.status != RecitationRecordingStatus.PAUSED) return false
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return false
         return try {
+            requestRecordingAudioFocus()
             recorder.resume()
             segmentStartTimeMs = System.currentTimeMillis()
             _recordingState.value = _recordingState.value.copy(
@@ -189,9 +252,10 @@ class QuranRecitationRecorder(private val appContext: Context) {
             )
             startRecordingPolling()
             true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             _recordingState.value = _recordingState.value.copy(
                 status = RecitationRecordingStatus.ERROR,
+                amplitudeNormalized = 0f,
                 errorAr = "تعذّر استئناف التسجيل.",
                 errorEn = "Could not resume recording."
             )
@@ -213,6 +277,8 @@ class QuranRecitationRecorder(private val appContext: Context) {
             accumulatedElapsedMs
         }
 
+        abandonRecordingAudioFocus()
+
         if (recorder == null || file == null) {
             _recordingState.value = _recordingState.value.copy(
                 status = RecitationRecordingStatus.IDLE,
@@ -226,7 +292,6 @@ class QuranRecitationRecorder(private val appContext: Context) {
             recorder.stop()
             stoppedCleanly = true
         } catch (_: Exception) {
-            // Very short recordings (<300ms) can throw RuntimeException on MediaRecorder.stop()
             stoppedCleanly = false
         } finally {
             runCatching { recorder.reset() }
@@ -254,6 +319,7 @@ class QuranRecitationRecorder(private val appContext: Context) {
             lastSavedFilePath = file.absolutePath,
             lastSavedDurationMs = totalDuration.coerceAtLeast(500L),
             lastSavedSizeBytes = file.length(),
+            activeAudioSourceLabel = _recordingState.value.activeAudioSourceLabel,
             errorAr = null,
             errorEn = null
         )
@@ -274,6 +340,7 @@ class QuranRecitationRecorder(private val appContext: Context) {
             stopRecording()
         }
         stopPlayback()
+        requestPlaybackAudioFocus()
 
         return try {
             val mp = MediaPlayer().apply {
@@ -296,6 +363,7 @@ class QuranRecitationRecorder(private val appContext: Context) {
                 }
                 setOnCompletionListener {
                     playbackProgressJob?.cancel()
+                    abandonPlaybackAudioFocus()
                     _playbackState.value = _playbackState.value.copy(
                         isPlaying = false,
                         currentPositionMs = _playbackState.value.durationMs
@@ -303,6 +371,7 @@ class QuranRecitationRecorder(private val appContext: Context) {
                 }
                 setOnErrorListener { _, _, _ ->
                     playbackProgressJob?.cancel()
+                    abandonPlaybackAudioFocus()
                     _playbackState.value = RecordingPlaybackState(
                         errorAr = "تعذّر تشغيل التسجيل الصوتي.",
                         errorEn = "Unable to play recording file."
@@ -313,7 +382,8 @@ class QuranRecitationRecorder(private val appContext: Context) {
             }
             mediaPlayer = mp
             true
-        } catch (e: Exception) {
+        } catch (_: Exception) {
+            abandonPlaybackAudioFocus()
             _playbackState.value = RecordingPlaybackState(
                 errorAr = "تعذّر فتح ملف التسجيل للتشغيل.",
                 errorEn = "Unable to open recording for playback."
@@ -337,6 +407,7 @@ class QuranRecitationRecorder(private val appContext: Context) {
         val mp = mediaPlayer ?: return
         try {
             if (!mp.isPlaying) {
+                requestPlaybackAudioFocus()
                 mp.start()
                 _playbackState.value = _playbackState.value.copy(isPlaying = true)
                 startPlaybackPolling()
@@ -348,6 +419,7 @@ class QuranRecitationRecorder(private val appContext: Context) {
 
     fun stopPlayback() {
         playbackProgressJob?.cancel()
+        abandonPlaybackAudioFocus()
         try {
             mediaPlayer?.stop()
             mediaPlayer?.reset()
@@ -382,6 +454,8 @@ class QuranRecitationRecorder(private val appContext: Context) {
     fun release() {
         recordTimerJob?.cancel()
         playbackProgressJob?.cancel()
+        abandonRecordingAudioFocus()
+        abandonPlaybackAudioFocus()
         releaseRecorderOnly(deleteIncompleteFile = true)
         stopPlayback()
     }
@@ -389,13 +463,13 @@ class QuranRecitationRecorder(private val appContext: Context) {
     private fun startRecordingPolling() {
         recordTimerJob?.cancel()
         recordTimerJob = scope.launch {
-            while (isActive && _recordingState.value.status == RecitationRecordingStatus.RECORDING) {
+            while (isActive && _recordingState.value.status == RecitationRecordingStatus.RECORDING && mediaRecorder != null) {
                 val elapsed = accumulatedElapsedMs + (System.currentTimeMillis() - segmentStartTimeMs).coerceAtLeast(0L)
                 val amp = try {
                     val raw = mediaRecorder?.maxAmplitude ?: 0
-                    (raw.toFloat() / 22_000f).coerceIn(0.05f, 1.0f)
+                    if (raw <= 0) 0f else (raw.toFloat() / 22_000f).coerceIn(0.02f, 1.0f)
                 } catch (_: Exception) {
-                    0.05f
+                    0f
                 }
                 _recordingState.value = _recordingState.value.copy(
                     elapsedMs = elapsed,
@@ -422,8 +496,80 @@ class QuranRecitationRecorder(private val appContext: Context) {
                     } catch (_: Exception) {
                     }
                 }
-                delay(250L)
+                delay(200L)
             }
+        }
+    }
+
+    private fun requestRecordingAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val attrs = AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .build()
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                    .setAudioAttributes(attrs)
+                    .setOnAudioFocusChangeListener(recordFocusListener)
+                    .build()
+                recordFocusRequest = req
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(
+                    recordFocusListener,
+                    AudioManager.STREAM_MUSIC,
+                    AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
+                )
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun abandonRecordingAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                recordFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+                recordFocusRequest = null
+            } else {
+                @Suppress("DEPRECATION")
+                am.abandonAudioFocus(recordFocusListener)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun requestPlaybackAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val attrs = AudioAttributes.Builder()
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .build()
+                val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(attrs)
+                    .build()
+                playbackFocusRequest = req
+                am.requestAudioFocus(req)
+            } else {
+                @Suppress("DEPRECATION")
+                am.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    private fun abandonPlaybackAudioFocus() {
+        val am = audioManager ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                playbackFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+                playbackFocusRequest = null
+            }
+        } catch (_: Exception) {
         }
     }
 

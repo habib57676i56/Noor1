@@ -52,7 +52,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -218,10 +220,21 @@ fun NoorAppShell(
         }
     }
 
+    var isMushafFullScreen by remember { mutableStateOf(false) }
+    LaunchedEffect(currentRoute) {
+        if (currentRoute != NoorRoutes.QURAN_READER) {
+            isMushafFullScreen = false
+        }
+    }
+
     val topLevelRoutes = remember { bottomTabs.map { it.route }.toSet() }
     val isAdminCenter = currentRoute == NoorRoutes.ADMIN_CENTER
+    val isReaderFullScreen = isMushafFullScreen && currentRoute == NoorRoutes.QURAN_READER
     val showNavBar = currentRoute in topLevelRoutes && !isAdminCenter
-    val showMiniPlayer = audioState.hasActiveSession && currentRoute != NoorRoutes.AUDIO_LIBRARY && !isAdminCenter
+    val showMiniPlayer = audioState.hasActiveSession &&
+        currentRoute != NoorRoutes.AUDIO_LIBRARY &&
+        !isAdminCenter &&
+        !isReaderFullScreen
 
     fun navigateToTab(route: String) {
         navController.navigate(route) {
@@ -442,7 +455,9 @@ fun NoorAppShell(
                                     },
                                     onOpenInMemorization = { targetSurah, targetAyah ->
                                         navController.navigate(NoorRoutes.hifzAiTarget(targetSurah, targetAyah))
-                                    }
+                                    },
+                                    ecosystemViewModel = ecosystemViewModel,
+                                    onFullScreenChanged = { isMushafFullScreen = it }
                                 )
                             }
                             composable(NoorRoutes.ADHKAR) {

@@ -134,6 +134,7 @@ fun QuranScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag("continue_reading_banner")
                         .clip(RoundedCornerShape(24.dp))
                         .background(Brush.linearGradient(listOf(EmeraldDeep, EmeraldForest, Color(0xFF0A2A20))))
                         .border(1.2.dp, GoldPrimary.copy(alpha = 0.55f), RoundedCornerShape(24.dp))

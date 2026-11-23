@@ -1024,7 +1024,8 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         when (val res = repo.loadSurahVerses(surahNumber, reciter)) {
             is SurahLoadResult.Success -> {
                 _surahReaderState.value = SurahReaderState.Ready(surahNumber, res.verses, res.isOfflineCached)
-                repo.recordQuranReadingProgress(surahNumber, 1, versesDelta = 1)
+                // Preserve exact saved lastReadAyah when reopening the same Surah!
+                // Never overwrite lastReadAyah back to 1 on load.
             }
             is SurahLoadResult.Error -> {
                 _surahReaderState.value = SurahReaderState.Error(surahNumber, res.messageAr, res.messageEn)
@@ -1075,11 +1076,9 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             }
             _surahReaderState.value = currentState.copy(verses = updatedVerses)
             val audio = quranAudioPlayer.state.value
-            if (audio.isPlaying && audio.playingSurah == currentState.surahNumber && audio.playingAyah != null) {
-                playSurahVerseByVerse(
-                    surahNumber = currentState.surahNumber,
-                    verses = updatedVerses,
-                    reciter = reciter,
+            if (audio.isPlaying && audio.playingSurah != null && audio.playingAyah != null) {
+                playFromMushafAyah(
+                    surahNumber = audio.playingSurah,
                     startAyah = audio.playingAyah
                 )
             }
@@ -1120,7 +1119,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    // --- Verse-by-Verse Synchronized Sheikh Recitation (Real Ayah Boundaries — Zero Fake Timers!) ---
+    // --- Continuous Uninterrupted Sheikh Recitation (Engine A: Full-Surah Stream + Verified Timestamps; Engine B: Gapless Queue) ---
     fun playSurahVerseByVerse(
         surahNumber: Int,
         verses: List<QuranVerse>,
@@ -1131,25 +1130,14 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             playFullSurahWithReciter(surahNumber, reciter)
             return
         }
-        val surah = SurahCatalog.findSurah(surahNumber)
-        val queue = verses.map { v ->
-            val url = SurahCatalog.audioUrlForAyah(surahNumber, v.numberInSurah, reciter)
-            AudioTrackItem(
-                id = "ayah_${reciter.id}_${surahNumber}_${v.numberInSurah}",
-                titleAr = "سورة ${surah.nameAr} · آية ${v.numberInSurah}",
-                titleEn = "${surah.nameEn} · Ayah ${v.numberInSurah}",
-                subtitleAr = reciter.nameAr,
-                subtitleEn = reciter.nameEn,
-                audioUrl = url,
-                category = com.example.domain.model.AudioCategory.QURAN_RECITERS,
-                surahNumber = surahNumber,
-                ayahNumber = v.numberInSurah,
-                pageNumber = v.pageNumber,
-                reciterId = reciter.id
-            )
-        }
-        val startIndex = queue.indexOfFirst { it.ayahNumber == startAyah }.coerceAtLeast(0)
-        quranAudioPlayer.playTrackQueue(queue, startIndex, preferences.value.audioPlaybackSpeed)
+        playFromMushafAyah(
+            surahNumber = surahNumber,
+            startAyah = startAyah,
+            endAyah = null,
+            repeatRange = false,
+            explicitReciter = reciter,
+            preloadedVerses = verses
+        )
     }
 
     /**
@@ -1162,6 +1150,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         preferences.map { it.quranReciter }
     ) { st, cached, reciter ->
         if (!st.isPlaying || st.playingSurah == null || st.playingAyah == null) return@combine null
+        if (st.isContinuousStream) return@combine st.activeWordPosition
         val expectedKey = "${reciter.id}_${st.playingSurah}"
         if (cached == null || cached.first != expectedKey) return@combine null
         cached.second[st.playingAyah]?.findWordPositionAt(st.currentPositionMs)
@@ -1174,6 +1163,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     ) { st, cached, reciter ->
         val s = st.playingSurah ?: return@combine false
         val a = st.playingAyah ?: return@combine false
+        if (st.isContinuousStream && st.activeWordPosition != null) return@combine true
         val expectedKey = "${reciter.id}_$s"
         cached != null && cached.first == expectedKey && cached.second[a]?.segments?.isNotEmpty() == true
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
@@ -1214,53 +1204,113 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Interactive Mushaf: "Read from this Ayah" (continuous playback across page & Surah boundaries)
-     * or "Repeat Ayah Range" (seamless endless looping between `startAyah..endAyah`).
+     * Interactive Mushaf: "Read from this Ayah" (continuous uninterrupted playback across Ayah, page & Surah boundaries)
+     * or "Repeat Ayah Range" (seamless in-stream looping between `startAyah..endAyah`).
+     *
+     * Priority:
+     * 1. **Engine A (Primary)**: Single continuous full-Surah MP3 + verified millisecond Ayah/word timestamps
+     *    from Quran.com v4 (`playContinuousSurahManifest`) — ZERO stops or re-buffering between Ayahs!
+     * 2. **Engine B (Fallback)**: Gapless `setNextMediaPlayer` pre-buffered per-Ayah queue for reciters
+     *    without continuous chapter timestamps or when offline without cached manifests.
      */
     fun playFromMushafAyah(
         surahNumber: Int,
         startAyah: Int,
         endAyah: Int? = null,
-        repeatRange: Boolean = false
-    ) = viewModelScope.launch {
-        val reciter = preferences.value.quranReciter
+        repeatRange: Boolean = false,
+        explicitReciter: QuranReciter? = null,
+        preloadedVerses: List<QuranVerse>? = null
+    ): kotlinx.coroutines.Job = viewModelScope.launch {
+        val reciter = explicitReciter ?: preferences.value.quranReciter
+        val sMeta = SurahCatalog.findSurah(surahNumber)
+        val clampedStart = startAyah.coerceIn(1, sMeta.verseCount)
+        val clampedEndAyah = endAyah?.coerceIn(clampedStart, sMeta.verseCount)
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+
+        // Persist the user's chosen starting position immediately
+        saveLastRead(surahNumber, clampedStart)
+
+        // Load verses for accurate Ayah -> Mushaf page mapping
+        val surahVerses = preloadedVerses?.takeIf { it.isNotEmpty() && it.first().surahNumber == surahNumber }
+            ?: when (val res = repo.loadSurahVerses(surahNumber, reciter)) {
+                is SurahLoadResult.Success -> res.verses
+                is SurahLoadResult.Error -> emptyList()
+            }
+        val pageByAyah = surahVerses.associate { it.numberInSurah to it.pageNumber.takeIf { p -> p in 1..604 } }
+
+        // Engine A: Continuous Uninterrupted Full-Surah Stream + Verified Millisecond Timestamps
+        val manifest = if (quranWordTimingRepository.supportsVerifiedWordTimings(reciter)) {
+            quranWordTimingRepository.getContinuousSurahManifest(reciter, surahNumber)
+        } else {
+            null
+        }
+        if (manifest != null && manifest.ayahs.isNotEmpty() && manifest.audioUrl.isNotBlank()) {
+            val rangeLabel = if (repeatRange && clampedEndAyah != null) {
+                if (isAr) "تكرار ${sMeta.nameAr} ($clampedStart–$clampedEndAyah)"
+                else "Loop ${sMeta.nameEn} ($clampedStart–$clampedEndAyah)"
+            } else {
+                null
+            }
+            quranAudioPlayer.playContinuousSurahManifest(
+                manifest = manifest,
+                surahTitleAr = "سورة ${sMeta.nameAr}",
+                surahTitleEn = sMeta.nameEn,
+                reciterNameAr = reciter.nameAr,
+                reciterNameEn = reciter.nameEn,
+                pageResolver = { _, ayahNum -> pageByAyah[ayahNum] ?: sMeta.startPage },
+                startAyah = clampedStart,
+                repeatRangeStartAyah = if (repeatRange && clampedEndAyah != null) clampedStart else null,
+                repeatRangeEndAyah = if (repeatRange && clampedEndAyah != null) clampedEndAyah else null,
+                repeatRangeLabel = rangeLabel,
+                initialSpeed = preferences.value.audioPlaybackSpeed,
+                onAyahChanged = { s, a, _ -> saveLastRead(s, a) },
+                onSurahCompleted = if (!repeatRange && surahNumber < 114) {
+                    { playFromMushafAyah(surahNumber + 1, 1, explicitReciter = reciter) }
+                } else {
+                    null
+                }
+            )
+            return@launch
+        }
+
+        // Engine B: Gapless pre-buffered per-Ayah queue fallback
         val tracks = mutableListOf<AudioTrackItem>()
 
-        suspend fun appendSurahTracks(sNum: Int) {
-            val sMeta = SurahCatalog.findSurah(sNum)
-            val verses = when (val res = repo.loadSurahVerses(sNum, reciter)) {
-                is SurahLoadResult.Success -> res.verses
-                is SurahLoadResult.Error -> (1..sMeta.verseCount).map { aNum ->
-                    QuranVerse(
-                        surahNumber = sNum,
-                        numberInSurah = aNum,
-                        globalNumber = aNum,
-                        textUthmani = "",
-                        tafsirAr = "",
-                        audioUrl = SurahCatalog.audioUrlForAyah(sNum, aNum, reciter),
-                        pageNumber = sMeta.startPage
-                    )
+        suspend fun appendSurahTracks(sNum: Int, existing: List<QuranVerse>? = null) {
+            val meta = SurahCatalog.findSurah(sNum)
+            val verses = existing?.takeIf { it.isNotEmpty() }
+                ?: when (val res = repo.loadSurahVerses(sNum, reciter)) {
+                    is SurahLoadResult.Success -> res.verses
+                    is SurahLoadResult.Error -> (1..meta.verseCount).map { aNum ->
+                        QuranVerse(
+                            surahNumber = sNum,
+                            numberInSurah = aNum,
+                            globalNumber = aNum,
+                            textUthmani = "",
+                            tafsirAr = "",
+                            audioUrl = SurahCatalog.audioUrlForAyah(sNum, aNum, reciter),
+                            pageNumber = meta.startPage
+                        )
+                    }
                 }
-            }
             verses.forEach { v ->
                 tracks += AudioTrackItem(
                     id = "ayah_${reciter.id}_${sNum}_${v.numberInSurah}",
-                    titleAr = "سورة ${sMeta.nameAr} · آية ${v.numberInSurah}",
-                    titleEn = "${sMeta.nameEn} · Ayah ${v.numberInSurah}",
+                    titleAr = "سورة ${meta.nameAr} · آية ${v.numberInSurah}",
+                    titleEn = "${meta.nameEn} · Ayah ${v.numberInSurah}",
                     subtitleAr = reciter.nameAr,
                     subtitleEn = reciter.nameEn,
                     audioUrl = SurahCatalog.audioUrlForAyah(sNum, v.numberInSurah, reciter),
                     category = com.example.domain.model.AudioCategory.QURAN_RECITERS,
                     surahNumber = sNum,
                     ayahNumber = v.numberInSurah,
-                    pageNumber = v.pageNumber.takeIf { it in 1..604 } ?: sMeta.startPage,
+                    pageNumber = v.pageNumber.takeIf { it in 1..604 } ?: meta.startPage,
                     reciterId = reciter.id
                 )
             }
         }
 
-        appendSurahTracks(surahNumber)
-        // For continuous reading (not range loop), append subsequent short Surahs on same/next pages so recitation flows seamlessly!
+        appendSurahTracks(surahNumber, surahVerses)
         if (!repeatRange && surahNumber < 114) {
             val nextSurahEnd = if (surahNumber >= 100) minOf(114, surahNumber + 3) else surahNumber + 1
             for (nextS in (surahNumber + 1)..nextSurahEnd) {
@@ -1269,18 +1319,15 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         if (tracks.isEmpty()) return@launch
-        val startIdx = tracks.indexOfFirst { it.surahNumber == surahNumber && it.ayahNumber == startAyah }.coerceAtLeast(0)
+        val startIdx = tracks.indexOfFirst { it.surahNumber == surahNumber && it.ayahNumber == clampedStart }.coerceAtLeast(0)
 
-        if (repeatRange && endAyah != null) {
-            val clampedEndAyah = endAyah.coerceAtLeast(startAyah)
+        if (repeatRange && clampedEndAyah != null) {
             val endIdx = tracks.indexOfLast { it.surahNumber == surahNumber && it.ayahNumber == clampedEndAyah }
                 .takeIf { it >= startIdx } ?: startIdx
-            val sMeta = SurahCatalog.findSurah(surahNumber)
-            val isAr = preferences.value.language == AppLanguage.ARABIC
             val label = if (isAr) {
-                "تكرار ${sMeta.nameAr} ($startAyah–$clampedEndAyah)"
+                "تكرار ${sMeta.nameAr} ($clampedStart–$clampedEndAyah)"
             } else {
-                "Loop ${sMeta.nameEn} ($startAyah–$clampedEndAyah)"
+                "Loop ${sMeta.nameEn} ($clampedStart–$clampedEndAyah)"
             }
             quranAudioPlayer.playAyahRange(
                 queue = tracks,

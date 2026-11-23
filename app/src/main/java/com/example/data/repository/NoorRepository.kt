@@ -344,8 +344,13 @@ class NoorRepository(
         }
     }
 
-    suspend fun recordQuranReadingProgress(surahNumber: Int, ayahNumber: Int, versesDelta: Int = 1) {
-        prefs.saveLastRead(surahNumber, ayahNumber)
+    suspend fun recordQuranReadingProgress(
+        surahNumber: Int,
+        ayahNumber: Int,
+        pageNumber: Int? = null,
+        versesDelta: Int = 1
+    ) {
+        prefs.saveLastRead(surahNumber, ayahNumber, pageNumber)
         if (versesDelta > 0) {
             val dateKey = todayDateKey()
             val act = dao.getDailyActivityOnce(dateKey) ?: DailyActivityEntity(dateKey = dateKey)

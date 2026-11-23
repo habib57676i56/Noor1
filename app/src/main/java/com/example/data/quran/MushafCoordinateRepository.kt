@@ -56,8 +56,20 @@ class MushafCoordinateRepository(private val appContext: Context) {
 
     private val _packStatus = MutableStateFlow(scanStatus())
     val packStatus: StateFlow<MushafCoordinatePackStatus> = _packStatus.asStateFlow()
+    private val autoDownloadAttempted = java.util.concurrent.atomic.AtomicBoolean(false)
 
     fun hasExactGlyphDb(): Boolean = glyphDbFile.exists() && glyphDbFile.length() > 100_000L
+
+    /**
+     * Silently downloads the official 604-page King Fahd Complex glyph database (`ayahinfo_1024.db`)
+     * once in the background if not yet installed locally, upgrading every Mushaf page to exact
+     * pixel-level Ayah boundaries without disrupting reading or requiring manual menu steps.
+     */
+    suspend fun ensureExactGlyphDbInBackground(): Boolean {
+        if (hasExactGlyphDb()) return true
+        if (!autoDownloadAttempted.compareAndSet(false, true)) return false
+        return downloadExactGlyphDatabase()
+    }
 
     private fun pageJsonFile(pageNumber: Int): File {
         val p = pageNumber.coerceIn(1, MadinahMushafPageCatalog.TOTAL_PAGES)
@@ -311,8 +323,8 @@ class MushafCoordinateRepository(private val appContext: Context) {
                 }
                 if (glyphs.isEmpty()) return@use null
 
-                val imgW = maxOf(DEFAULT_MUSHAF_WIDTH, glyphs.maxOf { it.maxX } + 16).toFloat()
-                val imgH = maxOf(DEFAULT_MUSHAF_HEIGHT, glyphs.maxOf { it.maxY } + 16).toFloat()
+                val imgW = maxOf(DEFAULT_MUSHAF_WIDTH, glyphs.maxOf { it.maxX }).toFloat()
+                val imgH = maxOf(DEFAULT_MUSHAF_HEIGHT, glyphs.maxOf { it.maxY }).toFloat()
 
                 val groupedByAyah = glyphs.groupBy { it.surah to it.ayah }
                 val ayahRegions = groupedByAyah.entries.map { (key, ayahGlyphs) ->

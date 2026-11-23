@@ -36,7 +36,13 @@ data class MushafDownloadProgress(
 )
 
 sealed class MushafPageLoadResult {
-    data class Ready(val pageNumber: Int, val bitmap: Bitmap, val fromOfflineCache: Boolean) : MushafPageLoadResult()
+    data class Ready(
+        val pageNumber: Int,
+        val bitmap: Bitmap,
+        val fromOfflineCache: Boolean,
+        val originalWidth: Int = bitmap.width,
+        val originalHeight: Int = bitmap.height
+    ) : MushafPageLoadResult()
     data class Unavailable(val pageNumber: Int, val reasonAr: String, val reasonEn: String) : MushafPageLoadResult()
 }
 
@@ -55,9 +61,15 @@ class MushafPageImageManager(private val appContext: Context) {
 
     private val pagesDir: File = File(appContext.filesDir, "mushaf_pages").apply { mkdirs() }
 
+    private data class CachedDecodedPage(
+        val bitmap: Bitmap,
+        val originalWidth: Int,
+        val originalHeight: Int
+    )
+
     // Memory-safe LRU cache capped at 6 decoded Mushaf pages (~6-10 MB) for low-RAM compatibility
-    private val memoryCache = object : LruCache<Int, Bitmap>(6) {
-        override fun sizeOf(key: Int, value: Bitmap): Int = 1
+    private val memoryCache = object : LruCache<Int, CachedDecodedPage>(6) {
+        override fun sizeOf(key: Int, value: CachedDecodedPage): Int = 1
     }
 
     private val _progress = MutableStateFlow(scanCacheSnapshot())
@@ -111,17 +123,29 @@ class MushafPageImageManager(private val appContext: Context) {
         maxWidthPx: Int = 1080
     ): MushafPageLoadResult = withContext(Dispatchers.IO) {
         val clamped = pageNumber.coerceIn(1, MadinahMushafPageCatalog.TOTAL_PAGES)
-        memoryCache.get(clamped)?.let { cachedBmp ->
-            if (!cachedBmp.isRecycled) {
-                return@withContext MushafPageLoadResult.Ready(clamped, cachedBmp, fromOfflineCache = true)
+        memoryCache.get(clamped)?.let { cached ->
+            if (!cached.bitmap.isRecycled) {
+                return@withContext MushafPageLoadResult.Ready(
+                    pageNumber = clamped,
+                    bitmap = cached.bitmap,
+                    fromOfflineCache = true,
+                    originalWidth = cached.originalWidth,
+                    originalHeight = cached.originalHeight
+                )
             }
         }
 
         val localFile = pageFile(clamped)
         if (localFile.exists() && localFile.length() >= MIN_VALID_IMAGE_BYTES) {
-            decodeSafeBitmap(localFile, maxWidthPx)?.let { bmp ->
-                memoryCache.put(clamped, bmp)
-                return@withContext MushafPageLoadResult.Ready(clamped, bmp, fromOfflineCache = true)
+            decodeSafeBitmap(localFile, maxWidthPx)?.let { decoded ->
+                memoryCache.put(clamped, decoded)
+                return@withContext MushafPageLoadResult.Ready(
+                    pageNumber = clamped,
+                    bitmap = decoded.bitmap,
+                    fromOfflineCache = true,
+                    originalWidth = decoded.originalWidth,
+                    originalHeight = decoded.originalHeight
+                )
             } ?: run {
                 // Corrupt file on disk -> remove and retry download
                 runCatching { localFile.delete() }
@@ -132,9 +156,15 @@ class MushafPageImageManager(private val appContext: Context) {
         val downloaded = downloadSinglePage(clamped)
         if (downloaded && localFile.exists()) {
             refreshCacheStats()
-            decodeSafeBitmap(localFile, maxWidthPx)?.let { bmp ->
-                memoryCache.put(clamped, bmp)
-                return@withContext MushafPageLoadResult.Ready(clamped, bmp, fromOfflineCache = false)
+            decodeSafeBitmap(localFile, maxWidthPx)?.let { decoded ->
+                memoryCache.put(clamped, decoded)
+                return@withContext MushafPageLoadResult.Ready(
+                    pageNumber = clamped,
+                    bitmap = decoded.bitmap,
+                    fromOfflineCache = false,
+                    originalWidth = decoded.originalWidth,
+                    originalHeight = decoded.originalHeight
+                )
             }
         }
 
@@ -353,20 +383,23 @@ class MushafPageImageManager(private val appContext: Context) {
         }
     }
 
-    private fun decodeSafeBitmap(file: File, maxWidthPx: Int): Bitmap? {
+    private fun decodeSafeBitmap(file: File, maxWidthPx: Int): CachedDecodedPage? {
         return try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
             BitmapFactory.decodeFile(file.absolutePath, bounds)
             if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            val origW = bounds.outWidth
+            val origH = bounds.outHeight
             var sampleSize = 1
-            while (bounds.outWidth / (sampleSize * 2) >= maxWidthPx) {
+            while (origW / (sampleSize * 2) >= maxWidthPx) {
                 sampleSize *= 2
             }
             val opts = BitmapFactory.Options().apply {
                 inSampleSize = sampleSize
                 inPreferredConfig = Bitmap.Config.RGB_565
             }
-            BitmapFactory.decodeFile(file.absolutePath, opts)
+            val bmp = BitmapFactory.decodeFile(file.absolutePath, opts) ?: return null
+            CachedDecodedPage(bitmap = bmp, originalWidth = origW, originalHeight = origH)
         } catch (_: OutOfMemoryError) {
             memoryCache.evictAll()
             null

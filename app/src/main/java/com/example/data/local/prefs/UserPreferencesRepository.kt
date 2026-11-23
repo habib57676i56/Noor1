@@ -79,6 +79,7 @@ data class UserPreferences(
     // Quran Reader & Audio
     val lastReadSurah: Int = 1,
     val lastReadAyah: Int = 1,
+    val lastReadPage: Int = 1,
     val quranFontSizeSp: Int = 24,
     val quranReadingTheme: QuranReadingTheme = QuranReadingTheme.AUTO,
     val quranDisplayMode: QuranDisplayMode = QuranDisplayMode.STUDY,
@@ -169,6 +170,7 @@ class UserPreferencesRepository(private val context: Context) {
 
         val LAST_READ_SURAH = intPreferencesKey("last_read_surah")
         val LAST_READ_AYAH = intPreferencesKey("last_read_ayah")
+        val LAST_READ_PAGE = intPreferencesKey("last_read_page")
         val QURAN_FONT_SIZE = intPreferencesKey("quran_font_size")
         val QURAN_READING_THEME = stringPreferencesKey("quran_reading_theme")
         val QURAN_DISPLAY_MODE = stringPreferencesKey("quran_display_mode")
@@ -261,6 +263,8 @@ class UserPreferencesRepository(private val context: Context) {
             customTasbihText = p[Keys.CUSTOM_TASBIH_TEXT] ?: "سبحان الله وبحمده",
             lastReadSurah = p[Keys.LAST_READ_SURAH] ?: 1,
             lastReadAyah = p[Keys.LAST_READ_AYAH] ?: 1,
+            lastReadPage = p[Keys.LAST_READ_PAGE]
+                ?: com.example.data.local.catalog.SurahCatalog.findSurah(p[Keys.LAST_READ_SURAH] ?: 1).startPage,
             quranFontSizeSp = p[Keys.QURAN_FONT_SIZE] ?: 24,
             quranReadingTheme = QuranReadingTheme.fromKey(p[Keys.QURAN_READING_THEME]),
             quranDisplayMode = QuranDisplayMode.fromKey(p[Keys.QURAN_DISPLAY_MODE]),
@@ -428,10 +432,15 @@ class UserPreferencesRepository(private val context: Context) {
         }
     }
 
-    suspend fun saveLastRead(surahNumber: Int, ayahNumber: Int) {
+    suspend fun saveLastRead(surahNumber: Int, ayahNumber: Int, pageNumber: Int? = null) {
+        val safeSurah = surahNumber.coerceIn(1, 114)
+        val safeAyah = ayahNumber.coerceAtLeast(1)
+        val resolvedPage = pageNumber?.coerceIn(1, 604)
+            ?: com.example.data.local.catalog.SurahCatalog.findSurah(safeSurah).startPage
         context.noorDataStore.edit {
-            it[Keys.LAST_READ_SURAH] = surahNumber
-            it[Keys.LAST_READ_AYAH] = ayahNumber
+            it[Keys.LAST_READ_SURAH] = safeSurah
+            it[Keys.LAST_READ_AYAH] = safeAyah
+            it[Keys.LAST_READ_PAGE] = resolvedPage
         }
     }
 
@@ -607,6 +616,7 @@ class UserPreferencesRepository(private val context: Context) {
             it[Keys.TASBIH_SOUND] = prefs.tasbihSoundEnabled
             it[Keys.LAST_READ_SURAH] = prefs.lastReadSurah
             it[Keys.LAST_READ_AYAH] = prefs.lastReadAyah
+            it[Keys.LAST_READ_PAGE] = prefs.lastReadPage
             it[Keys.QURAN_FONT_SIZE] = prefs.quranFontSizeSp
             it[Keys.QURAN_READING_THEME] = prefs.quranReadingTheme.key
             it[Keys.QURAN_DISPLAY_MODE] = prefs.quranDisplayMode.key

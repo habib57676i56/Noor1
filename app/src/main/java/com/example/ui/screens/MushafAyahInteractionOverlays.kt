@@ -177,15 +177,13 @@ fun MushafAyahHighlightOverlay(
             imageWidth = imageWidth.toFloat(),
             imageHeight = imageHeight.toFloat()
         )
-        val cornerPx = (fitted.width * 0.012f).coerceIn(4f, 14f)
-        val strokePx = (fitted.width * 0.0032f).coerceIn(1.5f, 3.2f)
+        val cornerPx = (fitted.width * 0.008f).coerceIn(3f, 10f)
 
-        // 1. Real-Time Active Recited Ayah Highlight (separate from selection)
+        // 1. Real-Time Active Recited Ayah Highlight — clean soft transparent fill ONLY (no harsh box borders!)
         if (activeRegion != null) {
             val fillColor = preset.ayahFillColor.copy(
-                alpha = (baseAlpha * effectivePulse * (if (nightMode) 1.15f else 1f)).coerceIn(0.12f, 0.58f)
+                alpha = (baseAlpha * effectivePulse * (if (nightMode) 1.12f else 0.92f)).coerceIn(0.12f, 0.44f)
             )
-            val borderColor = preset.borderColor.copy(alpha = if (nightMode) 0.85f else 0.72f)
             for (seg in activeRegion.lineRegions) {
                 val rect = MushafCoordinateTransform.normalizedRectToFittedRect(seg.bounds, fitted)
                 if (rect.width <= 1f || rect.height <= 1f) continue
@@ -195,46 +193,32 @@ fun MushafAyahHighlightOverlay(
                     size = Size(rect.width, rect.height),
                     cornerRadius = CornerRadius(cornerPx, cornerPx)
                 )
-                drawRoundRect(
-                    color = borderColor,
-                    topLeft = Offset(rect.left, rect.top),
-                    size = Size(rect.width, rect.height),
-                    cornerRadius = CornerRadius(cornerPx, cornerPx),
-                    style = Stroke(width = strokePx)
-                )
             }
 
-            // 2. Verified Word-by-Word Audio Highlight (ONLY rendered when verified millisecond timestamps resolve a word)
+            // 2. Verified Word-by-Word Audio Highlight (subtle soft highlight ONLY when verified timestamps exist)
             if (activeWordRegion != null) {
                 val wRect = MushafCoordinateTransform.normalizedRectToFittedRect(activeWordRegion.bounds, fitted)
                 if (wRect.width > 1f && wRect.height > 1f) {
                     drawRoundRect(
-                        color = preset.wordFillColor.copy(alpha = (baseAlpha + 0.20f).coerceAtMost(0.65f)),
+                        color = preset.wordFillColor.copy(alpha = (baseAlpha + 0.14f).coerceAtMost(0.52f)),
                         topLeft = Offset(wRect.left, wRect.top),
                         size = Size(wRect.width, wRect.height),
                         cornerRadius = CornerRadius(cornerPx, cornerPx)
-                    )
-                    drawLine(
-                        color = preset.borderColor.copy(alpha = 0.95f),
-                        start = Offset(wRect.left + 2f, wRect.bottom),
-                        end = Offset(wRect.right - 2f, wRect.bottom),
-                        strokeWidth = strokePx * 1.35f
                     )
                 }
             }
         }
 
-        // 3. Long-Pressed / Selected Ayah Highlight (distinct emerald/gold crisp frame)
+        // 3. Selected Ayah Highlight — clean translucent fill following exact Ayah lines (zero harsh rectangular frames!)
         if (selectedAyah != null) {
             val isSameAsActive = activeRegion != null &&
                 activeRegion.surahNumber == selectedAyah.surahNumber &&
                 activeRegion.ayahNumber == selectedAyah.ayahNumber
             val selFill = if (isSameAsActive) {
-                Color(0xFF14B881).copy(alpha = 0.16f)
+                Color(0xFF14B881).copy(alpha = 0.20f)
             } else {
-                preset.ayahFillColor.copy(alpha = (baseAlpha + 0.08f).coerceAtMost(0.50f))
+                preset.ayahFillColor.copy(alpha = (baseAlpha + 0.06f).coerceAtMost(0.42f))
             }
-            val selStroke = if (nightMode) GoldBright else EmeraldPrimary
             for (seg in selectedAyah.lineRegions) {
                 val rect = MushafCoordinateTransform.normalizedRectToFittedRect(seg.bounds, fitted)
                 if (rect.width <= 1f || rect.height <= 1f) continue
@@ -243,13 +227,6 @@ fun MushafAyahHighlightOverlay(
                     topLeft = Offset(rect.left, rect.top),
                     size = Size(rect.width, rect.height),
                     cornerRadius = CornerRadius(cornerPx, cornerPx)
-                )
-                drawRoundRect(
-                    color = selStroke.copy(alpha = 0.92f),
-                    topLeft = Offset(rect.left, rect.top),
-                    size = Size(rect.width, rect.height),
-                    cornerRadius = CornerRadius(cornerPx, cornerPx),
-                    style = Stroke(width = strokePx * 1.25f)
                 )
             }
         }
@@ -268,6 +245,7 @@ fun MushafAyahContextualMenu(
     placeAboveAyah: Boolean,
     nightMode: Boolean,
     onReadFromHere: () -> Unit,
+    onOpenTafsir: () -> Unit = {},
     onOpenIrab: () -> Unit,
     onOpenSarf: () -> Unit,
     onPlaySingleAyah: () -> Unit,
@@ -365,7 +343,7 @@ fun MushafAyahContextualMenu(
                     }
                 }
 
-                // Primary 3 Required Actions: A. Read from this Ayah | B. I'rab | C. Sarf
+                // Primary Actions: Start Reading from here | Listen to this Ayah | Memorize this Ayah
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -378,7 +356,7 @@ fun MushafAyahContextualMenu(
                         ),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         modifier = Modifier
-                            .weight(1.25f)
+                            .weight(1.2f)
                             .heightIn(min = 48.dp)
                             .testTag("mushaf_menu_read_from_ayah")
                     ) {
@@ -394,17 +372,17 @@ fun MushafAyahContextualMenu(
                     }
 
                     OutlinedButton(
-                        onClick = onOpenIrab,
+                        onClick = onPlaySingleAyah,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp)
-                            .testTag("mushaf_menu_irab")
+                            .testTag("mushaf_menu_play_single")
                     ) {
-                        Icon(Icons.Rounded.School, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = L10n.pick(lang, "إعراب الآية", "I'rab"),
+                            text = L10n.pick(lang, "استماع للآية", "Listen"),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = ink,
@@ -413,17 +391,17 @@ fun MushafAyahContextualMenu(
                     }
 
                     OutlinedButton(
-                        onClick = onOpenSarf,
+                        onClick = onOpenInMemorization,
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         modifier = Modifier
-                            .weight(0.95f)
+                            .weight(1f)
                             .heightIn(min = 48.dp)
-                            .testTag("mushaf_menu_sarf")
+                            .testTag("mushaf_menu_open_hifz")
                     ) {
-                        Icon(Icons.Rounded.Translate, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Rounded.Psychology, contentDescription = null, tint = GoldPrimary, modifier = Modifier.size(17.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = L10n.pick(lang, "الصرف", "Sarf"),
+                            text = L10n.pick(lang, "تحفيظ", "Memorize"),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             color = ink,
@@ -432,7 +410,7 @@ fun MushafAyahContextualMenu(
                     }
                 }
 
-                // Secondary Actions Row: Play Single, Repeat Range, Copy, Share, Bookmark, Add to Hifz, Open in Hifz
+                // Secondary Real Actions Row: Tafsir, I'rab, Sarf, Repeat Range, Bookmark, Add to Hifz Plan, Copy, Share
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -441,12 +419,28 @@ fun MushafAyahContextualMenu(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ContextualMiniActionChip(
-                        icon = Icons.Rounded.PlayArrow,
-                        label = L10n.pick(lang, "تشغيل الآية", "Play Ayah"),
+                        icon = Icons.Rounded.AutoStories,
+                        label = L10n.pick(lang, "التفسير", "Tafsir"),
                         ink = ink,
                         nightMode = nightMode,
-                        testTag = "mushaf_menu_play_single",
-                        onClick = onPlaySingleAyah
+                        testTag = "mushaf_menu_tafsir",
+                        onClick = onOpenTafsir
+                    )
+                    ContextualMiniActionChip(
+                        icon = Icons.Rounded.School,
+                        label = L10n.pick(lang, "إعراب الآية", "I'rab"),
+                        ink = ink,
+                        nightMode = nightMode,
+                        testTag = "mushaf_menu_irab",
+                        onClick = onOpenIrab
+                    )
+                    ContextualMiniActionChip(
+                        icon = Icons.Rounded.Translate,
+                        label = L10n.pick(lang, "الصرف", "Sarf"),
+                        ink = ink,
+                        nightMode = nightMode,
+                        testTag = "mushaf_menu_sarf",
+                        onClick = onOpenSarf
                     )
                     ContextualMiniActionChip(
                         icon = Icons.Rounded.Repeat,
@@ -455,6 +449,22 @@ fun MushafAyahContextualMenu(
                         nightMode = nightMode,
                         testTag = "mushaf_menu_repeat_range",
                         onClick = onRepeatRange
+                    )
+                    ContextualMiniActionChip(
+                        icon = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                        label = if (isBookmarked) L10n.pick(lang, "محفوظة", "Saved") else L10n.pick(lang, "مفضلة", "Favorite"),
+                        ink = if (isBookmarked) GoldPrimary else ink,
+                        nightMode = nightMode,
+                        testTag = "mushaf_menu_bookmark",
+                        onClick = onToggleBookmark
+                    )
+                    ContextualMiniActionChip(
+                        icon = Icons.Rounded.PlaylistAdd,
+                        label = L10n.pick(lang, "خطة حفظ", "Add Hifz"),
+                        ink = ink,
+                        nightMode = nightMode,
+                        testTag = "mushaf_menu_add_hifz",
+                        onClick = onAddToMemorization
                     )
                     ContextualMiniActionChip(
                         icon = Icons.Rounded.ContentCopy,
@@ -471,30 +481,6 @@ fun MushafAyahContextualMenu(
                         nightMode = nightMode,
                         testTag = "mushaf_menu_share",
                         onClick = onShareAyah
-                    )
-                    ContextualMiniActionChip(
-                        icon = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                        label = if (isBookmarked) L10n.pick(lang, "محفوظة", "Saved") else L10n.pick(lang, "مفضلة", "Bookmark"),
-                        ink = if (isBookmarked) GoldPrimary else ink,
-                        nightMode = nightMode,
-                        testTag = "mushaf_menu_bookmark",
-                        onClick = onToggleBookmark
-                    )
-                    ContextualMiniActionChip(
-                        icon = Icons.Rounded.PlaylistAdd,
-                        label = L10n.pick(lang, "إضافة للحفظ", "Add Hifz"),
-                        ink = ink,
-                        nightMode = nightMode,
-                        testTag = "mushaf_menu_add_hifz",
-                        onClick = onAddToMemorization
-                    )
-                    ContextualMiniActionChip(
-                        icon = Icons.Rounded.Psychology,
-                        label = L10n.pick(lang, "فتح في التسميع", "Open Hifz"),
-                        ink = ink,
-                        nightMode = nightMode,
-                        testTag = "mushaf_menu_open_hifz",
-                        onClick = onOpenInMemorization
                     )
                 }
 

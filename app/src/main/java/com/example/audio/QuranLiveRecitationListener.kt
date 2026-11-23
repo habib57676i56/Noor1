@@ -39,7 +39,7 @@ data class LiveRecitationState(
     val crossSurahJumpTarget: Pair<Int, Int>? = null,
     val pauseCount: Int = 0,
     val longestPauseMs: Long = 0L,
-    val isOfflinePreferred: Boolean = true,
+    val isOfflinePreferred: Boolean = false,
     val isOfflineFallbackUsed: Boolean = false,
     val lastErrorCode: Int? = null,
     val isRateLimited: Boolean = false,
@@ -267,8 +267,8 @@ class QuranLiveRecitationListener(private val appContext: Context) {
     private var shouldKeepListening = false
     private var isPaused = false
     private var isSessionRunning = false
-    private var preferOfflineMode = true
-    private var sessionOfflineFlag = true
+    private var preferOfflineMode = false
+    private var sessionOfflineFlag = false
     private var consecutiveErrors = 0
     private var consecutiveSilenceTimeouts = 0
     private var consecutiveRateLimits = 0
@@ -401,14 +401,14 @@ class QuranLiveRecitationListener(private val appContext: Context) {
             errorMessageAr = "",
             errorMessageEn = "",
             statusNoteAr = if (preferOfflineMode) {
-                "يستمع الآن للتلاوة العربية (أولوية العمل دون إنترنت)..."
+                "يستمع الآن للتلاوة العربية (وضع دون إنترنت — يتطلب حزمة اللغة العربية)..."
             } else {
-                "يستمع الآن للتلاوة العربية..."
+                "يستمع الآن ويحوّل تلاوتك إلى نص عربي مباشر (عبر محرك أندرويد للصوت العربي)..."
             },
             statusNoteEn = if (preferOfflineMode) {
-                "Listening to Arabic recitation (offline-first)..."
+                "Listening to Arabic recitation (offline Arabic pack mode)..."
             } else {
-                "Listening to Arabic recitation..."
+                "Listening & transcribing Arabic recitation live (Android Arabic speech engine)..."
             }
         )
 

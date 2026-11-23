@@ -63,7 +63,7 @@ data class AdminSettingsState(
     val featureKidsEnabled: Boolean = true,
     val featureQuizEnabled: Boolean = true,
     val featureRadioEnabled: Boolean = true,
-    val sttPreferOffline: Boolean = true,
+    val sttPreferOffline: Boolean = false,
     val assessmentStrictness: AssessmentStrictness = AssessmentStrictness.BALANCED,
     val aiMinConfidencePercent: Int = 28,
     val autoApproveAdminImports: Boolean = true,
@@ -79,7 +79,7 @@ data class AdminSettingsState(
             featureKidsEnabled = map["feature_kids"]?.toBooleanStrictOrNull() ?: true,
             featureQuizEnabled = map["feature_quiz"]?.toBooleanStrictOrNull() ?: true,
             featureRadioEnabled = map["feature_radio"]?.toBooleanStrictOrNull() ?: true,
-            sttPreferOffline = map["stt_prefer_offline"]?.toBooleanStrictOrNull() ?: true,
+            sttPreferOffline = map["stt_prefer_offline"]?.toBooleanStrictOrNull() ?: false,
             assessmentStrictness = AssessmentStrictness.fromKey(map["assessment_strictness"]),
             aiMinConfidencePercent = map["ai_min_confidence"]?.toIntOrNull()?.coerceIn(15, 65) ?: 28,
             autoApproveAdminImports = map["auto_approve_imports"]?.toBooleanStrictOrNull() ?: true,
@@ -405,6 +405,9 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun startHifzLiveMic(resetTranscript: Boolean = false) {
+        if (audioPlayer.state.value.isPlaying) {
+            audioPlayer.pause()
+        }
         val wasRecording = recordingState.value.isRecordingOrPaused
         if (wasRecording) {
             recitationRecorder.stopRecording()
@@ -418,15 +421,30 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun pauseHifzLiveMic() = hifzMicListener.pauseListening()
-    fun resumeHifzLiveMic() = hifzMicListener.resumeListening()
+    fun resumeHifzLiveMic() {
+        if (audioPlayer.state.value.isPlaying) {
+            audioPlayer.pause()
+        }
+        hifzMicListener.resumeListening()
+    }
     fun stopHifzLiveMic(clearTranscript: Boolean = false) = hifzMicListener.stopListening(clearTranscript)
     fun clearHifzTranscript() = hifzMicListener.clearTranscript()
+    fun clearRecitationReport() {
+        _recitationReport.value = null
+        _hifzComparison.value = null
+    }
+    fun setSttPreferOfflineLocal(preferOffline: Boolean) {
+        hifzMicListener.setPreferOffline(preferOffline)
+    }
     fun injectHifzSpeechResult(text: String) = hifzMicListener.injectRecognizedText(text, isFinal = true)
     fun buildSystemSpeechIntent(): Intent = hifzMicListener.buildSystemSpeechIntent()
     fun isSpeechRecognitionAvailable(): Boolean = hifzMicListener.isSpeechServiceAvailable()
 
     // Real MediaRecorder Audio Recording + Playback for Hifz Recitation
     fun startRecitationRecording(surahNumber: Int, ayahNumber: Int) {
+        if (audioPlayer.state.value.isPlaying) {
+            audioPlayer.pause()
+        }
         if (hifzLiveState.value.isActive) {
             hifzMicListener.stopListening(clearTranscript = false)
         }

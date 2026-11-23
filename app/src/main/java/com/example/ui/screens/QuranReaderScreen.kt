@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
@@ -110,6 +112,7 @@ import com.example.ui.theme.GoldPrimary
 import com.example.ui.theme.IvoryInk
 import com.example.ui.theme.IvorySurface
 import com.example.ui.theme.LocalNoorColors
+import com.example.viewmodel.EcosystemViewModel
 import com.example.viewmodel.NoorViewModel
 import com.example.viewmodel.SurahReaderState
 import kotlinx.coroutines.delay
@@ -126,7 +129,9 @@ fun QuranReaderScreen(
     viewModel: NoorViewModel,
     onBack: () -> Unit,
     onNavigateToSurah: (Int) -> Unit = {},
-    onOpenInMemorization: (surahNumber: Int, ayahNumber: Int) -> Unit = { _, _ -> }
+    onOpenInMemorization: (surahNumber: Int, ayahNumber: Int) -> Unit = { _, _ -> },
+    ecosystemViewModel: EcosystemViewModel? = null,
+    onFullScreenChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
@@ -151,14 +156,37 @@ fun QuranReaderScreen(
     val effectiveMushafImageMode = useMushafPageImages && globalConfig.featureMushafImagesEnabled
     val revealedInMemorize = remember { mutableStateMapOf<Int, Boolean>() }
 
+    // Clean Full-Screen Mushaf Mode (toggled by single-tapping an empty Mushaf area)
+    var isMushafFullScreen by rememberSaveable { mutableStateOf(false) }
+    val isFullScreenActive = isMushafFullScreen &&
+        prefs.quranDisplayMode == QuranDisplayMode.MUSHAF &&
+        effectiveMushafImageMode
+
+    // Integrated In-Reader "My Recitation & Memorization" Panel (distinct from Sheikh Listening)
+    var showRecitationPanel by rememberSaveable { mutableStateOf(false) }
+    var lastVisibleAyah by remember(surahNumber) {
+        mutableIntStateOf(if (prefs.lastReadSurah == surahNumber) prefs.lastReadAyah.coerceAtLeast(1) else 1)
+    }
+    var recitationTargetAyah by remember(surahNumber) { mutableIntStateOf(lastVisibleAyah) }
+    var restoredInitialPositionForSurah by remember(surahNumber) { mutableStateOf(false) }
+    var userHasInteractedWithSurah by remember(surahNumber) { mutableStateOf(false) }
+
     // Intelligent Auto-Scrolling state (persists seamlessly across Surah transitions!)
     var autoScrollMode by rememberSaveable { mutableStateOf(AutoScrollMode.STOPPED) }
     var showAutoScrollControls by rememberSaveable { mutableStateOf(false) }
 
     // Microphone permission privacy rationale dialog for Listen & Follow
     var showMicPermissionDialog by remember { mutableStateOf(false) }
-    var lastVisibleAyah by remember(surahNumber) { mutableIntStateOf(if (prefs.lastReadSurah == surahNumber) prefs.lastReadAyah else 1) }
-    var restoredInitialPositionForSurah by remember(surahNumber) { mutableStateOf(false) }
+
+    // Sync Clean Full-Screen state to parent NoorAppShell (so floating mini-player hides cleanly)
+    LaunchedEffect(isFullScreenActive) {
+        onFullScreenChanged(isFullScreenActive)
+    }
+
+    // Pressing system Back while in Clean Full-Screen exits Full-Screen first
+    BackHandler(enabled = isFullScreenActive) {
+        isMushafFullScreen = false
+    }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -181,16 +209,17 @@ fun QuranReaderScreen(
         viewModel.loadSurah(surahNumber)
     }
 
-    // Stop microphone when leaving QuranReaderScreen completely; preserve reading position
+    // Preserve reading position on exit ONLY when restored or navigated by user (never clobber with 1)
     DisposableEffect(surahNumber) {
         onDispose {
-            if (lastVisibleAyah > 0) {
+            if ((restoredInitialPositionForSurah || userHasInteractedWithSurah) && lastVisibleAyah > 0) {
                 viewModel.saveLastRead(surahNumber, lastVisibleAyah)
             }
         }
     }
     DisposableEffect(Unit) {
         onDispose {
+            onFullScreenChanged(false)
             viewModel.stopLiveRecitationTracking()
         }
     }
@@ -201,12 +230,16 @@ fun QuranReaderScreen(
     LaunchedEffect(readerState, surahNumber) {
         val st = readerState
         if (st is SurahReaderState.Ready && st.surahNumber == surahNumber) {
-            val savedAyah = if (prefs.lastReadSurah == surahNumber) prefs.lastReadAyah else 1
+            val savedAyah = if (prefs.lastReadSurah == surahNumber) prefs.lastReadAyah.coerceAtLeast(1) else 1
+            if (!restoredInitialPositionForSurah) {
+                lastVisibleAyah = savedAyah
+                recitationTargetAyah = savedAyah
+            }
             viewModel.syncLiveTrackerSurah(surahNumber, st.verses, initialAyah = savedAyah)
 
             if (!restoredInitialPositionForSurah) {
                 restoredInitialPositionForSurah = true
-                if (savedAyah > 1) {
+                if (savedAyah > 1 && !(prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode)) {
                     val targetIdx = if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF) {
                         val pages = st.verses.groupBy { it.pageNumber }.entries.toList()
                         val pageIdx = pages.indexOfFirst { (_, pv) -> pv.any { it.numberInSurah == savedAyah } }
@@ -225,8 +258,10 @@ fun QuranReaderScreen(
         }
     }
 
-    // Track current visible Ayah so pausing or leaving always preserves exact reading position
-    LaunchedEffect(listState.firstVisibleItemIndex, readerState, prefs.quranDisplayMode) {
+    // Track current visible Ayah in Study/Text/Memorize modes (NEVER overwrite lastVisibleAyah in Mushaf Image mode!)
+    LaunchedEffect(listState.firstVisibleItemIndex, readerState, prefs.quranDisplayMode, effectiveMushafImageMode) {
+        if (!restoredInitialPositionForSurah) return@LaunchedEffect
+        if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode) return@LaunchedEffect
         val st = readerState
         if (st is SurahReaderState.Ready && st.surahNumber == surahNumber) {
             val contentIndex = (listState.firstVisibleItemIndex - headerItemsOffset).coerceAtLeast(0)
@@ -236,8 +271,9 @@ fun QuranReaderScreen(
             } else {
                 st.verses.getOrNull(contentIndex)?.numberInSurah
             }
-            if (ayah != null && ayah > 0) {
+            if (ayah != null && ayah > 0 && listState.firstVisibleItemIndex > 0) {
                 lastVisibleAyah = ayah
+                userHasInteractedWithSurah = true
             }
         }
     }
@@ -375,108 +411,115 @@ fun QuranReaderScreen(
             .background(surfaceBg)
             .testTag("quran_reader_screen")
     ) {
-        NoorScreenHeader(
-            title = L10n.pick(lang, "سورة ${surahMeta.nameAr}", surahMeta.nameEn),
-            subtitle = L10n.pick(
-                lang,
-                "${if (surahMeta.isMeccan) "مكية" else "مدنية"} · ${surahMeta.verseCount} آية · الجزء ${surahMeta.startJuz} · ص ${surahMeta.startPage}",
-                "${surahMeta.meaningEn} · ${surahMeta.verseCount} Ayahs · Juz ${surahMeta.startJuz} · p.${surahMeta.startPage}"
-            ),
-            onBack = {
-                viewModel.saveLastRead(surahNumber, lastVisibleAyah)
-                viewModel.stopLiveRecitationTracking()
-                onBack()
-            },
-            trailing = {
-                Row {
-                    IconButton(onClick = { viewModel.setQuranFontSize(prefs.quranFontSizeSp - 2) }) {
-                        Icon(Icons.Rounded.TextDecrease, contentDescription = "Smaller text", tint = noorColors.goldAccent)
-                    }
-                    IconButton(onClick = { viewModel.setQuranFontSize(prefs.quranFontSizeSp + 2) }) {
-                        Icon(Icons.Rounded.TextIncrease, contentDescription = "Larger text", tint = noorColors.goldAccent)
+        if (!isFullScreenActive) {
+            NoorScreenHeader(
+                title = L10n.pick(lang, "سورة ${surahMeta.nameAr}", surahMeta.nameEn),
+                subtitle = L10n.pick(
+                    lang,
+                    "${if (surahMeta.isMeccan) "مكية" else "مدنية"} · ${surahMeta.verseCount} آية · الجزء ${surahMeta.startJuz} · ص ${surahMeta.startPage}",
+                    "${surahMeta.meaningEn} · ${surahMeta.verseCount} Ayahs · Juz ${surahMeta.startJuz} · p.${surahMeta.startPage}"
+                ),
+                onBack = {
+                    viewModel.saveLastRead(surahNumber, lastVisibleAyah)
+                    viewModel.stopLiveRecitationTracking()
+                    onBack()
+                },
+                trailing = {
+                    Row {
+                        IconButton(onClick = { viewModel.setQuranFontSize(prefs.quranFontSizeSp - 2) }) {
+                            Icon(Icons.Rounded.TextDecrease, contentDescription = "Smaller text", tint = noorColors.goldAccent)
+                        }
+                        IconButton(onClick = { viewModel.setQuranFontSize(prefs.quranFontSizeSp + 2) }) {
+                            Icon(Icons.Rounded.TextIncrease, contentDescription = "Larger text", tint = noorColors.goldAccent)
+                        }
                     }
                 }
+            )
+
+            // Sticky Sheikh Audio Follow-Along Bar (real verse-by-verse sync across same or flowed Surah!)
+            val bannerSurahNum = audioState.playingSurah ?: surahNumber
+            val bannerAyahNum = if (audioState.hasActiveSession) audioState.playingAyah else null
+            if (bannerAyahNum != null && (bannerSurahNum == surahNumber || (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode))) {
+                val bannerSurahMeta = remember(bannerSurahNum) { SurahCatalog.findSurah(bannerSurahNum) }
+                val readyVerses = (readerState as? SurahReaderState.Ready)?.verses.orEmpty()
+                SheikhAudioFollowBanner(
+                    surahNameAr = bannerSurahMeta.nameAr,
+                    surahNameEn = bannerSurahMeta.nameEn,
+                    totalAyahs = bannerSurahMeta.verseCount,
+                    activeAyah = bannerAyahNum,
+                    audioState = audioState,
+                    onTogglePauseResume = { viewModel.toggleAudioPauseResume() },
+                    onPreviousAyah = { viewModel.playPreviousAudio() },
+                    onNextAyah = { viewModel.playNextAudio() },
+                    onScrubToAyah = { targetAyah ->
+                        if (bannerSurahNum == surahNumber && readyVerses.isNotEmpty()) {
+                            viewModel.jumpToQuranAudioAyah(surahNumber, targetAyah, readyVerses)
+                        } else {
+                            viewModel.playFromMushafAyah(bannerSurahNum, targetAyah)
+                        }
+                    },
+                    onCycleRepeat = { viewModel.cycleAudioRepeatMode() },
+                    onCycleSpeed = {
+                        val nextSpd = when {
+                            audioState.playbackSpeed < 0.95f -> 1.0f
+                            audioState.playbackSpeed < 1.2f -> 1.25f
+                            audioState.playbackSpeed < 1.45f -> 1.5f
+                            else -> 0.75f
+                        }
+                        viewModel.setAudioPlaybackSpeed(nextSpd)
+                    },
+                    onStop = { viewModel.stopQuranAudio() }
+                )
             }
-        )
 
-        // Sticky Sheikh Audio Follow-Along Bar (real verse-by-verse sync across same or flowed Surah!)
-        val bannerSurahNum = audioState.playingSurah ?: surahNumber
-        val bannerAyahNum = if (audioState.hasActiveSession) audioState.playingAyah else null
-        if (bannerAyahNum != null && (bannerSurahNum == surahNumber || (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode))) {
-            val bannerSurahMeta = remember(bannerSurahNum) { SurahCatalog.findSurah(bannerSurahNum) }
-            val readyVerses = (readerState as? SurahReaderState.Ready)?.verses.orEmpty()
-            SheikhAudioFollowBanner(
-                surahNameAr = bannerSurahMeta.nameAr,
-                surahNameEn = bannerSurahMeta.nameEn,
-                totalAyahs = bannerSurahMeta.verseCount,
-                activeAyah = bannerAyahNum,
-                audioState = audioState,
-                onTogglePauseResume = { viewModel.toggleAudioPauseResume() },
-                onPreviousAyah = { viewModel.playPreviousAudio() },
-                onNextAyah = { viewModel.playNextAudio() },
-                onScrubToAyah = { targetAyah ->
-                    if (bannerSurahNum == surahNumber && readyVerses.isNotEmpty()) {
-                        viewModel.jumpToQuranAudioAyah(surahNumber, targetAyah, readyVerses)
-                    } else {
-                        viewModel.playFromMushafAyah(bannerSurahNum, targetAyah)
-                    }
-                },
-                onCycleRepeat = { viewModel.cycleAudioRepeatMode() },
-                onCycleSpeed = {
-                    val nextSpd = when {
-                        audioState.playbackSpeed < 0.95f -> 1.0f
-                        audioState.playbackSpeed < 1.2f -> 1.25f
-                        audioState.playbackSpeed < 1.45f -> 1.5f
-                        else -> 0.75f
-                    }
-                    viewModel.setAudioPlaybackSpeed(nextSpd)
-                },
-                onStop = { viewModel.stopQuranAudio() }
-            )
-        }
+            // Sticky Live Recitation Tracking Banner (always visible while Live Mic Follow is active or paused!)
+            if (liveRecitation.status != LiveRecitationStatus.IDLE) {
+                LiveRecitationTrackingBanner(
+                    state = liveRecitation,
+                    onPause = { viewModel.pauseLiveRecitationTracking() },
+                    onResume = { viewModel.resumeLiveRecitationTracking() },
+                    onStop = { viewModel.stopLiveRecitationTracking() }
+                )
+            }
 
-        // Sticky Live Recitation Tracking Banner (always visible while Listen & Follow is active or paused!)
-        if (liveRecitation.status != LiveRecitationStatus.IDLE) {
-            LiveRecitationTrackingBanner(
-                state = liveRecitation,
-                onPause = { viewModel.pauseLiveRecitationTracking() },
-                onResume = { viewModel.resumeLiveRecitationTracking() },
-                onStop = { viewModel.stopLiveRecitationTracking() }
-            )
-        }
-
-        // Sticky Auto-Scroll Control Bar (when enabled, provides instant Start/Pause/Resume/Stop + Speed!)
-        if (showAutoScrollControls || autoScrollMode != AutoScrollMode.STOPPED) {
-            AutoScrollControlBar(
-                mode = autoScrollMode,
-                speed = prefs.quranAutoScrollSpeed,
-                onStart = {
-                    viewModel.stopLiveRecitationTracking()
-                    autoScrollMode = AutoScrollMode.RUNNING
-                },
-                onPause = {
-                    autoScrollMode = AutoScrollMode.PAUSED
-                    viewModel.saveLastRead(surahNumber, lastVisibleAyah)
-                },
-                onResume = {
-                    autoScrollMode = AutoScrollMode.RUNNING
-                },
-                onStop = {
-                    autoScrollMode = AutoScrollMode.STOPPED
-                    showAutoScrollControls = false
-                    viewModel.saveLastRead(surahNumber, lastVisibleAyah)
-                },
-                onSpeedChange = { viewModel.setQuranAutoScrollSpeed(it) }
-            )
+            // Sticky Auto-Scroll Control Bar (when enabled, provides instant Start/Pause/Resume/Stop + Speed!)
+            if (showAutoScrollControls || autoScrollMode != AutoScrollMode.STOPPED) {
+                AutoScrollControlBar(
+                    mode = autoScrollMode,
+                    speed = prefs.quranAutoScrollSpeed,
+                    onStart = {
+                        viewModel.stopLiveRecitationTracking()
+                        autoScrollMode = AutoScrollMode.RUNNING
+                    },
+                    onPause = {
+                        autoScrollMode = AutoScrollMode.PAUSED
+                        viewModel.saveLastRead(surahNumber, lastVisibleAyah)
+                    },
+                    onResume = {
+                        autoScrollMode = AutoScrollMode.RUNNING
+                    },
+                    onStop = {
+                        autoScrollMode = AutoScrollMode.STOPPED
+                        showAutoScrollControls = false
+                        viewModel.saveLastRead(surahNumber, lastVisibleAyah)
+                    },
+                    onSpeedChange = { viewModel.setQuranAutoScrollSpeed(it) }
+                )
+            }
         }
 
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 120.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = if (isFullScreenActive) {
+                PaddingValues(0.dp)
+            } else {
+                PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 120.dp)
+            },
+            verticalArrangement = Arrangement.spacedBy(if (isFullScreenActive) 0.dp else 12.dp)
         ) {
-            // Reading Mode + Theme + Reciter + Smart Controls Deck
+            // Reading Mode + Theme + Reciter + Smart Controls Deck (hidden cleanly in Full-Screen Mushaf mode)
+            if (!isFullScreenActive) {
             item(key = "reader_controls_deck") {
                 LiquidGlassCard(contentPadding = PaddingValues(14.dp)) {
                     // Display Modes: Study, Mushaf, Memorize
@@ -533,7 +576,11 @@ fun QuranReaderScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Smart Feature Bar: Play Surah · Auto Scroll · Listen & Follow (Live AI Verse Sync)
+                    // Clearly Separated Primary Modes:
+                    // 1) Sheikh Listening (Continuous Uninterrupted Recitation + Live Highlight)
+                    // 2) My Recitation & Memorization (Real Mic Recording + Arabic STT + Word Evaluation)
+                    // 3) Auto-Scroll
+                    val isSheikhPlayingThisSurah = audioState.hasActiveSession && audioState.playingSurah == surahNumber
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -541,69 +588,71 @@ fun QuranReaderScreen(
                     ) {
                         Button(
                             onClick = {
-                                val ready = readerState as? SurahReaderState.Ready
-                                if (ready != null && ready.surahNumber == surahNumber && ready.verses.isNotEmpty()) {
-                                    viewModel.playSurahVerseByVerse(
+                                if (isSheikhPlayingThisSurah) {
+                                    viewModel.toggleAudioPauseResume()
+                                } else {
+                                    viewModel.playFromMushafAyah(
                                         surahNumber = surahNumber,
-                                        verses = ready.verses,
-                                        reciter = prefs.quranReciter,
                                         startAyah = lastVisibleAyah.coerceAtLeast(1)
                                     )
-                                } else {
-                                    viewModel.playFullSurahWithReciter(surahNumber, prefs.quranReciter)
-                                }
-                            },
-                            modifier = Modifier.testTag("play_and_follow_audio_btn"),
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = Color.White),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
-                        ) {
-                            Icon(Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(L10n.pick(lang, "تلاوة", "Play"), maxLines = 1)
-                        }
-
-                        // Listen & Follow AI Live Verse Tracking Button
-                        val isListening = liveRecitation.isActive
-                        Button(
-                            onClick = {
-                                if (isListening || liveRecitation.status == LiveRecitationStatus.PAUSED) {
-                                    viewModel.stopLiveRecitationTracking()
-                                } else {
-                                    val hasMic = ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.RECORD_AUDIO
-                                    ) == PackageManager.PERMISSION_GRANTED
-                                    if (hasMic) {
-                                        autoScrollMode = AutoScrollMode.STOPPED
-                                        viewModel.startLiveRecitationTracking()
-                                    } else {
-                                        showMicPermissionDialog = true
-                                    }
                                 }
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .testTag("listen_and_follow_button"),
+                                .testTag("play_and_follow_audio_btn"),
+                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = Color.White),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isSheikhPlayingThisSurah && audioState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (isSheikhPlayingThisSurah && audioState.isPlaying) {
+                                    L10n.pick(lang, "إيقاف مؤقت", "Pause")
+                                } else {
+                                    L10n.pick(lang, "استماع للشيخ", "Listen")
+                                },
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        // Integrated In-Reader My Recitation & Memorization Mode
+                        Button(
+                            onClick = {
+                                if (ecosystemViewModel != null) {
+                                    if (!showRecitationPanel) {
+                                        if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
+                                        recitationTargetAyah = lastVisibleAyah.coerceAtLeast(1)
+                                    }
+                                    showRecitationPanel = !showRecitationPanel
+                                } else {
+                                    onOpenInMemorization(surahNumber, lastVisibleAyah.coerceAtLeast(1))
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("in_reader_recite_btn"),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isListening) GoldPrimary else EmeraldDeep,
-                                contentColor = if (isListening) Color(0xFF071B14) else GoldBright
+                                containerColor = if (showRecitationPanel) GoldPrimary else EmeraldDeep,
+                                contentColor = if (showRecitationPanel) Color(0xFF071B14) else GoldBright
                             ),
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
                         ) {
                             Icon(
-                                imageVector = if (isListening) Icons.Rounded.GraphicEq else Icons.Rounded.Mic,
+                                imageVector = Icons.Rounded.RecordVoiceOver,
                                 contentDescription = null,
                                 modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = if (isListening) {
-                                    L10n.pick(lang, "إيقاف المتابعة", "Stop Follow")
-                                } else {
-                                    L10n.pick(lang, "استماع ومتابعة", "Listen & Follow")
-                                },
+                                text = L10n.pick(lang, "تسميعي وتسجيل", "Recite & Hifz"),
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -639,6 +688,39 @@ fun QuranReaderScreen(
                             )
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Live Microphone Auto-Follow (kept clearly distinct from Sheikh listening)
+                    val isListening = liveRecitation.isActive
+                    LiquidGlassChip(
+                        label = if (isListening) {
+                            L10n.pick(lang, "إيقاف التتبع الصوتي الحي بالميكروفون", "Stop Live Mic Auto-Follow")
+                        } else {
+                            L10n.pick(lang, "تتبع صوتي حي بالميكروفون أثناء قراءتك", "Live Mic Verse Follow (Your Voice)")
+                        },
+                        selected = isListening,
+                        onClick = {
+                            if (isListening || liveRecitation.status == LiveRecitationStatus.PAUSED) {
+                                viewModel.stopLiveRecitationTracking()
+                            } else {
+                                val hasMic = ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.RECORD_AUDIO
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (hasMic) {
+                                    if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
+                                    autoScrollMode = AutoScrollMode.STOPPED
+                                    viewModel.startLiveRecitationTracking()
+                                } else {
+                                    showMicPermissionDialog = true
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("listen_and_follow_button")
+                    )
 
                     // Mushaf Page Image vs Interactive Text sub-toggle + existing Study/Memorize toggles
                     if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && globalConfig.featureMushafImagesEnabled) {
@@ -694,6 +776,32 @@ fun QuranReaderScreen(
                             }
                         }
                     }
+                }
+            }
+            } // end if (!isFullScreenActive)
+
+            // Integrated In-Reader "My Recitation & Memorization" Panel (real Mic Recording + Arabic STT + Word Evaluation)
+            val readyForRecitation = readerState as? SurahReaderState.Ready
+            if (!isFullScreenActive &&
+                ecosystemViewModel != null &&
+                readyForRecitation != null &&
+                readyForRecitation.surahNumber == surahNumber &&
+                (showRecitationPanel || prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE)
+            ) {
+                item(key = "in_reader_recitation_panel") {
+                    InReaderRecitationPanel(
+                        surahNumber = surahNumber,
+                        verses = readyForRecitation.verses,
+                        initialAyah = recitationTargetAyah.coerceIn(1, readyForRecitation.verses.size.coerceAtLeast(1)),
+                        ecosystemViewModel = ecosystemViewModel,
+                        onOpenFullHifzStudio = { sNum, aNum -> onOpenInMemorization(sNum, aNum) },
+                        onClose = {
+                            showRecitationPanel = false
+                            if (prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
+                                viewModel.setQuranDisplayMode(QuranDisplayMode.MUSHAF)
+                            }
+                        }
+                    )
                 }
             }
 
@@ -788,15 +896,20 @@ fun QuranReaderScreen(
                                 hasVerifiedWordTiming = hasVerifiedWordTimings,
                                 isAudioPlaying = audioState.isPlaying,
                                 isNightTheme = isDarkReader,
+                                isFullScreen = isFullScreenActive,
+                                onToggleFullScreen = { isMushafFullScreen = !isMushafFullScreen },
                                 highlightStyle = highlightStyle,
                                 bookmarkedKeys = bookmarkedPairs,
                                 loadPageVerses = { pageNum -> viewModel.loadVersesForMushafPage(pageNum) },
-                                onPageChanged = { pageNum, primarySurah ->
-                                    val firstAyahOnPage = state.verses
-                                        .firstOrNull { it.pageNumber == pageNum }
-                                        ?.numberInSurah ?: 1
-                                    lastVisibleAyah = firstAyahOnPage
-                                    viewModel.saveLastRead(primarySurah, firstAyahOnPage)
+                                onPageChanged = { pageNum, primarySurah, isUserNavigation ->
+                                    if (isUserNavigation) {
+                                        val firstAyahOnPage = state.verses
+                                            .firstOrNull { it.pageNumber == pageNum }
+                                            ?.numberInSurah ?: 1
+                                        lastVisibleAyah = firstAyahOnPage
+                                        userHasInteractedWithSurah = true
+                                        viewModel.saveLastRead(primarySurah, firstAyahOnPage)
+                                    }
                                 },
                                 onToggleAudio = {
                                     if (audioState.hasActiveSession) {
@@ -810,12 +923,21 @@ fun QuranReaderScreen(
                                 },
                                 onUpdateHighlightStyle = { viewModel.updateMushafHighlightStyle(it) },
                                 onReadFromAyah = { sNum, aNum ->
+                                    lastVisibleAyah = aNum
+                                    userHasInteractedWithSurah = true
+                                    viewModel.saveLastRead(sNum, aNum)
                                     viewModel.playFromMushafAyah(surahNumber = sNum, startAyah = aNum)
                                 },
                                 onPlaySingleAyah = { sNum, aNum, pageNum ->
+                                    lastVisibleAyah = aNum
+                                    userHasInteractedWithSurah = true
+                                    viewModel.saveLastRead(sNum, aNum)
                                     viewModel.playSingleMushafAyah(sNum, aNum, pageNum)
                                 },
                                 onRepeatAyahRange = { sNum, fromA, toA ->
+                                    lastVisibleAyah = fromA
+                                    userHasInteractedWithSurah = true
+                                    viewModel.saveLastRead(sNum, fromA)
                                     viewModel.playFromMushafAyah(
                                         surahNumber = sNum,
                                         startAyah = fromA,
@@ -830,10 +952,20 @@ fun QuranReaderScreen(
                                     viewModel.addAyahToMemorizationPlan(sNum, aNum)
                                 },
                                 onOpenInMemorization = { sNum, aNum ->
-                                    onOpenInMemorization(sNum, aNum)
+                                    if (ecosystemViewModel != null && sNum == surahNumber) {
+                                        if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
+                                        isMushafFullScreen = false
+                                        recitationTargetAyah = aNum
+                                        showRecitationPanel = true
+                                    } else {
+                                        onOpenInMemorization(sNum, aNum)
+                                    }
                                 },
                                 onStatusBanner = { msg -> viewModel.showBannerMessage(msg) },
-                                onSwitchToTextMushaf = { useMushafPageImages = false }
+                                onSwitchToTextMushaf = {
+                                    isMushafFullScreen = false
+                                    useMushafPageImages = false
+                                }
                             )
                         }
                     } else if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF) {

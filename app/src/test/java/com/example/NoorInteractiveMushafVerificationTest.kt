@@ -6,6 +6,10 @@ import android.media.AudioManager
 import android.net.Uri
 import androidx.test.core.app.ApplicationProvider
 import com.example.audio.QuranAudioPlayer
+import com.example.audio.QuranLiveRecitationListener
+import com.example.audio.QuranRecitationRecorder
+import com.example.audio.RecitationRecordingStatus
+import com.example.data.local.prefs.UserPreferencesRepository
 import com.example.data.quran.CoordinatePrecision
 import com.example.data.quran.LinguisticVerificationStatus
 import com.example.data.quran.MushafCoordinateRepository
@@ -16,6 +20,10 @@ import com.example.domain.model.AudioCategory
 import com.example.domain.model.AudioRepeatMode
 import com.example.domain.model.AudioTrackItem
 import com.example.domain.model.QuranReciter
+import com.example.domain.model.QuranVerse
+import com.example.domain.quran.QuranRecitationAssessmentEngine
+import com.example.domain.quran.RecitationOverallLevel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -529,4 +537,223 @@ class NoorInteractiveMushafVerificationTest {
         assertEquals("ع ص ر", imported.words.first().sarf?.rootAr)
         assertTrue(imported.words.first().irab!!.grammaticalRoleAr.contains("قسم"))
     }
+
+    // ============================================================================================
+    // 4. CONTINUOUS UNINTERRUPTED SURAH STREAM + TIMESTAMP SYNC (ZERO PLAYER RE-CREATION)
+    // ============================================================================================
+
+    @Test
+    fun continuousSurahAudio_advancesAyah1To4AndPagesWithoutRecreatingMediaPlayer() {
+        val sampleManifestJson = """
+            {
+              "audio_file": {
+                "audio_url": "https://download.quranicaudio.com/qdc/mishari_al_afasy/murattal/112.mp3",
+                "timestamps": [
+                  {
+                    "verse_key": "112:1",
+                    "timestamp_from": 0,
+                    "timestamp_to": 3000,
+                    "segments": [[1, 100, 700], [2, 800, 1400], [3, 1500, 2200], [4, 2300, 2900]]
+                  },
+                  {
+                    "verse_key": "112:2",
+                    "timestamp_from": 3100,
+                    "timestamp_to": 5800,
+                    "segments": [[1, 3200, 4400], [2, 4500, 5700]]
+                  },
+                  {
+                    "verse_key": "112:3",
+                    "timestamp_from": 6000,
+                    "timestamp_to": 9000,
+                    "segments": [[1, 6100, 7200], [2, 7400, 8900]]
+                  },
+                  {
+                    "verse_key": "112:4",
+                    "timestamp_from": 9100,
+                    "timestamp_to": 13500,
+                    "segments": [[1, 9200, 10800], [2, 11000, 13400]]
+                  }
+                ]
+              }
+            }
+        """.trimIndent()
+
+        val manifest = QuranWordTimingRepository.parseQuranComContinuousManifestJson(
+            reciterId = QuranReciter.ALAFASY.id,
+            quranComReciterId = 7,
+            surahNumber = 112,
+            rawJson = sampleManifestJson
+        )
+        assertNotNull("Continuous Surah manifest must parse audio_url and timestamps", manifest)
+        assertEquals(4, manifest!!.ayahs.size)
+
+        // Verify monotonic timestamp lookup including inter-Ayah silence gap (3050ms holds Ayah 1 cleanly!)
+        assertEquals(1, manifest.findAyahAt(500L)?.ayahNumber)
+        assertEquals(1, manifest.findAyahAt(3050L)?.ayahNumber)
+        assertEquals(2, manifest.findAyahAt(3500L)?.ayahNumber)
+        assertEquals(3, manifest.findAyahAt(7500L)?.ayahNumber)
+        assertEquals(4, manifest.findAyahAt(11500L)?.ayahNumber)
+        assertEquals(3, manifest.findAyahRange(1)?.findWordPositionAtStreamMs(1800L))
+
+        // Start continuous playback in QuranAudioPlayer
+        val player = QuranAudioPlayer(context)
+        val observedAyahChanges = mutableListOf<Int>()
+        player.playContinuousSurahManifest(
+            manifest = manifest,
+            surahTitleAr = "سورة الإخلاص",
+            surahTitleEn = "Al-Ikhlas",
+            reciterNameAr = QuranReciter.ALAFASY.nameAr,
+            reciterNameEn = QuranReciter.ALAFASY.nameEn,
+            pageResolver = { _, ayah -> if (ayah <= 2) 604 else 605 },
+            startAyah = 1,
+            initialSpeed = 1.0f,
+            onAyahChanged = { _, ayah, _ -> observedAyahChanges += ayah }
+        )
+
+        assertTrue("Continuous stream flag must be true", player.state.value.isContinuousStream)
+        assertEquals("MediaPlayer must be created ONCE for the continuous Surah", 1, player.playerCreationCountForTest)
+        assertEquals(1, player.state.value.playingAyah)
+        assertEquals(604, player.state.value.playingPageNumber)
+
+        // Simulate continuous audio progression across Ayah 1 -> 2 -> 3 -> 4
+        player.simulateContinuousPositionForTest(1800L)
+        assertEquals(1, player.state.value.playingAyah)
+        assertEquals(3, player.state.value.activeWordPosition)
+
+        player.simulateContinuousPositionForTest(4000L)
+        assertEquals(2, player.state.value.playingAyah)
+        assertEquals(1, player.state.value.activeWordPosition)
+        assertEquals(604, player.state.value.playingPageNumber)
+
+        player.simulateContinuousPositionForTest(7600L)
+        assertEquals(3, player.state.value.playingAyah)
+        assertEquals(2, player.state.value.activeWordPosition)
+        assertEquals("Page must advance automatically at page boundary", 605, player.state.value.playingPageNumber)
+
+        player.simulateContinuousPositionForTest(11500L)
+        assertEquals(4, player.state.value.playingAyah)
+        assertEquals(2, player.state.value.activeWordPosition)
+
+        // CRITICAL GUARANTEE: MediaPlayer was NEVER torn down or recreated across Ayahs 1 -> 2 -> 3 -> 4!
+        assertEquals("Zero MediaPlayer re-creations across Ayah transitions", 1, player.playerCreationCountForTest)
+        assertEquals(listOf(1, 2, 3, 4), observedAyahChanges)
+
+        // Instant in-stream jump/previous/next must NOT recreate MediaPlayer either
+        assertTrue(player.jumpToAyahInQueue(112, 2))
+        assertEquals(2, player.state.value.playingAyah)
+        player.playNext()
+        assertEquals(3, player.state.value.playingAyah)
+        player.playPrevious()
+        assertEquals(2, player.state.value.playingAyah)
+        assertEquals("In-stream seek/next/prev must reuse single MediaPlayer", 1, player.playerCreationCountForTest)
+
+        // In-stream Repeat-One stays locked to Ayah 2
+        assertEquals(AudioRepeatMode.REPEAT_ONE, player.cycleRepeatMode())
+        player.simulateContinuousPositionForTest(5900L)
+        assertEquals("REPEAT_ONE must loop back to Ayah 2 without advancing to 3", 2, player.state.value.playingAyah)
+
+        player.stop()
+        assertFalse(player.state.value.isContinuousStream)
+    }
+
+    @Test
+    fun continuousSurahAudio_repeatAyahRangeLoopsWithinSingleStream() {
+        val sampleManifestJson = """
+            {
+              "audio_file": {
+                "audio_url": "https://download.quranicaudio.com/qdc/mishari_al_afasy/murattal/112.mp3",
+                "timestamps": [
+                  { "verse_key": "112:1", "timestamp_from": 0, "timestamp_to": 3000, "segments": [] },
+                  { "verse_key": "112:2", "timestamp_from": 3000, "timestamp_to": 6000, "segments": [] },
+                  { "verse_key": "112:3", "timestamp_from": 6000, "timestamp_to": 9000, "segments": [] },
+                  { "verse_key": "112:4", "timestamp_from": 9000, "timestamp_to": 12000, "segments": [] }
+                ]
+              }
+            }
+        """.trimIndent()
+        val manifest = QuranWordTimingRepository.parseQuranComContinuousManifestJson(
+            reciterId = QuranReciter.ALAFASY.id,
+            quranComReciterId = 7,
+            surahNumber = 112,
+            rawJson = sampleManifestJson
+        )!!
+        val player = QuranAudioPlayer(context)
+        player.playContinuousSurahManifest(
+            manifest = manifest,
+            surahTitleAr = "سورة الإخلاص",
+            surahTitleEn = "Al-Ikhlas",
+            reciterNameAr = QuranReciter.ALAFASY.nameAr,
+            reciterNameEn = QuranReciter.ALAFASY.nameEn,
+            pageResolver = { _, _ -> 604 },
+            startAyah = 2,
+            repeatRangeStartAyah = 2,
+            repeatRangeEndAyah = 3,
+            repeatRangeLabel = "Loop 2-3"
+        )
+        assertEquals(2, player.state.value.playingAyah)
+        player.simulateContinuousPositionForTest(7200L)
+        assertEquals(3, player.state.value.playingAyah)
+        // Passing end of Ayah 3 (9000ms) must wrap seamlessly back to Ayah 2 without recreating MediaPlayer
+        player.simulateContinuousPositionForTest(9050L)
+        assertEquals(2, player.state.value.playingAyah)
+        assertEquals(1, player.playerCreationCountForTest)
+        player.stop()
+    }
+
+    // ============================================================================================
+    // 5. VOICE RECORDER, ARABIC STT HONESTY, MEMORIZATION ASSESSMENT & LAST-READ PERSISTENCE
+    // ============================================================================================
+
+    @Test
+    fun voiceRecorder_rejectsMissingPermissionAndCorruptFilesWithoutFakeWaveforms() {
+        val recorder = QuranRecitationRecorder(context)
+
+        // Without RECORD_AUDIO permission, startRecording MUST fail cleanly and keep amplitude == 0f
+        val started = recorder.startRecording("test_112_1_4")
+        assertFalse("Recording without RECORD_AUDIO permission must fail honestly", started)
+        assertEquals(RecitationRecordingStatus.ERROR, recorder.recordingState.value.status)
+        assertEquals(0f, recorder.recordingState.value.amplitudeNormalized, 0.0001f)
+
+        // Playing a missing or 0-byte audio file must be rejected cleanly
+        val emptyFile = File(context.cacheDir, "empty_recitation.m4a").apply { writeBytes(ByteArray(0)) }
+        assertFalse("Zero-byte file must be rejected", recorder.playRecording(emptyFile.absolutePath))
+        assertNotNull(recorder.playbackState.value.errorAr)
+        recorder.release()
+    }
+
+    @Test
+    fun liveRecitationListenerAndAssessment_hybridArabicDefaultAndWordLevelEvaluation() {
+        val listener = QuranLiveRecitationListener(context)
+
+        // Default MUST be hybrid Arabic (offline-preferred = false) so real devices don't fail without offline pack
+        assertFalse("Default STT mode must be hybrid Arabic (not forced offline-only)", listener.state.value.isOfflinePreferred)
+
+        listener.injectRecognizedText("قل هو الله احد الله الصمد")
+        assertTrue(listener.state.value.accumulatedTranscript.contains("قل هو الله"))
+        listener.stopListening()
+
+        // Evaluate recognized Arabic text against verified Surah Al-Ikhlas Ayahs 1-2 (with deliberate omission)
+        val verses = listOf(
+            QuranVerse(112, 1, 6222, "قُلْ هُوَ اللَّهُ أَحَدٌ", "", "", pageNumber = 604),
+            QuranVerse(112, 2, 6223, "اللَّهُ الصَّمَدُ", "", "", pageNumber = 604)
+        )
+        val exactReport = QuranRecitationAssessmentEngine.evaluate(verses, "قل هو الله احد الله الصمد")
+        assertEquals(RecitationOverallLevel.EXCELLENT, exactReport.overallLevel)
+        assertTrue("Exact match must score >= 90%", exactReport.accuracyPercent >= 90)
+        assertTrue(exactReport.omittedWords.isEmpty())
+
+        val omittedReport = QuranRecitationAssessmentEngine.evaluate(verses, "قل هو الله الصمد")
+        assertTrue("Omitted word 'أَحَدٌ' must be detected", omittedReport.omittedWords.isNotEmpty())
+        assertTrue("Omission must reduce accuracy below 100%", omittedReport.accuracyPercent < 100)
+    }
+
+    @Test
+    fun readingPositionPersistence_preservesExactLastReadAyahAcrossReload() = runBlocking {
+        val prefsRepo = UserPreferencesRepository(context)
+        prefsRepo.saveLastRead(surahNumber = 18, ayahNumber = 10)
+        val saved = prefsRepo.getPreferencesOnce()
+        assertEquals("Saved Surah must persist accurately", 18, saved.lastReadSurah)
+        assertEquals("Saved Ayah must remain 10 and never reset to 1", 10, saved.lastReadAyah)
+    }
 }
+
