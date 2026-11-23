@@ -275,6 +275,23 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         }
     }
 
+    fun jumpToQueueIndex(index: Int): Boolean {
+        if (index !in activeQueue.indices) return false
+        activeQueueIndex = index
+        playTrackInternal(activeQueue[activeQueueIndex], _state.value.playbackSpeed)
+        return true
+    }
+
+    fun jumpToAyahInQueue(surahNumber: Int, ayahNumber: Int): Boolean {
+        val idx = activeQueue.indexOfFirst {
+            it.surahNumber == surahNumber && it.ayahNumber == ayahNumber
+        }
+        if (idx < 0) return false
+        return jumpToQueueIndex(idx)
+    }
+
+    fun currentQueueSnapshot(): List<AudioTrackItem> = activeQueue.toList()
+
     fun playAyah(
         surahNumber: Int,
         ayahNumber: Int,

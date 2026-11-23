@@ -42,6 +42,7 @@ class AdhanAudioPlayer(private val appContext: Context) {
     fun playVoice(
         voice: AdhanVoiceOption,
         isAlarmPlayback: Boolean = false,
+        volume: Float = 1.0f,
         onCompleted: (() -> Unit)? = null,
         onFallbackNotice: ((String) -> Unit)? = null
     ) {
@@ -51,27 +52,54 @@ class AdhanAudioPlayer(private val appContext: Context) {
         }
         stop()
 
+        val clampedVol = volume.coerceIn(0.05f, 1.0f)
+
         if (voice.isSystemDefault) {
-            playSystemFallback(voice.id, isAlarmPlayback, onCompleted)
+            playSystemFallback(voice.id, isAlarmPlayback, clampedVol, onCompleted)
             return
         }
 
         val localPath = voice.localFilePath
+        val verifiedLocal = localPath?.takeIf { File(it).exists() && File(it).length() > 0L }
         val source: String? = when {
-            localPath != null && File(localPath).exists() && File(localPath).length() > 0L -> localPath
+            verifiedLocal != null -> verifiedLocal
             voice.audioUrl.isNotBlank() -> voice.audioUrl
+            voice.fallbackUrl.isNotBlank() -> voice.fallbackUrl
             else -> null
         }
 
         if (source == null) {
             onFallbackNotice?.invoke("Selected Adhan file unavailable — playing default tone")
-            playSystemFallback(voice.id, isAlarmPlayback, onCompleted)
+            playSystemFallback(voice.id, isAlarmPlayback, clampedVol, onCompleted)
             return
         }
 
+        startMediaSource(
+            voice = voice,
+            source = source,
+            secondaryUrl = if (verifiedLocal == null && source == voice.audioUrl) voice.fallbackUrl else "",
+            isLocal = verifiedLocal != null,
+            isAlarmPlayback = isAlarmPlayback,
+            volume = clampedVol,
+            onCompleted = onCompleted,
+            onFallbackNotice = onFallbackNotice
+        )
+    }
+
+    private fun startMediaSource(
+        voice: AdhanVoiceOption,
+        source: String,
+        secondaryUrl: String,
+        isLocal: Boolean,
+        isAlarmPlayback: Boolean,
+        volume: Float,
+        onCompleted: (() -> Unit)?,
+        onFallbackNotice: ((String) -> Unit)?
+    ) {
+        releaseMediaPlayerOnly()
         requestFocus(isAlarmPlayback)
         _playingVoiceId.value = voice.id
-        _isBuffering.value = localPath == null
+        _isBuffering.value = !isLocal
 
         try {
             val usage = if (isAlarmPlayback) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_MEDIA
@@ -85,6 +113,7 @@ class AdhanAudioPlayer(private val appContext: Context) {
                 setDataSource(source)
                 setOnPreparedListener { player ->
                     _isBuffering.value = false
+                    player.setVolume(volume, volume)
                     player.start()
                 }
                 setOnCompletionListener {
@@ -92,22 +121,49 @@ class AdhanAudioPlayer(private val appContext: Context) {
                     onCompleted?.invoke()
                 }
                 setOnErrorListener { _, _, _ ->
-                    onFallbackNotice?.invoke("Unable to play selected Adhan — using default tone")
-                    playSystemFallback(voice.id, isAlarmPlayback, onCompleted)
+                    if (secondaryUrl.isNotBlank()) {
+                        startMediaSource(
+                            voice = voice,
+                            source = secondaryUrl,
+                            secondaryUrl = "",
+                            isLocal = false,
+                            isAlarmPlayback = isAlarmPlayback,
+                            volume = volume,
+                            onCompleted = onCompleted,
+                            onFallbackNotice = onFallbackNotice
+                        )
+                    } else {
+                        onFallbackNotice?.invoke("Unable to play selected Adhan — using default tone")
+                        playSystemFallback(voice.id, isAlarmPlayback, volume, onCompleted)
+                    }
                     true
                 }
                 prepareAsync()
             }
             mediaPlayer = mp
         } catch (_: Exception) {
-            onFallbackNotice?.invoke("Unable to open Adhan source — using default tone")
-            playSystemFallback(voice.id, isAlarmPlayback, onCompleted)
+            if (secondaryUrl.isNotBlank()) {
+                startMediaSource(
+                    voice = voice,
+                    source = secondaryUrl,
+                    secondaryUrl = "",
+                    isLocal = false,
+                    isAlarmPlayback = isAlarmPlayback,
+                    volume = volume,
+                    onCompleted = onCompleted,
+                    onFallbackNotice = onFallbackNotice
+                )
+            } else {
+                onFallbackNotice?.invoke("Unable to open Adhan source — using default tone")
+                playSystemFallback(voice.id, isAlarmPlayback, volume, onCompleted)
+            }
         }
     }
 
     private fun playSystemFallback(
         voiceId: String,
         isAlarmPlayback: Boolean,
+        volume: Float = 1.0f,
         onCompleted: (() -> Unit)?
     ) {
         releaseMediaPlayerOnly()
@@ -130,7 +186,10 @@ class AdhanAudioPlayer(private val appContext: Context) {
                         .build()
                 )
                 setDataSource(appContext, uri)
-                setOnPreparedListener { it.start() }
+                setOnPreparedListener {
+                    it.setVolume(volume, volume)
+                    it.start()
+                }
                 setOnCompletionListener {
                     stop()
                     onCompleted?.invoke()

@@ -3,6 +3,7 @@ package com.example.data.repository
 import android.content.Context
 import com.example.data.local.catalog.EcosystemContentCatalog
 import com.example.data.local.db.AdminAuditLogLocalEntity
+import com.example.data.local.db.AdminConfigEntryEntity
 import com.example.data.local.db.BackupSnapshotEntity
 import com.example.data.local.db.CustomQuizQuestionEntity
 import com.example.data.local.db.EcosystemDao
@@ -14,6 +15,7 @@ import com.example.data.local.db.HalaqahTeacherEntity
 import com.example.data.local.db.HifzPlanEntity
 import com.example.data.local.db.HifzRevisionLogEntity
 import com.example.data.local.db.HifzWeakVerseEntity
+import com.example.data.local.db.ImportedAiDocumentEntity
 import com.example.data.local.db.KhatmPlanEntity
 import com.example.data.local.db.KhatmReadingLogEntity
 import com.example.data.local.db.KidsProgressEntity
@@ -26,8 +28,11 @@ import com.example.data.local.db.QuizAttemptEntity
 import com.example.data.local.db.QuranNoteCollectionEntity
 import com.example.data.local.db.QuranPersonalNoteEntity
 import com.example.data.local.db.RecitationAssessmentEntity
+import com.example.data.local.db.StudentRecitationRecordingEntity
 import com.example.data.local.db.SystemErrorLogEntity
 import com.example.data.local.db.TajweedProgressEntity
+import com.example.domain.ai.AiIndexStats
+import com.example.domain.ai.DocumentContentExtractor
 import com.example.domain.ai.ImportedKnowledgeBatch
 import com.example.domain.ai.NoorLocalAiEngine
 import com.example.security.LocalAdminRole
@@ -37,10 +42,21 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+
+data class StorageUsageSummary(
+    val databaseBytes: Long = 0L,
+    val recordingsBytes: Long = 0L,
+    val adhanAudioBytes: Long = 0L,
+    val cachedQuranAudioBytes: Long = 0L
+) {
+    val totalBytes: Long get() = databaseBytes + recordingsBytes + adhanAudioBytes + cachedQuranAudioBytes
+    val totalMbFormatted: String get() = String.format(Locale.US, "%.2f MB", totalBytes / (1024.0 * 1024.0))
+}
 
 data class RestoreSummary(
     val knowledgeImported: Int,
@@ -99,6 +115,11 @@ class EcosystemRepository(
     val localAuditLogs: Flow<List<AdminAuditLogLocalEntity>> = noorDao.observeLocalAuditLogs()
     val systemErrorLogs: Flow<List<SystemErrorLogEntity>> = noorDao.observeSystemErrorLogs()
     val backupSnapshots: Flow<List<BackupSnapshotEntity>> = noorDao.observeBackupSnapshots()
+
+    // v5 Reactive Flows
+    val recitationRecordings: Flow<List<StudentRecitationRecordingEntity>> = dao.observeRecitationRecordings()
+    val importedAiDocuments: Flow<List<ImportedAiDocumentEntity>> = dao.observeImportedAiDocuments()
+    val adminConfigEntries: Flow<List<AdminConfigEntryEntity>> = dao.observeAdminConfigEntries()
 
     fun todayKey(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
@@ -234,7 +255,7 @@ class EcosystemRepository(
         dao.deleteAiKnowledge(id)
     }
 
-    suspend fun reindexLocalKnowledge(): Int = withContext(Dispatchers.IO) {
+    suspend fun reindexLocalKnowledge(): AiIndexStats = withContext(Dispatchers.IO) {
         val items = dao.getAllAiKnowledgeOnce()
         items.forEach { entry ->
             val hash = LocalAdminSecurityManager.sha256Hex("${entry.questionAr}|${entry.answerAr}")
@@ -242,7 +263,138 @@ class EcosystemRepository(
                 dao.upsertAiKnowledge(entry.copy(contentHash = hash))
             }
         }
-        items.size
+        val books = dao.getAllLibraryBooksOnce()
+        NoorLocalAiEngine.rebuildSearchIndex(items, books)
+    }
+
+    suspend fun importAiDocumentBytes(
+        fileName: String,
+        bytes: ByteArray,
+        category: String,
+        autoApprove: Boolean,
+        actorName: String
+    ): ImportedKnowledgeBatch = withContext(Dispatchers.IO) {
+        val extracted = DocumentContentExtractor.extract(fileName, bytes, defaultCategory = category)
+        val existingHashes = dao.getAllAiKnowledgeOnce().map { it.contentHash }.filter { it.isNotBlank() }.toSet()
+        val batch = NoorLocalAiEngine.parseExtractedDocumentToKnowledge(extracted, existingHashes, autoApprove)
+        if (batch.items.isNotEmpty()) {
+            dao.insertAiKnowledgeIgnore(batch.items)
+        }
+        dao.upsertImportedAiDocument(
+            ImportedAiDocumentEntity(
+                id = "doc_${UUID.randomUUID().toString().take(10)}",
+                fileName = fileName,
+                format = extracted.format.label,
+                detectedLanguage = extracted.detectedLanguage,
+                category = extracted.detectedCategory,
+                chunkCount = batch.items.size,
+                charCount = extracted.extractedText.length,
+                importedBy = actorName,
+                warningNote = extracted.warningAr.orEmpty()
+            )
+        )
+        batch
+    }
+
+    suspend fun deleteImportedAiDocument(id: String) = withContext(Dispatchers.IO) {
+        dao.deleteImportedAiDocument(id)
+    }
+
+    suspend fun exportAiKnowledgeJson(): String = withContext(Dispatchers.IO) {
+        NoorLocalAiEngine.exportKnowledgeBaseJson(dao.getAllAiKnowledgeOnce())
+    }
+
+    // ======================== RECITATION RECORDINGS (v5) ========================
+
+    suspend fun saveRecitationRecording(entity: StudentRecitationRecordingEntity): Long = withContext(Dispatchers.IO) {
+        dao.upsertRecitationRecording(entity)
+    }
+
+    suspend fun reviewRecitationRecording(id: Long, status: String, comment: String) = withContext(Dispatchers.IO) {
+        dao.updateRecordingTeacherReview(id, status, comment.trim())
+    }
+
+    suspend fun deleteRecitationRecording(id: Long) = withContext(Dispatchers.IO) {
+        dao.deleteRecitationRecording(id)
+    }
+
+    // ======================== ADMIN CONFIG, STORAGE & REPORTS (v5) ========================
+
+    suspend fun setAdminConfig(key: String, value: String, actorName: String) = withContext(Dispatchers.IO) {
+        dao.upsertAdminConfigEntry(
+            AdminConfigEntryEntity(
+                configKey = key,
+                configValue = value,
+                updatedBy = actorName,
+                updatedAtMillis = System.currentTimeMillis()
+            )
+        )
+    }
+
+    suspend fun getAllAdminConfigOnce(): Map<String, String> = withContext(Dispatchers.IO) {
+        dao.getAllAdminConfigEntriesOnce().associate { it.configKey to it.configValue }
+    }
+
+    suspend fun calculateStorageUsage(): StorageUsageSummary = withContext(Dispatchers.IO) {
+        val dbFile = appContext.getDatabasePath("noor_islamic_db")
+        val dbBytes = if (dbFile.exists()) dbFile.length() else 0L
+        val recBytes = folderSizeBytes(File(appContext.filesDir, "hifz_recordings"))
+        val adhanBytes = folderSizeBytes(File(appContext.filesDir, "adhan_downloads")) +
+            folderSizeBytes(File(appContext.filesDir, "custom_adhan"))
+        val cacheBytes = folderSizeBytes(File(appContext.filesDir, "audio_cache"))
+        StorageUsageSummary(
+            databaseBytes = dbBytes,
+            recordingsBytes = recBytes,
+            adhanAudioBytes = adhanBytes,
+            cachedQuranAudioBytes = cacheBytes
+        )
+    }
+
+    suspend fun clearCachedQuranAudio(): Long = withContext(Dispatchers.IO) {
+        val dir = File(appContext.filesDir, "audio_cache")
+        val before = folderSizeBytes(dir)
+        dir.listFiles()?.forEach { runCatching { it.delete() } }
+        before
+    }
+
+    suspend fun buildHalaqatReportText(): String = withContext(Dispatchers.IO) {
+        val circlesList = dao.getAllCirclesOnce()
+        val teachersList = dao.getAllTeachersOnce()
+        val studentsList = dao.getAllStudentsOnce()
+        val assessmentsList = dao.getAllAssessmentsOnce()
+        val recordingsList = dao.getAllRecitationRecordingsOnce()
+        buildString {
+            appendLine("=== تقرير حلقات نور القرآنية (NOOR Halaqat Report) ===")
+            appendLine("التاريخ: ${todayKey()}")
+            appendLine("عدد الحلقات: ${circlesList.size} | المعلمون: ${teachersList.size} | الطلاب: ${studentsList.size} | التقييمات: ${assessmentsList.size} | التسجيلات: ${recordingsList.size}")
+            appendLine()
+            appendLine("--- الحلقات ---")
+            circlesList.forEach { c ->
+                val tName = teachersList.firstOrNull { it.id == c.teacherId }?.fullName ?: "غير محدد"
+                appendLine("• ${c.name} (${c.level}/${c.circleType}) — المعلم: $tName — الموعد: ${c.scheduleText}")
+            }
+            appendLine()
+            appendLine("--- الطلاب وتقدم الحفظ ---")
+            studentsList.forEach { s ->
+                val cName = circlesList.firstOrNull { it.id == s.circleId }?.name ?: "بدون حلقة"
+                appendLine("• ${s.fullName} (العمر ${s.age}) | الحلقة: $cName | محفوظ: ${s.memorizedJuz} جزء (${s.memorizedPages} صفحة) | مراجعة: ${s.revisionPages} صفحة")
+            }
+            appendLine()
+            appendLine("--- آخر تقييمات التسميع ---")
+            assessmentsList.take(25).forEach { a ->
+                val stName = studentsList.firstOrNull { it.id == a.studentId }?.fullName ?: "طالب #${a.studentId}"
+                appendLine("• ${a.assessmentDateKey} | $stName | سورة ${a.surahNumber} (${a.fromAyah}-${a.toAyah}) | الدقة: ${a.accuracyPercent}% | معتمد: ${a.approvedByTeacher}")
+            }
+        }
+    }
+
+    private fun folderSizeBytes(dir: File): Long {
+        if (!dir.exists()) return 0L
+        var sum = 0L
+        dir.listFiles()?.forEach { f ->
+            sum += if (f.isDirectory) folderSizeBytes(f) else f.length()
+        }
+        return sum
     }
 
     // ======================== ISLAMIC LIBRARY ========================

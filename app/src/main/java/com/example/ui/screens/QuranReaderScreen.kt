@@ -35,6 +35,10 @@ import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.RepeatOne
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.TextDecrease
@@ -49,11 +53,15 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -80,9 +88,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.audio.AudioPlaybackState
 import com.example.audio.LiveRecitationState
 import com.example.audio.LiveRecitationStatus
 import com.example.data.local.catalog.SurahCatalog
+import com.example.domain.model.AudioRepeatMode
 import com.example.domain.model.QuranDisplayMode
 import com.example.domain.model.QuranReadingTheme
 import com.example.domain.model.QuranReciter
@@ -303,6 +313,41 @@ fun QuranReaderScreen(
             MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
+    val autoMushafPageBg = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+
+    val activeAudioAyah: Int? = if (
+        audioState.hasActiveSession &&
+        audioState.playingSurah == surahNumber &&
+        audioState.playingAyah != null
+    ) {
+        audioState.playingAyah
+    } else {
+        null
+    }
+
+    // Automatic Quran Page & Ayah Follow-Along Synchronization for in-app Sheikh Recitation
+    LaunchedEffect(activeAudioAyah, surahNumber, prefs.quranDisplayMode, readerState) {
+        val st = readerState
+        val ayahNum = activeAudioAyah
+        if (st is SurahReaderState.Ready &&
+            st.surahNumber == surahNumber &&
+            ayahNum != null
+        ) {
+            lastVisibleAyah = ayahNum
+            viewModel.saveLastRead(surahNumber, ayahNum)
+            val targetIndex = if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF) {
+                val pages = st.verses.groupBy { it.pageNumber }.entries.toList()
+                val pageIdx = pages.indexOfFirst { (_, pv) -> pv.any { it.numberInSurah == ayahNum } }
+                if (pageIdx >= 0) headerItemsOffset + pageIdx else -1
+            } else {
+                val verseIdx = st.verses.indexOfFirst { it.numberInSurah == ayahNum }
+                if (verseIdx >= 0) headerItemsOffset + verseIdx else -1
+            }
+            if (targetIndex >= 0) {
+                runCatching { listState.animateScrollToItem(targetIndex) }
+            }
+        }
+    }
 
     val activeLiveAyah: Int? = if (
         (liveRecitation.isActive || liveRecitation.status == LiveRecitationStatus.PAUSED) &&
@@ -313,6 +358,10 @@ fun QuranReaderScreen(
         null
     }
 
+    // Unified synchronized Ayah (Sheikh audio follow-along OR live microphone tracking)
+    val activeSyncedAyah: Int? = activeAudioAyah ?: activeLiveAyah
+
+    CompositionLocalProvider(LocalContentColor provides primaryInk) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -342,6 +391,35 @@ fun QuranReaderScreen(
                 }
             }
         )
+
+        // Sticky Sheikh Audio Follow-Along Bar (real verse-by-verse sync, no mic required!)
+        if (activeAudioAyah != null) {
+            val readyVerses = (readerState as? SurahReaderState.Ready)?.verses.orEmpty()
+            SheikhAudioFollowBanner(
+                surahNameAr = surahMeta.nameAr,
+                surahNameEn = surahMeta.nameEn,
+                totalAyahs = surahMeta.verseCount,
+                activeAyah = activeAudioAyah,
+                audioState = audioState,
+                onTogglePauseResume = { viewModel.toggleAudioPauseResume() },
+                onPreviousAyah = { viewModel.playPreviousAudio() },
+                onNextAyah = { viewModel.playNextAudio() },
+                onScrubToAyah = { targetAyah ->
+                    viewModel.jumpToQuranAudioAyah(surahNumber, targetAyah, readyVerses)
+                },
+                onCycleRepeat = { viewModel.cycleAudioRepeatMode() },
+                onCycleSpeed = {
+                    val nextSpd = when {
+                        audioState.playbackSpeed < 0.95f -> 1.0f
+                        audioState.playbackSpeed < 1.2f -> 1.25f
+                        audioState.playbackSpeed < 1.45f -> 1.5f
+                        else -> 0.75f
+                    }
+                    viewModel.setAudioPlaybackSpeed(nextSpd)
+                },
+                onStop = { viewModel.stopQuranAudio() }
+            )
+        }
 
         // Sticky Live Recitation Tracking Banner (always visible while Listen & Follow is active or paused!)
         if (liveRecitation.status != LiveRecitationStatus.IDLE) {
@@ -448,7 +526,20 @@ fun QuranReaderScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Button(
-                            onClick = { viewModel.playFullSurahWithReciter(surahNumber, prefs.quranReciter) },
+                            onClick = {
+                                val ready = readerState as? SurahReaderState.Ready
+                                if (ready != null && ready.surahNumber == surahNumber && ready.verses.isNotEmpty()) {
+                                    viewModel.playSurahVerseByVerse(
+                                        surahNumber = surahNumber,
+                                        verses = ready.verses,
+                                        reciter = prefs.quranReciter,
+                                        startAyah = lastVisibleAyah.coerceAtLeast(1)
+                                    )
+                                } else {
+                                    viewModel.playFullSurahWithReciter(surahNumber, prefs.quranReciter)
+                                }
+                            },
+                            modifier = Modifier.testTag("play_and_follow_audio_btn"),
                             colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = Color.White),
                             shape = RoundedCornerShape(14.dp),
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
@@ -626,20 +717,26 @@ fun QuranReaderScreen(
 
                 is SurahReaderState.Ready -> {
                     if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF) {
-                        // Continuous Mushaf Page Flow with LIVE inline gold Ayah highlighting (exact Uthmani text preserved!)
+                        // Continuous Mushaf Page Flow with LIVE inline gold Ayah highlighting (Sheikh audio + Live Mic!)
                         val groupedByPage = state.verses.groupBy { it.pageNumber }
+                        val mushafPageBg = when (prefs.quranReadingTheme) {
+                            QuranReadingTheme.SEPIA -> IvorySurface
+                            QuranReadingTheme.NIGHT -> Color(0xFF0A1B15)
+                            QuranReadingTheme.LIGHT -> Color(0xFFFFFFFF)
+                            QuranReadingTheme.AUTO -> autoMushafPageBg
+                        }
                         items(groupedByPage.entries.toList(), key = { "page_${it.key}" }) { (pageNum, pageVerses) ->
-                            val hasTrackedOnPage = activeLiveAyah != null &&
-                                pageVerses.any { it.numberInSurah == activeLiveAyah }
+                            val hasTrackedOnPage = activeSyncedAyah != null &&
+                                pageVerses.any { it.numberInSurah == activeSyncedAyah }
 
-                            val annotatedPage = remember(pageVerses, activeLiveAyah, primaryInk) {
+                            val annotatedPage = remember(pageVerses, activeSyncedAyah, primaryInk) {
                                 buildAnnotatedString {
                                     pageVerses.forEachIndexed { idx, v ->
-                                        val isTracked = activeLiveAyah == v.numberInSurah
+                                        val isTracked = activeSyncedAyah == v.numberInSurah
                                         if (isTracked) {
                                             withStyle(
                                                 SpanStyle(
-                                                    background = GoldPrimary.copy(alpha = 0.28f),
+                                                    background = GoldPrimary.copy(alpha = 0.30f),
                                                     color = primaryInk,
                                                     fontWeight = FontWeight.Bold
                                                 )
@@ -660,10 +757,7 @@ fun QuranReaderScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(22.dp))
-                                    .background(
-                                        if (prefs.quranReadingTheme == QuranReadingTheme.SEPIA) IvorySurface
-                                        else MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
-                                    )
+                                    .background(mushafPageBg)
                                     .border(
                                         width = if (hasTrackedOnPage) 2.dp else 1.2.dp,
                                         color = if (hasTrackedOnPage) GoldBright else GoldPrimary.copy(alpha = 0.55f),
@@ -688,9 +782,15 @@ fun QuranReaderScreen(
                                         text = L10n.pick(
                                             lang,
                                             "صفحة $pageNum · الجزء ${pageVerses.first().juzNumber}" +
-                                                if (hasTrackedOnPage) " · تتبع مباشر: آية $activeLiveAyah" else "",
+                                                if (hasTrackedOnPage) {
+                                                    if (activeAudioAyah != null) " · متابعة التلاوة: آية $activeSyncedAyah"
+                                                    else " · تتبع مباشر: آية $activeSyncedAyah"
+                                                } else "",
                                             "Page $pageNum · Juz ${pageVerses.first().juzNumber}" +
-                                                if (hasTrackedOnPage) " · Live Sync: Ayah $activeLiveAyah" else ""
+                                                if (hasTrackedOnPage) {
+                                                    if (activeAudioAyah != null) " · Audio Follow: Ayah $activeSyncedAyah"
+                                                    else " · Live Sync: Ayah $activeSyncedAyah"
+                                                } else ""
                                         ),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = noorColors.goldAccent,
@@ -703,10 +803,10 @@ fun QuranReaderScreen(
                     } else {
                         items(state.verses, key = { it.numberInSurah }) { verse ->
                             val isBookmarked = bookmarks.any { it.surahNumber == verse.surahNumber && it.ayahNumber == verse.numberInSurah }
-                            val isPlayingVerse = audioState.isPlaying &&
+                            val isPlayingVerse = audioState.hasActiveSession &&
                                 audioState.playingSurah == verse.surahNumber &&
                                 audioState.playingAyah == verse.numberInSurah
-                            val isLiveTracked = activeLiveAyah == verse.numberInSurah
+                            val isLiveTracked = activeSyncedAyah == verse.numberInSurah
                             val isMemorizeMode = prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE
                             val isRevealed = !isMemorizeMode || (revealedInMemorize[verse.numberInSurah] == true) || isLiveTracked
 
@@ -716,7 +816,7 @@ fun QuranReaderScreen(
                                 primaryInk = primaryInk,
                                 secondaryInk = secondaryInk,
                                 isBookmarked = isBookmarked,
-                                isPlaying = isPlayingVerse,
+                                isPlaying = isPlayingVerse && audioState.isPlaying,
                                 isLiveTracked = isLiveTracked,
                                 isMemorizeMode = isMemorizeMode,
                                 isRevealed = isRevealed,
@@ -745,6 +845,7 @@ fun QuranReaderScreen(
                 }
             }
         }
+    }
     }
 
     // Privacy-First Microphone Rationale Dialog before requesting RECORD_AUDIO
@@ -784,6 +885,139 @@ fun QuranReaderScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun SheikhAudioFollowBanner(
+    surahNameAr: String,
+    surahNameEn: String,
+    totalAyahs: Int,
+    activeAyah: Int,
+    audioState: AudioPlaybackState,
+    onTogglePauseResume: () -> Unit,
+    onPreviousAyah: () -> Unit,
+    onNextAyah: () -> Unit,
+    onScrubToAyah: (Int) -> Unit,
+    onCycleRepeat: () -> Unit,
+    onCycleSpeed: () -> Unit,
+    onStop: () -> Unit
+) {
+    val lang = LocalAppLanguage.current
+    val noorColors = LocalNoorColors.current
+    var sliderAyah by remember(activeAyah) { mutableStateOf(activeAyah.toFloat()) }
+
+    LiquidGlassCard(
+        modifier = Modifier
+            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .testTag("sheikh_audio_follow_banner"),
+        goldBorder = audioState.isPlaying,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "متابعة التلاوة · سورة $surahNameAr · آية $activeAyah / $totalAyahs",
+                        "Audio Follow · $surahNameEn · Ayah $activeAyah / $totalAyahs"
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = noorColors.goldAccent,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val subtitle = L10n.pick(lang, audioState.subtitleAr, audioState.subtitleEn)
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = if (audioState.isBuffering) {
+                            L10n.pick(lang, "$subtitle · جارٍ التحميل...", "$subtitle · Buffering...")
+                        } else {
+                            subtitle
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = onPreviousAyah,
+                enabled = activeAyah > 1,
+                modifier = Modifier.size(36.dp).testTag("audio_follow_prev_btn")
+            ) {
+                Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous Ayah", tint = noorColors.goldAccent)
+            }
+            IconButton(
+                onClick = onTogglePauseResume,
+                modifier = Modifier.size(38.dp).testTag("audio_follow_play_pause_btn")
+            ) {
+                Icon(
+                    imageVector = if (audioState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                    contentDescription = "Play or Pause",
+                    tint = GoldBright
+                )
+            }
+            IconButton(
+                onClick = onNextAyah,
+                enabled = activeAyah < totalAyahs,
+                modifier = Modifier.size(36.dp).testTag("audio_follow_next_btn")
+            ) {
+                Icon(Icons.Rounded.SkipNext, contentDescription = "Next Ayah", tint = noorColors.goldAccent)
+            }
+            IconButton(
+                onClick = onCycleRepeat,
+                modifier = Modifier.size(34.dp).testTag("audio_follow_repeat_btn")
+            ) {
+                Icon(
+                    imageVector = if (audioState.repeatMode == AudioRepeatMode.REPEAT_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                    contentDescription = "Repeat Mode",
+                    tint = if (audioState.repeatMode != AudioRepeatMode.OFF) GoldBright else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            TextButton(
+                onClick = onCycleSpeed,
+                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+                modifier = Modifier.testTag("audio_follow_speed_btn")
+            ) {
+                Text("${audioState.playbackSpeed}x", style = MaterialTheme.typography.labelSmall, color = noorColors.goldAccent)
+            }
+            IconButton(
+                onClick = onStop,
+                modifier = Modifier.size(34.dp).testTag("audio_follow_stop_btn")
+            ) {
+                Icon(Icons.Rounded.Stop, contentDescription = "Stop Audio", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        if (totalAyahs > 1) {
+            Slider(
+                value = sliderAyah.coerceIn(1f, totalAyahs.toFloat()),
+                onValueChange = { sliderAyah = it },
+                onValueChangeFinished = {
+                    val target = sliderAyah.toInt().coerceIn(1, totalAyahs)
+                    if (target != activeAyah) {
+                        onScrubToAyah(target)
+                    }
+                },
+                valueRange = 1f..totalAyahs.toFloat(),
+                colors = SliderDefaults.colors(
+                    thumbColor = GoldBright,
+                    activeTrackColor = GoldPrimary,
+                    inactiveTrackColor = GoldPrimary.copy(alpha = 0.25f)
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(26.dp)
+                    .testTag("audio_follow_ayah_slider")
+            )
+        }
     }
 }
 

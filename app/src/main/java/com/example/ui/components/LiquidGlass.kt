@@ -30,10 +30,12 @@ import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.WbTwilight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,6 +57,7 @@ import com.example.ui.theme.EmeraldDeep
 import com.example.ui.theme.EmeraldForest
 import com.example.ui.theme.GoldBright
 import com.example.ui.theme.GoldPrimary
+import com.example.ui.theme.IvoryInk
 import com.example.ui.theme.LocalNoorColors
 import kotlin.math.PI
 import kotlin.math.cos
@@ -109,7 +112,9 @@ fun IslamicGeometricBackground(
                 }
             }
         }
-        content()
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+            content()
+        }
     }
 }
 
@@ -320,12 +325,14 @@ fun LiquidGlassCard(
             .border(width = 1.dp, brush = borderBrush, shape = shape)
             .then(clickMod)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(contentPadding),
-            content = content
-        )
+        CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(contentPadding),
+                content = content
+            )
+        }
     }
 }
 
@@ -354,12 +361,14 @@ fun WarmIvoryParchmentCard(
                 shape = shape
             )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(contentPadding),
-            content = content
-        )
+        CompositionLocalProvider(LocalContentColor provides IvoryInk) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(contentPadding),
+                content = content
+            )
+        }
     }
 }
 

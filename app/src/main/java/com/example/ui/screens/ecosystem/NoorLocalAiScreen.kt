@@ -63,27 +63,28 @@ fun NoorLocalAiScreen(
     val noorColors = LocalNoorColors.current
     val conversation by viewModel.aiConversation.collectAsStateWithLifecycle()
     val approvedKb by viewModel.approvedAiKnowledge.collectAsStateWithLifecycle()
+    val indexStats by viewModel.aiIndexStats.collectAsStateWithLifecycle()
 
     var queryText by remember { mutableStateOf("") }
 
     val quickPrompts = remember {
         listOf(
+            "شلون أحفظ القرآن الكريم دون نسيان؟",
             "ما فضل قراءة القرآن الكريم؟",
             "ما هي شروط الصلاة وأركانها؟",
             "ما هي الأيام المستحب صيامها؟",
             "ما هي أحكام النون الساكنة في التجويد؟",
-            "كيف أحفظ القرآن الكريم دون نسيان؟",
             "ما الفرق بين الإسلام والإيمان والإحسان؟"
         )
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
         NoorScreenHeader(
-            title = L10n.pick(lang, "نور الذكي المحلي (بدون إنترنت)", "NOOR Local AI"),
+            title = L10n.pick(lang, "نور الذكي المحلي (Local RAG)", "NOOR Local AI (RAG)"),
             subtitle = L10n.pick(
                 lang,
-                "قاعدة معرفية إسلامية مفهرسة محلياً (${approvedKb.size} مادة معتمدة) · صفر مفاتيح API مدفوعة",
-                "Offline Indexed Islamic Knowledge (${approvedKb.size} verified entries) · Zero Paid APIs"
+                "فهرس محلي دون إنترنت: ${approvedKb.size} مادة معتمدة · ${indexStats.uniqueTokenCount} كلمة مفهرسة · ${indexStats.indexedLibraryBooks} كتاب",
+                "Offline Local RAG Index: ${approvedKb.size} entries · ${indexStats.uniqueTokenCount} tokens · ${indexStats.indexedLibraryBooks} books"
             ),
             onBack = onBack,
             trailing = {

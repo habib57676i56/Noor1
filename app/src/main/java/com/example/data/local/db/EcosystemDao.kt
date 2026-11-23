@@ -291,4 +291,43 @@ interface EcosystemDao {
 
     @Query("DELETE FROM local_admin_accounts WHERE id = :id")
     suspend fun deleteLocalAdmin(id: Long)
+
+    // ======================== RECITATION RECORDINGS (v5) ========================
+
+    @Query("SELECT * FROM student_recitation_recordings ORDER BY createdAtMillis DESC LIMIT 200")
+    fun observeRecitationRecordings(): Flow<List<StudentRecitationRecordingEntity>>
+
+    @Query("SELECT * FROM student_recitation_recordings ORDER BY createdAtMillis DESC")
+    suspend fun getAllRecitationRecordingsOnce(): List<StudentRecitationRecordingEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertRecitationRecording(item: StudentRecitationRecordingEntity): Long
+
+    @Query("UPDATE student_recitation_recordings SET teacherReviewStatus = :status, teacherComment = :comment WHERE id = :id")
+    suspend fun updateRecordingTeacherReview(id: Long, status: String, comment: String)
+
+    @Query("DELETE FROM student_recitation_recordings WHERE id = :id")
+    suspend fun deleteRecitationRecording(id: Long)
+
+    // ======================== IMPORTED AI DOCUMENTS (v5) ========================
+
+    @Query("SELECT * FROM imported_ai_documents ORDER BY createdAtMillis DESC")
+    fun observeImportedAiDocuments(): Flow<List<ImportedAiDocumentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertImportedAiDocument(doc: ImportedAiDocumentEntity)
+
+    @Query("DELETE FROM imported_ai_documents WHERE id = :id")
+    suspend fun deleteImportedAiDocument(id: String)
+
+    // ======================== ADMIN CONFIG & FEATURE FLAGS (v5) ========================
+
+    @Query("SELECT * FROM admin_config_entries")
+    fun observeAdminConfigEntries(): Flow<List<AdminConfigEntryEntity>>
+
+    @Query("SELECT * FROM admin_config_entries")
+    suspend fun getAllAdminConfigEntriesOnce(): List<AdminConfigEntryEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAdminConfigEntry(entry: AdminConfigEntryEntity)
 }

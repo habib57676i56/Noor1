@@ -36,31 +36,42 @@ data class NoorAiAnswer(
 data class ImportedKnowledgeBatch(
     val items: List<LocalAiKnowledgeEntity>,
     val skippedDuplicates: Int,
-    val parseErrors: Int
+    val parseErrors: Int,
+    val detectedLanguage: String = "AR",
+    val detectedCategory: String = "GENERAL",
+    val warningAr: String? = null,
+    val warningEn: String? = null
+)
+
+data class AiIndexStats(
+    val totalEntries: Int = 0,
+    val approvedEntries: Int = 0,
+    val pendingEntries: Int = 0,
+    val indexedLibraryBooks: Int = 0,
+    val uniqueTokenCount: Int = 0,
+    val lastReindexedAtMillis: Long = 0L
 )
 
 /**
- * 100% Offline Local Islamic Intelligence & Knowledge Retrieval Engine (NOOR AI).
+ * 100% Offline Local Islamic Intelligence & Knowledge Retrieval Engine (NOOR AI — Local RAG).
  *
  * Strict Islamic Accuracy & Transparency Architecture:
  * - Operates completely locally on device without any external paid API keys or internet requirement.
- * - Uses Arabic phonetic normalization, stop-word filtering, token/bigram overlap, and character-trigram
- *   relevance ranking over the verified Local AI Knowledge Base and Local Islamic Library.
- * - Never fabricates Quranic verses or Hadith.
- * - Always separates verified matched answers from uncertain/unmatched questions.
- * - Always attaches source references, scholarly difference notes where applicable, and an explicit
- *   reminder that this local engine is an educational search assistant — NOT a Mufti — and complex
- *   Fiqh rulings must be referred to qualified scholars.
- * - Transparently treats imported TXT/JSON documents as indexed local search/retrieval knowledge
- *   (RAG index), NEVER claiming to retrain a neural language model on device.
+ * - Understands Classical Arabic, Modern Standard Arabic, English, and common colloquial Arabic
+ *   (Levantine/Syrian/Gulf/Egyptian) phrasing by normalizing dialectal expressions before retrieval.
+ * - Uses Arabic phonetic normalization, keyword/tag boosting, token/bigram overlap, character trigrams,
+ *   and optional recent conversation context over the verified Local AI Knowledge Base & Library.
+ * - Never fabricates Quranic verses, Hadith, or Fatwas.
+ * - Explicitly discloses that imported TXT/JSON/DOCX/PDF documents update the local offline retrieval
+ *   index (RAG) and do NOT retrain a neural LLM weight file on device.
  */
 object NoorLocalAiEngine {
 
     private const val MUFTI_DISCLAIMER_AR =
-        "تنبيه شرعي: محرك «نور الذكي المحلي» أداة بحث تعليمية غير متصلة بالإنترنت تعتمد على قاعدة المعرفة المحلية الموثّقة فقط، وليس مفتياً شرعياً. في المسائل الفقهية المعقدة أو الفتاوى الخاصة يُرجى الرجوع إلى العلماء والمفتين المعتمدين."
+        "تنبيه شرعي وتقني: محرك «نور الذكي المحلي» يعتمد على البحث والاسترجاع المحلي الموثّق (Local RAG) دون إنترنت، وليس مفتياً شرعياً ولا يعيد تدريب نموذج لغوي عصبي عند استيراد الملفات. في المسائل الفقهية المعقدة يُرجى الرجوع إلى العلماء والمفتين المعتمدين."
 
     private const val MUFTI_DISCLAIMER_EN =
-        "Notice: Local NOOR AI is an offline educational retrieval assistant powered only by verified local knowledge — it is NOT a qualified Mufti. Please consult qualified Islamic scholars for personal or complex Fiqh rulings."
+        "Notice: Local NOOR AI is an offline retrieval assistant (Local RAG) powered strictly by verified local knowledge — it is NOT a Mufti and importing files updates the local search index rather than retraining a neural LLM. Please consult qualified scholars for complex Fiqh rulings."
 
     private val arabicStopWords = setOf(
         "ما", "هل", "من", "في", "على", "عن", "الى", "إلى", "ان", "أن", "إن",
@@ -69,10 +80,61 @@ object NoorLocalAiEngine {
         "the", "is", "are", "what", "how", "why", "who", "in", "of", "to", "for", "and", "a", "an"
     )
 
+    // Colloquial Arabic -> Standard Arabic normalization (Syrian/Levantine, Gulf, Egyptian)
+    private val colloquialReplacements = mapOf(
+        "شلون" to "كيف",
+        "ازاي" to "كيف",
+        "كيفاش" to "كيف",
+        "شو" to "ما",
+        "ايش" to "ما",
+        "شنو" to "ما",
+        "ليش" to "لماذا",
+        "عشان" to "لماذا",
+        "مشان" to "من اجل",
+        "بدي" to "اريد",
+        "ابغى" to "اريد",
+        "عايز" to "اريد",
+        "احفظ" to "حفظ القران",
+        "انسى" to "نسيان الحفظ",
+        "بنسى" to "نسيان الحفظ",
+        "بصلي" to "الصلاه",
+        "اصلي" to "الصلاه",
+        "بصوم" to "الصيام",
+        "اصوم" to "الصيام",
+        "تجويد" to "احكام التجويد",
+        "قراءه" to "تلاوه القران"
+    )
+
+    fun rebuildSearchIndex(
+        allKnowledge: List<LocalAiKnowledgeEntity>,
+        books: List<LibraryBookEntity>
+    ): AiIndexStats {
+        val vocab = HashSet<String>(1024)
+        for (entry in allKnowledge) {
+            val combined = "${entry.titleAr} ${entry.titleEn} ${entry.questionAr} ${entry.questionEn} ${entry.answerAr} ${entry.keywords} ${entry.category}"
+            vocab.addAll(extractSearchTokens(combined))
+        }
+        val approvedBooks = books.filter { it.approvalStatus == "APPROVED" }
+        for (book in approvedBooks) {
+            val combined = "${book.titleAr} ${book.summaryAr} ${book.contentText.take(3000)}"
+            vocab.addAll(extractSearchTokens(combined))
+        }
+        return AiIndexStats(
+            totalEntries = allKnowledge.size,
+            approvedEntries = allKnowledge.count { it.approvalStatus == "APPROVED" },
+            pendingEntries = allKnowledge.count { it.approvalStatus == "PENDING" },
+            indexedLibraryBooks = approvedBooks.size,
+            uniqueTokenCount = vocab.size,
+            lastReindexedAtMillis = System.currentTimeMillis()
+        )
+    }
+
     fun answerQuestion(
         query: String,
         approvedKnowledge: List<LocalAiKnowledgeEntity>,
-        approvedBooks: List<LibraryBookEntity>
+        approvedBooks: List<LibraryBookEntity>,
+        conversationHistory: List<NoorAiAnswer> = emptyList(),
+        minConfidenceThreshold: Float = 0.28f
     ): NoorAiAnswer {
         val trimmed = query.trim()
         if (trimmed.isBlank()) {
@@ -89,37 +151,53 @@ object NoorLocalAiEngine {
             )
         }
 
-        val queryTokens = extractSearchTokens(trimmed)
-        val queryTrigrams = buildTrigrams(normalizeMixed(trimmed))
+        // Expand short follow-up questions with context from the previous turn if helpful
+        val expandedQuery = expandColloquialAndContext(trimmed, conversationHistory)
+        val queryTokens = extractSearchTokens(expandedQuery)
+        val queryTrigrams = buildTrigrams(normalizeMixed(expandedQuery))
 
-        // 1. Score verified Q&A knowledge base entries
+        // 1. Score verified Q&A + imported knowledge chunks (including explicit keywords/tags boost!)
         val scoredKnowledge = approvedKnowledge.map { entry ->
-            val docText = "${entry.titleAr} ${entry.titleEn} ${entry.questionAr} ${entry.questionEn} ${entry.answerAr} ${entry.category} ${entry.sourceRef}"
-            val score = scoreMatch(queryTokens, queryTrigrams, docText, titleBoostText = "${entry.titleAr} ${entry.questionAr} ${entry.questionEn}")
+            val docText = "${entry.titleAr} ${entry.titleEn} ${entry.questionAr} ${entry.questionEn} ${entry.answerAr} ${entry.answerEn} ${entry.keywords} ${entry.category} ${entry.sourceRef}"
+            val titleAndKeywords = "${entry.titleAr} ${entry.questionAr} ${entry.questionEn} ${entry.keywords}"
+            val score = scoreMatch(queryTokens, queryTrigrams, docText, titleBoostText = titleAndKeywords)
             entry to score
-        }.filter { it.second >= 0.16f }.sortedByDescending { it.second }
+        }.filter { it.second >= 0.15f }.sortedByDescending { it.second }
 
         // 2. Score Islamic library books for supplemental authentic excerpts
         val scoredBooks = approvedBooks.filter { it.approvalStatus == "APPROVED" }.map { book ->
-            val docText = "${book.titleAr} ${book.titleEn} ${book.summaryAr} ${book.contentText.take(2400)}"
+            val docText = "${book.titleAr} ${book.titleEn} ${book.summaryAr} ${book.contentText.take(3000)}"
             val score = scoreMatch(queryTokens, queryTrigrams, docText, titleBoostText = "${book.titleAr} ${book.summaryAr}")
             book to score
-        }.filter { it.second >= 0.18f }.sortedByDescending { it.second }
+        }.filter { it.second >= 0.17f }.sortedByDescending { it.second }
 
         val topKb = scoredKnowledge.firstOrNull()
         val topBook = scoredBooks.firstOrNull()
 
-        if (topKb != null && topKb.second >= 0.30f) {
+        if (topKb != null && topKb.second >= minConfidenceThreshold) {
             val item = topKb.first
             val sources = mutableListOf<AiCitedSource>()
-            sources.add(AiCitedSource(title = item.titleAr, reference = item.sourceRef.ifBlank { "قاعدة المعرفة المحلية" }, kind = "KNOWLEDGE_BASE"))
-            scoredKnowledge.drop(1).take(2).filter { it.second >= 0.25f }.forEach { (extra, _) ->
-                sources.add(AiCitedSource(title = extra.titleAr, reference = extra.sourceRef, kind = "KNOWLEDGE_BASE"))
-            }
+            sources.add(
+                AiCitedSource(
+                    title = item.titleAr,
+                    reference = item.sourceRef.ifBlank { "قاعدة المعرفة المحلية" },
+                    kind = "KNOWLEDGE_BASE"
+                )
+            )
+            scoredKnowledge.drop(1).take(2).filter { it.second >= (minConfidenceThreshold - 0.04f).coerceAtLeast(0.20f) }
+                .forEach { (extra, _) ->
+                    sources.add(AiCitedSource(title = extra.titleAr, reference = extra.sourceRef, kind = "KNOWLEDGE_BASE"))
+                }
             if (topBook != null && topBook.second >= 0.24f) {
-                sources.add(AiCitedSource(title = topBook.first.titleAr, reference = topBook.first.sourceReference.ifBlank { topBook.first.authorAr }, kind = "LIBRARY"))
+                sources.add(
+                    AiCitedSource(
+                        title = topBook.first.titleAr,
+                        reference = topBook.first.sourceReference.ifBlank { topBook.first.authorAr },
+                        kind = "LIBRARY"
+                    )
+                )
             }
-            val level = if (item.verificationStatus == "VERIFIED" && topKb.second >= 0.42f) {
+            val level = if (item.verificationStatus == "VERIFIED" && topKb.second >= 0.40f) {
                 AiVerificationLevel.VERIFIED
             } else {
                 AiVerificationLevel.PARTIAL_MATCH
@@ -138,7 +216,7 @@ object NoorLocalAiEngine {
         }
 
         // Fall back to Library excerpt if found
-        if (topBook != null && topBook.second >= 0.24f) {
+        if (topBook != null && topBook.second >= (minConfidenceThreshold - 0.05f).coerceAtLeast(0.22f)) {
             val book = topBook.first
             val excerpt = extractBestExcerpt(book.contentText, queryTokens)
             return NoorAiAnswer(
@@ -163,8 +241,8 @@ object NoorLocalAiEngine {
         // Safe Islamic Guardrail: Never fabricate an answer, verse, or Hadith when uncertain!
         return NoorAiAnswer(
             query = trimmed,
-            answerAr = "لم يتم العثور على إجابة موثّقة مطابقة لهذا السؤال في قاعدة المعرفة المحلية الحالية.\n\nالتزاماً بالأمانة العلمية، لا يقوم «نور» بتأليف إجابات شرعية أو نسب آيات وأحاديث دون مصدر موثّق. يمكنك:\n• صياغة السؤال بكلمات أبسط (مثل: الصلاة، الصيام، الزكاة، التجويد، حفظ القرآن، السيرة).\n• الرجوع إلى أهل العلم والفتوى المعتمدين.\n• أو إضافة مراجع موثّقة جديدة إلى الفهرس المحلي عبر لوحة الإدارة المحلية.",
-            answerEn = "No verified matching entry was found in the local offline knowledge base. To uphold Islamic scholarly accuracy, NOOR never invents verses, Hadith, or rulings. Try simpler keywords (Salah, Fasting, Zakah, Tajweed, Hifz, Seerah), consult a qualified scholar, or add verified references via Local Admin.",
+            answerAr = "لم يتم العثور على إجابة موثّقة مطابقة لهذا السؤال في قاعدة المعرفة المحلية الحالية.\n\nالتزاماً بالأمانة العلمية، لا يقوم «نور» بتأليف إجابات شرعية أو نسب آيات وأحاديث دون مصدر موثّق. يمكنك:\n• صياغة السؤال بكلمات أبسط (مثل: الصلاة، الصيام، الزكاة، التجويد، حفظ القرآن، السيرة).\n• الرجوع إلى أهل العلم والفتوى المعتمدين.\n• أو إضافة مراجع وملفات موثّقة جديدة (TXT / JSON / DOCX / PDF) إلى الفهرس المحلي عبر لوحة الإدارة.",
+            answerEn = "No verified matching entry was found in the local offline knowledge base. To uphold Islamic scholarly accuracy, NOOR never invents verses, Hadith, or rulings. Try simpler keywords (Salah, Fasting, Zakah, Tajweed, Hifz, Seerah), consult a qualified scholar, or import verified references (TXT/JSON/DOCX/PDF) via Local Admin.",
             verificationLevel = AiVerificationLevel.UNCERTAIN,
             sources = emptyList(),
             scholarlyNote = "الوقوف عند حد العلم الموثّق أمانة؛ ومن قال لا أعلم فقد أفتى.",
@@ -175,7 +253,96 @@ object NoorLocalAiEngine {
     }
 
     /**
-     * Parses local TXT or JSON files imported by Admin/Editor via Storage Access Framework.
+     * Converts an ExtractedDocumentResult (TXT, JSON, DOCX, or PDF) into deduplicated searchable
+     * LocalAiKnowledgeEntity entries ready for local RAG retrieval.
+     */
+    fun parseExtractedDocumentToKnowledge(
+        extracted: ExtractedDocumentResult,
+        existingHashes: Set<String>,
+        autoApprove: Boolean
+    ): ImportedKnowledgeBatch {
+        if (extracted.format == DocumentFileFormat.JSON) {
+            val base = parseImportedKnowledgeText(
+                rawContent = extracted.extractedText,
+                fileName = extracted.fileName,
+                defaultCategory = extracted.detectedCategory,
+                existingHashes = existingHashes
+            )
+            val items = if (autoApprove) base.items.map { it.copy(approvalStatus = "APPROVED") } else base.items
+            return base.copy(
+                items = items,
+                detectedLanguage = extracted.detectedLanguage,
+                detectedCategory = extracted.detectedCategory,
+                warningAr = extracted.warningAr,
+                warningEn = extracted.warningEn
+            )
+        }
+
+        // If TXT looks like explicit Q/A blocks ("س:"/"ج:" or "Q:"/"A:"), preserve Q&A structure first
+        if (extracted.format == DocumentFileFormat.TXT &&
+            (extracted.extractedText.contains("س:") || extracted.extractedText.contains("Q:") || extracted.extractedText.contains("السؤال:"))
+        ) {
+            val qa = parseImportedKnowledgeText(
+                rawContent = extracted.extractedText,
+                fileName = extracted.fileName,
+                defaultCategory = extracted.detectedCategory,
+                existingHashes = existingHashes
+            )
+            val items = if (autoApprove) qa.items.map { it.copy(approvalStatus = "APPROVED") } else qa.items
+            return qa.copy(
+                items = items,
+                detectedLanguage = extracted.detectedLanguage,
+                detectedCategory = extracted.detectedCategory,
+                warningAr = extracted.warningAr,
+                warningEn = extracted.warningEn
+            )
+        }
+
+        val parsed = mutableListOf<LocalAiKnowledgeEntity>()
+        val seenHashes = existingHashes.toMutableSet()
+        var duplicates = 0
+        val approval = if (autoApprove) "APPROVED" else "PENDING"
+
+        for (chunk in extracted.chunks) {
+            val hash = LocalAdminSecurityManager.sha256Hex("${chunk.title}|${chunk.content}")
+            if (!seenHashes.add(hash)) {
+                duplicates++
+                continue
+            }
+            parsed.add(
+                LocalAiKnowledgeEntity(
+                    id = "ai_doc_${UUID.randomUUID().toString().take(10)}",
+                    category = extracted.detectedCategory,
+                    titleAr = chunk.title,
+                    titleEn = chunk.title,
+                    questionAr = chunk.title,
+                    questionEn = if (extracted.detectedLanguage != "AR") chunk.title else "",
+                    answerAr = chunk.content,
+                    answerEn = if (extracted.detectedLanguage != "AR") chunk.content else "",
+                    sourceRef = "مستند مستورد (${extracted.format.label}): ${extracted.fileName} #${chunk.index + 1}",
+                    verificationStatus = if (autoApprove) "VERIFIED" else "REVIEW",
+                    scholarlyNotes = "مستخرج تلقائياً من مستند محلي للفهرسة المحلية (Local RAG).",
+                    keywords = chunk.keywords.joinToString(", "),
+                    contentHash = hash,
+                    approvalStatus = approval,
+                    isUserAdded = true
+                )
+            )
+        }
+
+        return ImportedKnowledgeBatch(
+            items = parsed,
+            skippedDuplicates = duplicates,
+            parseErrors = if (parsed.isEmpty() && duplicates == 0) 1 else 0,
+            detectedLanguage = extracted.detectedLanguage,
+            detectedCategory = extracted.detectedCategory,
+            warningAr = extracted.warningAr,
+            warningEn = extracted.warningEn
+        )
+    }
+
+    /**
+     * Parses local TXT or JSON files imported by Admin via Storage Access Framework.
      * Note: Imported items update the local offline search index (they do NOT retrain an LLM).
      */
     fun parseImportedKnowledgeText(
@@ -191,6 +358,11 @@ object NoorLocalAiEngine {
         val seenHashes = existingHashes.toMutableSet()
         var duplicates = 0
         var errors = 0
+        val effectiveDefaultCategory = if (defaultCategory.equals("AUTO", true) || defaultCategory.isBlank()) {
+            DocumentContentExtractor.detectCategory(trimmed, fileName)
+        } else {
+            defaultCategory.uppercase()
+        }
 
         if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
             try {
@@ -213,10 +385,13 @@ object NoorLocalAiEngine {
                         duplicates++
                         continue
                     }
+                    val kw = obj.optString("keywords", "").trim().ifBlank {
+                        DocumentContentExtractor.extractTopKeywords("$qAr $aAr", 6).joinToString(", ")
+                    }
                     parsed.add(
                         LocalAiKnowledgeEntity(
                             id = "ai_imp_${UUID.randomUUID().toString().take(10)}",
-                            category = obj.optString("category", defaultCategory).uppercase(),
+                            category = obj.optString("category", effectiveDefaultCategory).uppercase(),
                             titleAr = obj.optString("titleAr", obj.optString("title", qAr.take(60))).trim(),
                             titleEn = obj.optString("titleEn", "").trim(),
                             questionAr = qAr,
@@ -226,13 +401,14 @@ object NoorLocalAiEngine {
                             sourceRef = obj.optString("sourceRef", obj.optString("source", fileName)).trim(),
                             verificationStatus = obj.optString("verificationStatus", "REVIEW").uppercase(),
                             scholarlyNotes = obj.optString("scholarlyNotes", "").trim(),
+                            keywords = kw,
                             contentHash = hash,
                             approvalStatus = "PENDING",
                             isUserAdded = true
                         )
                     )
                 }
-                return ImportedKnowledgeBatch(parsed, duplicates, errors)
+                return ImportedKnowledgeBatch(parsed, duplicates, errors, detectedCategory = effectiveDefaultCategory)
             } catch (_: Exception) {
                 // Fall through to plain TXT parser
             }
@@ -255,16 +431,18 @@ object NoorLocalAiEngine {
                 duplicates++
                 continue
             }
+            val kw = DocumentContentExtractor.extractTopKeywords("$question $answer", 6).joinToString(", ")
             parsed.add(
                 LocalAiKnowledgeEntity(
                     id = "ai_txt_${UUID.randomUUID().toString().take(10)}",
-                    category = defaultCategory.uppercase(),
+                    category = effectiveDefaultCategory,
                     titleAr = title,
                     titleEn = title,
                     questionAr = question,
                     answerAr = answer,
                     sourceRef = "ملف مستورد: $fileName",
                     verificationStatus = "REVIEW",
+                    keywords = kw,
                     contentHash = hash,
                     approvalStatus = "PENDING",
                     isUserAdded = true
@@ -272,7 +450,52 @@ object NoorLocalAiEngine {
             )
         }
 
-        return ImportedKnowledgeBatch(parsed, duplicates, errors)
+        return ImportedKnowledgeBatch(parsed, duplicates, errors, detectedCategory = effectiveDefaultCategory)
+    }
+
+    fun exportKnowledgeBaseJson(entries: List<LocalAiKnowledgeEntity>): String {
+        val arr = JSONArray()
+        for (e in entries) {
+            arr.put(
+                JSONObject().apply {
+                    put("id", e.id)
+                    put("category", e.category)
+                    put("titleAr", e.titleAr)
+                    put("titleEn", e.titleEn)
+                    put("questionAr", e.questionAr)
+                    put("questionEn", e.questionEn)
+                    put("answerAr", e.answerAr)
+                    put("answerEn", e.answerEn)
+                    put("sourceRef", e.sourceRef)
+                    put("verificationStatus", e.verificationStatus)
+                    put("scholarlyNotes", e.scholarlyNotes)
+                    put("keywords", e.keywords)
+                    put("approvalStatus", e.approvalStatus)
+                }
+            )
+        }
+        return JSONObject().apply {
+            put("schema", "noor_local_ai_kb_v2")
+            put("exportedAtMillis", System.currentTimeMillis())
+            put("count", entries.size)
+            put("items", arr)
+        }.toString(2)
+    }
+
+    private fun expandColloquialAndContext(
+        query: String,
+        history: List<NoorAiAnswer>
+    ): String {
+        val normalizedWords = normalizeMixed(query).split(' ').map { w ->
+            colloquialReplacements[w] ?: w
+        }
+        val base = normalizedWords.joinToString(" ")
+        val tokens = base.split(' ').filter { it.length >= 2 && it !in arabicStopWords }
+        if (tokens.size <= 2 && history.isNotEmpty()) {
+            val prev = history.first()
+            return "$base ${prev.query}"
+        }
+        return base
     }
 
     internal fun normalizeMixed(input: String): String {
@@ -304,8 +527,8 @@ object NoorLocalAiEngine {
         for (qt in queryTokens) {
             when {
                 qt in docTokens -> tokenHits += 1.0f
-                docNorm.contains(qt) -> tokenHits += 0.78f
-                qt.length >= 4 && docTokens.any { it.startsWith(qt.take(4)) || qt.startsWith(it.take(4)) } -> tokenHits += 0.5f
+                docNorm.contains(qt) -> tokenHits += 0.80f
+                qt.length >= 4 && docTokens.any { it.startsWith(qt.take(4)) || qt.startsWith(it.take(4)) } -> tokenHits += 0.52f
             }
         }
         val tokenScore = (tokenHits / queryTokens.size.coerceAtLeast(1)).coerceAtMost(1f)
@@ -316,7 +539,7 @@ object NoorLocalAiEngine {
         }
         val titleScore = (titleHits / queryTokens.size.coerceAtLeast(1)).coerceAtMost(1f)
 
-        val docTrigrams = buildTrigrams(docNorm.take(600))
+        val docTrigrams = buildTrigrams(docNorm.take(700))
         val trigramScore = if (queryTrigrams.isEmpty() || docTrigrams.isEmpty()) {
             0f
         } else {
@@ -324,7 +547,7 @@ object NoorLocalAiEngine {
             overlap.toFloat() / min(queryTrigrams.size, docTrigrams.size).coerceAtLeast(1)
         }
 
-        return (0.50f * tokenScore) + (0.32f * titleScore) + (0.18f * trigramScore)
+        return (0.48f * tokenScore) + (0.34f * titleScore) + (0.18f * trigramScore)
     }
 
     private fun extractBestExcerpt(content: String, queryTokens: List<String>): String {

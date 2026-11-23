@@ -91,6 +91,8 @@ data class UserPreferences(
     val homeConfig: HomeDashboardConfig = HomeDashboardConfig(),
     // Advanced Adhan Customization, Persistent Notification & Quran Auto-Scroll
     val adhanSoundEnabled: Boolean = true,
+    val adhanNotificationOnly: Boolean = false,
+    val adhanVolume: Float = 1.0f,
     val adhanRespectSilentMode: Boolean = true,
     val adhanConfig: PerPrayerAdhanConfig = PerPrayerAdhanConfig(),
     val customAdhanRecords: List<CustomAdhanRecord> = emptyList(),
@@ -185,6 +187,8 @@ class UserPreferencesRepository(private val context: Context) {
         val HOME_SHOW_EVENTS = booleanPreferencesKey("home_show_events")
 
         val ADHAN_SOUND_ENABLED = booleanPreferencesKey("adhan_sound_enabled")
+        val ADHAN_NOTIFICATION_ONLY = booleanPreferencesKey("adhan_notification_only")
+        val ADHAN_VOLUME = floatPreferencesKey("adhan_volume")
         val ADHAN_RESPECT_SILENT = booleanPreferencesKey("adhan_respect_silent")
         val ADHAN_DEFAULT_VOICE = stringPreferencesKey("adhan_default_voice")
         val ADHAN_FAJR_VOICE = stringPreferencesKey("adhan_fajr_voice")
@@ -275,6 +279,8 @@ class UserPreferencesRepository(private val context: Context) {
                 showUpcomingEvent = p[Keys.HOME_SHOW_EVENTS] ?: true
             ),
             adhanSoundEnabled = p[Keys.ADHAN_SOUND_ENABLED] ?: true,
+            adhanNotificationOnly = p[Keys.ADHAN_NOTIFICATION_ONLY] ?: false,
+            adhanVolume = (p[Keys.ADHAN_VOLUME] ?: 1.0f).coerceIn(0.1f, 1.0f),
             adhanRespectSilentMode = p[Keys.ADHAN_RESPECT_SILENT] ?: true,
             adhanConfig = PerPrayerAdhanConfig(
                 defaultVoiceId = p[Keys.ADHAN_DEFAULT_VOICE] ?: AdhanCatalog.DEFAULT_VOICE_ID,
@@ -518,6 +524,34 @@ class UserPreferencesRepository(private val context: Context) {
             if (prefs[Keys.ADHAN_ASR_VOICE] == recordId) prefs[Keys.ADHAN_ASR_VOICE] = ""
             if (prefs[Keys.ADHAN_MAGHRIB_VOICE] == recordId) prefs[Keys.ADHAN_MAGHRIB_VOICE] = ""
             if (prefs[Keys.ADHAN_ISHA_VOICE] == recordId) prefs[Keys.ADHAN_ISHA_VOICE] = ""
+        }
+    }
+
+    suspend fun setAdhanNotificationOnly(notificationOnly: Boolean) {
+        context.noorDataStore.edit { it[Keys.ADHAN_NOTIFICATION_ONLY] = notificationOnly }
+    }
+
+    suspend fun setAdhanVolume(volume: Float) {
+        context.noorDataStore.edit { it[Keys.ADHAN_VOLUME] = volume.coerceIn(0.1f, 1.0f) }
+    }
+
+    suspend fun restoreAdhanDefaults() {
+        context.noorDataStore.edit {
+            it[Keys.ADHAN_SOUND_ENABLED] = true
+            it[Keys.ADHAN_NOTIFICATION_ONLY] = false
+            it[Keys.ADHAN_VOLUME] = 1.0f
+            it[Keys.ADHAN_RESPECT_SILENT] = true
+            it[Keys.ADHAN_DEFAULT_VOICE] = AdhanCatalog.DEFAULT_VOICE_ID
+            it[Keys.ADHAN_FAJR_VOICE] = ""
+            it[Keys.ADHAN_DHUHR_VOICE] = ""
+            it[Keys.ADHAN_ASR_VOICE] = ""
+            it[Keys.ADHAN_MAGHRIB_VOICE] = ""
+            it[Keys.ADHAN_ISHA_VOICE] = ""
+            it[Keys.NOTIFY_FAJR] = true
+            it[Keys.NOTIFY_DHUHR] = true
+            it[Keys.NOTIFY_ASR] = true
+            it[Keys.NOTIFY_MAGHRIB] = true
+            it[Keys.NOTIFY_ISHA] = true
         }
     }
 

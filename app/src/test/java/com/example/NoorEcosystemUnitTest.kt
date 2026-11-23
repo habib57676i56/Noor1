@@ -44,10 +44,15 @@ class NoorEcosystemUnitTest {
         assertTrue(LocalAdminRole.TEACHER.canManageHalaqat())
         assertTrue(LocalAdminRole.TEACHER.canManageQuizzes())
 
-        assertFalse(LocalAdminRole.EDITOR.canManageAccounts())
-        assertFalse(LocalAdminRole.EDITOR.canManageHalaqat())
-        assertTrue(LocalAdminRole.EDITOR.canManageAiKnowledge())
-        assertTrue(LocalAdminRole.EDITOR.canApproveContent())
+        assertFalse(LocalAdminRole.ADMIN.canManageAccounts())
+        assertTrue(LocalAdminRole.ADMIN.canManageHalaqat())
+        assertTrue(LocalAdminRole.ADMIN.canManageAiKnowledge())
+        assertTrue(LocalAdminRole.ADMIN.canApproveContent())
+        assertEquals(LocalAdminRole.ADMIN, LocalAdminRole.fromKey("EDITOR"))
+
+        assertFalse(LocalAdminRole.STUDENT.canManageAccounts())
+        assertFalse(LocalAdminRole.STUDENT.canManageHalaqat())
+        assertFalse(LocalAdminRole.STUDENT.canManageAiKnowledge())
     }
 
     @Test

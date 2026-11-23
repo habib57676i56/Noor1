@@ -51,6 +51,7 @@ class AdhanPlaybackService : Service() {
                 val prayerKey = intent.getStringExtra(EXTRA_PRAYER_KEY) ?: PrayerName.FAJR.name
                 val title = intent.getStringExtra(EXTRA_TITLE) ?: "حان وقت الأذان · Adhan"
                 val body = intent.getStringExtra(EXTRA_BODY) ?: ""
+                val isTestAlarm = intent.getBooleanExtra(EXTRA_IS_TEST_ALARM, false)
 
                 ensureChannel()
                 val notification = buildNotification(title, body)
@@ -66,24 +67,36 @@ class AdhanPlaybackService : Service() {
 
                 scope.launch {
                     val prefs = UserPreferencesRepository(applicationContext).getPreferencesOnce()
+                    val prayer = runCatching { PrayerName.valueOf(prayerKey) }.getOrDefault(PrayerName.FAJR)
                     val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
                     val isSilentOrVibrate = audioManager != null &&
                         audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL
 
-                    if (!prefs.adhanSoundEnabled || (prefs.adhanRespectSilentMode && isSilentOrVibrate)) {
+                    // Respect notification-only mode, disabled sound, silent mode, and duplicate-playback guard
+                    val canPlayAudio = (isTestAlarm || (prefs.adhanSoundEnabled && !prefs.adhanNotificationOnly)) &&
+                        (isTestAlarm || !(prefs.adhanRespectSilentMode && isSilentOrVibrate)) &&
+                        AdhanDuplicateGuard.shouldAllowPlayback(applicationContext, prayer, isTestAlarm = isTestAlarm)
+
+                    if (!canPlayAudio) {
                         stopForeground(STOP_FOREGROUND_REMOVE)
                         stopSelf()
                         return@launch
                     }
 
-                    val prayer = runCatching { PrayerName.valueOf(prayerKey) }.getOrDefault(PrayerName.FAJR)
-                    val voiceId = prefs.adhanConfig.voiceIdForPrayer(prayer)
-                    val voice = AdhanCatalog.resolveVoice(voiceId, prefs.customAdhanRecords)
+                    if (!isTestAlarm) {
+                        AdhanDuplicateGuard.markPlayed(applicationContext, prayer)
+                    }
 
+                    val voiceId = prefs.adhanConfig.voiceIdForPrayer(prayer)
+                    val voice = AdhanCatalog.resolveVoice(voiceId, prefs.customAdhanRecords, applicationContext)
+
+                    val offlineTag = if (voice.isDownloadedOffline) {
+                        if (prefs.language == AppLanguage.ARABIC) " (محلي)" else " (Offline)"
+                    } else ""
                     val subText = if (prefs.language == AppLanguage.ARABIC) {
-                        "${voice.nameAr}${if (body.isNotBlank()) " · $body" else ""}"
+                        "${voice.nameAr}$offlineTag${if (body.isNotBlank()) " · $body" else ""}"
                     } else {
-                        "${voice.nameEn}${if (body.isNotBlank()) " · $body" else ""}"
+                        "${voice.nameEn}$offlineTag${if (body.isNotBlank()) " · $body" else ""}"
                     }
                     val updatedNotif = buildNotification(title, subText)
                     val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -92,6 +105,7 @@ class AdhanPlaybackService : Service() {
                     adhanPlayer.playVoice(
                         voice = voice,
                         isAlarmPlayback = true,
+                        volume = prefs.adhanVolume,
                         onCompleted = {
                             stopForeground(STOP_FOREGROUND_REMOVE)
                             stopSelf()
@@ -168,15 +182,23 @@ class AdhanPlaybackService : Service() {
         const val EXTRA_PRAYER_KEY = "extra_prayer_key"
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_BODY = "extra_body"
+        const val EXTRA_IS_TEST_ALARM = "extra_is_test_alarm"
         const val EXTRA_SHORTCUT_ROUTE = "extra_shortcut_route"
 
-        fun startAdhan(context: Context, prayer: PrayerName, title: String, body: String) {
+        fun startAdhan(
+            context: Context,
+            prayer: PrayerName,
+            title: String,
+            body: String,
+            isTestAlarm: Boolean = false
+        ) {
             try {
                 val intent = Intent(context, AdhanPlaybackService::class.java).apply {
                     action = ACTION_PLAY_ADHAN
                     putExtra(EXTRA_PRAYER_KEY, prayer.name)
                     putExtra(EXTRA_TITLE, title)
                     putExtra(EXTRA_BODY, body)
+                    putExtra(EXTRA_IS_TEST_ALARM, isTestAlarm)
                 }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)

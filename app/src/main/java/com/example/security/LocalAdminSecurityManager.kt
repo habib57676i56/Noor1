@@ -5,27 +5,37 @@ import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
+/**
+ * 4-Tier Local Role-Based Access Control (RBAC) for NOOR Advanced Admin Dashboard.
+ * Legacy "EDITOR" accounts map safely to ADMIN so existing databases upgrade seamlessly.
+ */
 enum class LocalAdminRole(
     val key: String,
     val labelAr: String,
     val labelEn: String
 ) {
     SUPER_ADMIN("SUPER_ADMIN", "مدير النظام العام", "Super Admin"),
+    ADMIN("ADMIN", "مشرف / مدير محتوى", "Admin / Content Manager"),
     TEACHER("TEACHER", "معلم حلقات القرآن", "Quran Teacher"),
-    EDITOR("EDITOR", "محرر المحتوى والمكتبة", "Content Editor");
+    STUDENT("STUDENT", "طالب (عرض محدود)", "Student (Limited)");
 
     fun canManageAccounts(): Boolean = this == SUPER_ADMIN
+    fun canManageSettings(): Boolean = this == SUPER_ADMIN
     fun canBackupAndRestore(): Boolean = this == SUPER_ADMIN
-    fun canApproveContent(): Boolean = this == SUPER_ADMIN || this == EDITOR
-    fun canManageAiKnowledge(): Boolean = this == SUPER_ADMIN || this == EDITOR
-    fun canManageLibrary(): Boolean = this == SUPER_ADMIN || this == EDITOR
-    fun canManageQuizzes(): Boolean = this == SUPER_ADMIN || this == EDITOR || this == TEACHER
-    fun canManageHalaqat(): Boolean = this == SUPER_ADMIN || this == TEACHER
-    fun canViewAuditLogs(): Boolean = this == SUPER_ADMIN
+    fun canViewAuditLogs(): Boolean = this == SUPER_ADMIN || this == ADMIN
+    fun canApproveContent(): Boolean = this == SUPER_ADMIN || this == ADMIN
+    fun canManageAiKnowledge(): Boolean = this == SUPER_ADMIN || this == ADMIN
+    fun canManageLibrary(): Boolean = this == SUPER_ADMIN || this == ADMIN
+    fun canManageQuizzes(): Boolean = this == SUPER_ADMIN || this == ADMIN || this == TEACHER
+    fun canManageHalaqat(): Boolean = this == SUPER_ADMIN || this == ADMIN || this == TEACHER
+    fun canViewRecordings(): Boolean = this == SUPER_ADMIN || this == ADMIN || this == TEACHER
+    fun canManageAnnouncements(): Boolean = this == SUPER_ADMIN || this == ADMIN
 
     companion object {
-        fun fromKey(key: String?): LocalAdminRole =
-            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: EDITOR
+        fun fromKey(key: String?): LocalAdminRole {
+            if (key.equals("EDITOR", ignoreCase = true)) return ADMIN
+            return entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: STUDENT
+        }
     }
 }
 

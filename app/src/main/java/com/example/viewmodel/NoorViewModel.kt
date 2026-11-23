@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.NoorApplication
 import com.example.audio.AdhanAudioPlayer
 import com.example.audio.AdhanCatalog
+import com.example.audio.AdhanDownloadState
 import com.example.audio.AdhanImportResult
 import com.example.audio.AdhanPlaybackService
 import com.example.audio.AdhanVoiceOption
@@ -151,6 +152,11 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     val liveRecitationState: StateFlow<LiveRecitationState> = liveRecitationListener.state
     val previewingAdhanVoiceId: StateFlow<String?> = adhanAudioPlayer.playingVoiceId
     val adhanPreviewBuffering: StateFlow<Boolean> = adhanAudioPlayer.isBuffering
+
+    private val _adhanDownloadStates = MutableStateFlow<Map<String, AdhanDownloadState>>(
+        AdhanCatalog.scanOfflineDownloadStates(application)
+    )
+    val adhanDownloadStates: StateFlow<Map<String, AdhanDownloadState>> = _adhanDownloadStates.asStateFlow()
 
     private val _pendingShortcutRoute = MutableStateFlow<String?>(null)
     val pendingShortcutRoute: StateFlow<String?> = _pendingShortcutRoute.asStateFlow()
@@ -910,6 +916,15 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 v.copy(audioUrl = SurahCatalog.audioUrlForAyah(v.surahNumber, v.numberInSurah, reciter))
             }
             _surahReaderState.value = currentState.copy(verses = updatedVerses)
+            val audio = quranAudioPlayer.state.value
+            if (audio.isPlaying && audio.playingSurah == currentState.surahNumber && audio.playingAyah != null) {
+                playSurahVerseByVerse(
+                    surahNumber = currentState.surahNumber,
+                    verses = updatedVerses,
+                    reciter = reciter,
+                    startAyah = audio.playingAyah
+                )
+            }
         }
     }
 
@@ -920,6 +935,15 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val surah = SurahCatalog.findSurah(verse.surahNumber)
         val reciter = preferences.value.quranReciter
+        if (repeatPerAyah <= 1 && allVerses.isNotEmpty()) {
+            playSurahVerseByVerse(
+                surahNumber = verse.surahNumber,
+                verses = allVerses,
+                reciter = reciter,
+                startAyah = verse.numberInSurah
+            )
+            return
+        }
         quranAudioPlayer.playAyah(
             surahNumber = verse.surahNumber,
             ayahNumber = verse.numberInSurah,
@@ -938,8 +962,58 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    // --- Verse-by-Verse Synchronized Sheikh Recitation (Real Ayah Boundaries — Zero Fake Timers!) ---
+    fun playSurahVerseByVerse(
+        surahNumber: Int,
+        verses: List<QuranVerse>,
+        reciter: QuranReciter = preferences.value.quranReciter,
+        startAyah: Int = 1
+    ) {
+        if (verses.isEmpty()) {
+            playFullSurahWithReciter(surahNumber, reciter)
+            return
+        }
+        val surah = SurahCatalog.findSurah(surahNumber)
+        val queue = verses.map { v ->
+            val url = SurahCatalog.audioUrlForAyah(surahNumber, v.numberInSurah, reciter)
+            AudioTrackItem(
+                id = "ayah_${reciter.id}_${surahNumber}_${v.numberInSurah}",
+                titleAr = "سورة ${surah.nameAr} · آية ${v.numberInSurah}",
+                titleEn = "${surah.nameEn} · Ayah ${v.numberInSurah}",
+                subtitleAr = reciter.nameAr,
+                subtitleEn = reciter.nameEn,
+                audioUrl = url,
+                category = com.example.domain.model.AudioCategory.QURAN_RECITERS,
+                surahNumber = surahNumber,
+                ayahNumber = v.numberInSurah
+            )
+        }
+        val startIndex = queue.indexOfFirst { it.ayahNumber == startAyah }.coerceAtLeast(0)
+        quranAudioPlayer.playTrackQueue(queue, startIndex, preferences.value.audioPlaybackSpeed)
+    }
+
+    fun jumpToQuranAudioAyah(
+        surahNumber: Int,
+        ayahNumber: Int,
+        verses: List<QuranVerse>
+    ) {
+        if (!quranAudioPlayer.jumpToAyahInQueue(surahNumber, ayahNumber)) {
+            playSurahVerseByVerse(
+                surahNumber = surahNumber,
+                verses = verses,
+                reciter = preferences.value.quranReciter,
+                startAyah = ayahNumber
+            )
+        }
+    }
+
     // --- Yasser Al-Dosari & Islamic Audio Library ---
     fun playFullSurahWithReciter(surahNumber: Int, reciter: QuranReciter = preferences.value.quranReciter) {
+        val currentReader = _surahReaderState.value
+        if (currentReader is SurahReaderState.Ready && currentReader.surahNumber == surahNumber && currentReader.verses.isNotEmpty()) {
+            playSurahVerseByVerse(surahNumber, currentReader.verses, reciter, startAyah = 1)
+            return
+        }
         val queue = AudioLibraryCatalog.surahTracksForReciter(reciter)
         val idx = queue.indexOfFirst { it.surahNumber == surahNumber }.coerceAtLeast(0)
         quranAudioPlayer.playTrackQueue(queue, idx, preferences.value.audioPlaybackSpeed)
@@ -1099,9 +1173,24 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         repo.prefs.setQuranAutoScrollSpeed(speed)
     }
 
-    // --- Smart Update: Advanced Adhan Sound Customization ---
+    // --- Smart Update: Advanced Adhan Sound Customization (Default: Sheikh Nasser Al-Qatami) ---
     fun setAdhanSoundEnabled(enabled: Boolean) = viewModelScope.launch {
         repo.prefs.setAdhanSoundEnabled(enabled)
+        NoorAlarmScheduler.rescheduleAll(getApplication(), repo.prefs.getPreferencesOnce())
+    }
+
+    fun setAdhanNotificationOnly(notificationOnly: Boolean) = viewModelScope.launch {
+        repo.prefs.setAdhanNotificationOnly(notificationOnly)
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        _statusBanner.value = if (notificationOnly) {
+            if (isAr) "تم تفعيل وضع الإشعار فقط (بدون تشغيل الأذان الكامل)" else "Notification-only mode enabled"
+        } else {
+            if (isAr) "تم تفعيل تشغيل الأذان الكامل تلقائياً عند دخول الوقت" else "Full automatic Adhan playback enabled"
+        }
+    }
+
+    fun setAdhanVolume(volume: Float) = viewModelScope.launch {
+        repo.prefs.setAdhanVolume(volume)
     }
 
     fun setAdhanRespectSilentMode(respect: Boolean) = viewModelScope.launch {
@@ -1111,7 +1200,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     fun setDefaultAdhanVoice(voiceId: String) = viewModelScope.launch {
         repo.prefs.setDefaultAdhanVoice(voiceId)
         val isAr = preferences.value.language == AppLanguage.ARABIC
-        val voice = AdhanCatalog.resolveVoice(voiceId, preferences.value.customAdhanRecords)
+        val voice = AdhanCatalog.resolveVoice(voiceId, preferences.value.customAdhanRecords, getApplication())
         _statusBanner.value = if (isAr) {
             "تم اعتماد صوت الأذان: ${voice.nameAr}"
         } else {
@@ -1123,11 +1212,42 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         repo.prefs.setPrayerSpecificAdhanVoice(prayer, voiceId)
     }
 
+    fun downloadAdhanForOffline(voice: AdhanVoiceOption) = viewModelScope.launch {
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        _adhanDownloadStates.value = _adhanDownloadStates.value + (voice.id to AdhanDownloadState.Downloading(0.05f))
+        val result = withContext(Dispatchers.IO) {
+            AdhanCatalog.downloadAndVerifyVoice(getApplication(), voice) { progress ->
+                _adhanDownloadStates.value = _adhanDownloadStates.value + (voice.id to AdhanDownloadState.Downloading(progress))
+            }
+        }
+        _adhanDownloadStates.value = _adhanDownloadStates.value + (voice.id to result)
+        _statusBanner.value = when (result) {
+            is AdhanDownloadState.VerifiedOffline -> if (isAr) {
+                "تم تنزيل والتحقق من ${voice.nameAr} للعمل بدون إنترنت ✓"
+            } else {
+                "Downloaded & verified ${voice.nameEn} for offline playback ✓"
+            }
+            is AdhanDownloadState.Failed -> if (isAr) result.messageAr else result.messageEn
+            else -> null
+        }
+    }
+
+    fun deleteOfflineAdhanDownload(voiceId: String) = viewModelScope.launch {
+        withContext(Dispatchers.IO) {
+            AdhanCatalog.deleteOfflineDownload(getApplication(), voiceId)
+        }
+        _adhanDownloadStates.value = _adhanDownloadStates.value - voiceId
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        _statusBanner.value = if (isAr) "تم حذف النسخة المحفوظة محلياً" else "Deleted local offline copy"
+    }
+
     fun previewOrStopAdhan(voice: AdhanVoiceOption) {
         val isAr = preferences.value.language == AppLanguage.ARABIC
+        val resolved = AdhanCatalog.resolveVoice(voice.id, preferences.value.customAdhanRecords, getApplication())
         adhanAudioPlayer.playVoice(
-            voice = voice,
+            voice = resolved,
             isAlarmPlayback = false,
+            volume = preferences.value.adhanVolume,
             onFallbackNotice = {
                 _statusBanner.value = if (isAr) {
                     "تعذّر تشغيل الملف المحدد — تم تشغيل النغمة الافتراضية"
@@ -1149,8 +1269,30 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             context = getApplication(),
             prayer = prayer,
             title = if (isAr) "تجربة أذان $label" else "Adhan Preview · $label",
-            body = if (isAr) "اضغط إيقاف الأذان لإنهاء التجربة" else "Tap Stop Adhan to end test"
+            body = if (isAr) "اضغط إيقاف الأذان لإنهاء التجربة" else "Tap Stop Adhan to end test",
+            isTestAlarm = true
         )
+    }
+
+    fun scheduleTestAdhanInSeconds(prayer: PrayerName = PrayerName.FAJR, delaySeconds: Int = 15) {
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        NoorAlarmScheduler.scheduleTestPrayerAlarm(getApplication(), prayer, delaySeconds, isAr)
+        _statusBanner.value = if (isAr) {
+            "تم جدولة أذان تجريبي بعد $delaySeconds ثانية — يمكنك إغلاق الشاشة الآن لاختبار التشغيل الخلفي"
+        } else {
+            "Test Adhan alarm scheduled in ${delaySeconds}s — you may background the app now"
+        }
+    }
+
+    fun restoreAdhanDefaults() = viewModelScope.launch {
+        repo.prefs.restoreAdhanDefaults()
+        NoorAlarmScheduler.rescheduleAll(getApplication(), repo.prefs.getPreferencesOnce())
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        _statusBanner.value = if (isAr) {
+            "تمت استعادة الإعدادات الافتراضية للأذان (الشيخ ناصر القطامي)"
+        } else {
+            "Adhan settings restored to defaults (Sheikh Nasser Al-Qatami)"
+        }
     }
 
     fun stopActiveAdhanAlarm() {

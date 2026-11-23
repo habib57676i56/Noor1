@@ -21,11 +21,13 @@ class NoorSmartUpdateUnitTest {
     // --- 1. Advanced Adhan Sound Customization Tests ---
 
     @Test
-    fun adhanCatalog_containsSheikhMaherAsDefaultAndSystemFallback() {
+    fun adhanCatalog_containsSheikhNasserAlQatamiAsDefaultAndMaherAndSystemFallback() {
         val defaultVoice = AdhanCatalog.builtInVoices.first()
         assertEquals(AdhanCatalog.DEFAULT_VOICE_ID, defaultVoice.id)
-        assertTrue(defaultVoice.nameEn.contains("Maher Al-Muaiqly"))
-        assertTrue(defaultVoice.nameAr.contains("ماهر المعيقلي"))
+        assertEquals("adhan_qatami", defaultVoice.id)
+        assertTrue(defaultVoice.nameEn.contains("Nasser Al-Qatami"))
+        assertTrue(defaultVoice.nameAr.contains("ناصر القطامي"))
+        assertTrue(AdhanCatalog.builtInVoices.any { it.id == "adhan_maher_muaiqly" && it.nameAr.contains("ماهر المعيقلي") })
         assertTrue(AdhanCatalog.builtInVoices.any { it.isSystemDefault && it.id == AdhanCatalog.SYSTEM_DEFAULT_ID })
     }
 

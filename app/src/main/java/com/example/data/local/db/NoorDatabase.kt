@@ -50,9 +50,13 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         QuizAttemptEntity::class,
         QuranNoteCollectionEntity::class,
         QuranPersonalNoteEntity::class,
-        LocalAdminAccountEntity::class
+        LocalAdminAccountEntity::class,
+        // NOOR v5 entities: Recitation recordings, Imported AI docs, Admin settings
+        StudentRecitationRecordingEntity::class,
+        ImportedAiDocumentEntity::class,
+        AdminConfigEntryEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class NoorDatabase : RoomDatabase() {
@@ -613,6 +617,67 @@ abstract class NoorDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Non-destructive migration from NOOR 4.0 (v4) to NOOR 5.0 (v5).
+         * Adds keywords column to local_ai_knowledge and creates tables for
+         * student recitation recordings, imported AI documents, and admin config/feature flags.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE local_ai_knowledge ADD COLUMN keywords TEXT NOT NULL DEFAULT ''"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS student_recitation_recordings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        studentId INTEGER,
+                        studentName TEXT NOT NULL,
+                        surahNumber INTEGER NOT NULL,
+                        fromAyah INTEGER NOT NULL,
+                        toAyah INTEGER NOT NULL,
+                        testMode TEXT NOT NULL,
+                        filePath TEXT NOT NULL,
+                        durationMs INTEGER NOT NULL,
+                        recognizedTranscript TEXT NOT NULL,
+                        accuracyPercent INTEGER NOT NULL,
+                        suspectedMistakesSummary TEXT NOT NULL,
+                        uncertainCount INTEGER NOT NULL,
+                        teacherReviewStatus TEXT NOT NULL,
+                        teacherComment TEXT NOT NULL,
+                        createdAtMillis INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS imported_ai_documents (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        fileName TEXT NOT NULL,
+                        format TEXT NOT NULL,
+                        detectedLanguage TEXT NOT NULL,
+                        category TEXT NOT NULL,
+                        chunkCount INTEGER NOT NULL,
+                        charCount INTEGER NOT NULL,
+                        importedBy TEXT NOT NULL,
+                        warningNote TEXT NOT NULL,
+                        createdAtMillis INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS admin_config_entries (
+                        configKey TEXT NOT NULL PRIMARY KEY,
+                        configValue TEXT NOT NULL,
+                        updatedBy TEXT NOT NULL,
+                        updatedAtMillis INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): NoorDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -620,7 +685,7 @@ abstract class NoorDatabase : RoomDatabase() {
                     NoorDatabase::class.java,
                     "noor_islamic_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }

@@ -33,24 +33,33 @@ class NoorAlarmReceiver : BroadcastReceiver() {
             ?: NoorNotificationHelper.CHANNEL_PRAYER
         val id = intent.getIntExtra(NoorAlarmScheduler.EXTRA_NOTIFICATION_ID, 3001)
         val isExactPrayer = intent.getBooleanExtra(NoorAlarmScheduler.EXTRA_IS_EXACT_PRAYER, false)
+        val isTestAlarm = intent.getBooleanExtra(NoorAlarmScheduler.EXTRA_IS_TEST_ALARM, false)
         val prayerKey = intent.getStringExtra(NoorAlarmScheduler.EXTRA_PRAYER_KEY)
 
-        NoorNotificationHelper.showNotification(context, id, channel, title, body)
-
-        if (isExactPrayer && prayerKey != null) {
-            val prayer = runCatching { PrayerName.valueOf(prayerKey) }.getOrNull()
-            if (prayer != null) {
-                AdhanPlaybackService.startAdhan(context, prayer, title, body)
-            }
+        val prayer = prayerKey?.let { runCatching { PrayerName.valueOf(it) }.getOrNull() }
+        val allowPlayback = if (isExactPrayer && prayer != null) {
+            com.example.audio.AdhanDuplicateGuard.shouldAllowPlayback(context, prayer, isTestAlarm = isTestAlarm)
+        } else {
+            true
         }
 
-        val pendingResult = goAsync()
-        CoroutineScope(Dispatchers.IO).launch {
-            try {
-                val prefs = UserPreferencesRepository(context).getPreferencesOnce()
-                NoorAlarmScheduler.rescheduleAll(context, prefs)
-            } finally {
-                pendingResult.finish()
+        if (allowPlayback) {
+            NoorNotificationHelper.showNotification(context, id, channel, title, body)
+        }
+
+        if (isExactPrayer && prayer != null && allowPlayback) {
+            AdhanPlaybackService.startAdhan(context, prayer, title, body, isTestAlarm = isTestAlarm)
+        }
+
+        if (!isTestAlarm) {
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val prefs = UserPreferencesRepository(context).getPreferencesOnce()
+                    NoorAlarmScheduler.rescheduleAll(context, prefs)
+                } finally {
+                    pendingResult.finish()
+                }
             }
         }
     }

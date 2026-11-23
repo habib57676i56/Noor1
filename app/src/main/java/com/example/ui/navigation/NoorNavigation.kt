@@ -294,6 +294,7 @@ fun NoorAppShell(
 
                 Scaffold(
                     containerColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.onBackground,
                     contentWindowInsets = WindowInsets.safeDrawing,
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                     bottomBar = {

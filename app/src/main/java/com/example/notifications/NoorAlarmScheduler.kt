@@ -19,6 +19,7 @@ object NoorAlarmScheduler {
     const val EXTRA_CHANNEL = "extra_channel"
     const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
     const val EXTRA_IS_EXACT_PRAYER = "extra_is_exact_prayer"
+    const val EXTRA_IS_TEST_ALARM = "extra_is_test_alarm"
     const val EXTRA_PRAYER_KEY = "extra_prayer_key"
 
     private const val REQ_PRAYER_BASE = 2000
@@ -27,6 +28,7 @@ object NoorAlarmScheduler {
     private const val REQ_EVENING_ADHKAR = 2202
     private const val REQ_QURAN_REMINDER = 2203
     private const val REQ_TASBIH_REMINDER = 2204
+    private const val REQ_TEST_ADHAN = 2299
 
     fun rescheduleAll(context: Context, prefs: UserPreferences) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
@@ -163,6 +165,31 @@ object NoorAlarmScheduler {
         )
     }
 
+    fun scheduleTestPrayerAlarm(
+        context: Context,
+        prayer: PrayerName,
+        delaySeconds: Int,
+        isArabic: Boolean
+    ): Long {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return 0L
+        val triggerAtMillis = System.currentTimeMillis() + delaySeconds.coerceIn(5, 600) * 1000L
+        val pNameAr = prayerNameAr(prayer)
+        val pNameEn = prayerNameEn(prayer)
+        scheduleSingleAlarm(
+            context = context,
+            alarmManager = alarmManager,
+            requestCode = REQ_TEST_ADHAN,
+            triggerAtMillis = triggerAtMillis,
+            channelId = NoorNotificationHelper.CHANNEL_PRAYER,
+            title = if (isArabic) "تجربة أذان صلاة $pNameAr" else "Scheduled Test Adhan · $pNameEn",
+            body = if (isArabic) "اختبار الأذان التلقائي في الخلفية بصوت المؤذن المختار" else "Background Adhan verification with selected voice",
+            isExactPrayer = true,
+            prayerKey = prayer.name,
+            isTestAlarm = true
+        )
+        return triggerAtMillis
+    }
+
     private fun scheduleSingleAlarm(
         context: Context,
         alarmManager: AlarmManager,
@@ -172,7 +199,8 @@ object NoorAlarmScheduler {
         title: String,
         body: String,
         isExactPrayer: Boolean = false,
-        prayerKey: String? = null
+        prayerKey: String? = null,
+        isTestAlarm: Boolean = false
     ) {
         val intent = Intent(context, NoorAlarmReceiver::class.java).apply {
             putExtra(EXTRA_TITLE, title)
@@ -180,6 +208,7 @@ object NoorAlarmScheduler {
             putExtra(EXTRA_CHANNEL, channelId)
             putExtra(EXTRA_NOTIFICATION_ID, requestCode)
             putExtra(EXTRA_IS_EXACT_PRAYER, isExactPrayer)
+            putExtra(EXTRA_IS_TEST_ALARM, isTestAlarm)
             if (prayerKey != null) {
                 putExtra(EXTRA_PRAYER_KEY, prayerKey)
             }

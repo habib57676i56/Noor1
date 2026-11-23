@@ -1,7 +1,10 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -24,12 +27,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Alarm
 import androidx.compose.material.icons.rounded.AudioFile
+import androidx.compose.material.icons.rounded.BatteryAlert
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.UploadFile
 import androidx.compose.material.icons.rounded.VolumeUp
@@ -39,10 +47,12 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,6 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.audio.AdhanCatalog
+import com.example.audio.AdhanDownloadState
 import com.example.audio.AdhanVoiceOption
 import com.example.domain.model.AppLanguage
 import com.example.domain.model.PrayerName
@@ -73,10 +84,12 @@ import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.NoorSectionHeader
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.theme.EmeraldDeep
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.GoldBright
 import com.example.ui.theme.GoldPrimary
 import com.example.ui.theme.LocalNoorColors
+import com.example.ui.theme.SemanticSuccess
 import com.example.viewmodel.NoorViewModel
 
 @Composable
@@ -92,34 +105,28 @@ fun AdhanSettingsScreen(
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val playingVoiceId by viewModel.previewingAdhanVoiceId.collectAsStateWithLifecycle()
     val isBuffering by viewModel.adhanPreviewBuffering.collectAsStateWithLifecycle()
+    val downloadStates by viewModel.adhanDownloadStates.collectAsStateWithLifecycle()
 
     var assigningPrayer by remember { mutableStateOf<PrayerName?>(null) }
 
     DisposableEffect(Unit) {
-        onDispose {
-            viewModel.stopAdhanPreview()
-        }
+        onDispose { viewModel.stopAdhanPreview() }
     }
 
-    // Zero-permission Storage Access Framework Audio Importer (MP3, M4A, WAV)
     val importAudioLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri != null) {
-            viewModel.importCustomAdhanAudio(uri)
-        }
+        if (uri != null) viewModel.importCustomAdhanAudio(uri)
     }
 
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        if (granted) {
-            viewModel.setPersistentPrayerNotificationEnabled(true)
-        }
+        if (granted) viewModel.setPersistentPrayerNotificationEnabled(true)
     }
 
-    val allVoices = remember(prefs.customAdhanRecords) {
-        AdhanCatalog.allVoices(prefs.customAdhanRecords)
+    val allVoices = remember(prefs.customAdhanRecords, downloadStates) {
+        AdhanCatalog.allVoices(prefs.customAdhanRecords, context)
     }
 
     LazyColumn(
@@ -131,17 +138,17 @@ fun AdhanSettingsScreen(
     ) {
         item {
             NoorScreenHeader(
-                title = L10n.pick(lang, "تخصيص أصوات الأذان", "Adhan Sound Settings"),
+                title = L10n.pick(lang, "نظام الأذان التلقائي", "Automatic Adhan System"),
                 subtitle = L10n.pick(
                     lang,
-                    "الشيخ ماهر المعيقلي، مؤذنو الحرمين، استيراد ملفات MP3/M4A/WAV وتخصيص كل صلاة",
-                    "Sheikh Maher Al-Muaiqly, renowned muezzins, device audio import & per-prayer sounds"
+                    "الافتراضي: الشيخ ناصر القطامي · تنزيل للعمل بدون إنترنت · تخصيص كل صلاة",
+                    "Default: Sheikh Nasser Al-Qatami · Verified offline download · Per-prayer control"
                 ),
                 onBack = onBack
             )
         }
 
-        // Master Controls + Persistent Prayer Bar + Live Adhan Test
+        // Master Controls, Volume, Mode & Live / Background Test
         item {
             LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp), goldBorder = true) {
                 Row(
@@ -154,12 +161,12 @@ fun AdhanSettingsScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = L10n.pick(lang, "تشغيل صوت الأذان عند دخول الوقت", "Play Adhan Audio at Prayer Time"),
+                                text = L10n.pick(lang, "تشغيل الأذان التلقائي عند دخول الوقت", "Auto-Play Adhan at Prayer Time"),
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = L10n.pick(lang, "يتم تشغيل المؤذن المحدد مع بديل تلقائي مضمون", "Plays selected voice with guaranteed default fallback"),
+                                text = L10n.pick(lang, "يعمل في الخلفية وبلا إنترنت بعد تنزيل الصوت", "Works in background & offline after download"),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -169,6 +176,32 @@ fun AdhanSettingsScreen(
                         checked = prefs.adhanSoundEnabled,
                         onCheckedChange = { viewModel.setAdhanSoundEnabled(it) },
                         modifier = Modifier.testTag("adhan_sound_enabled_switch")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = L10n.pick(lang, "وضع الإشعار فقط (بدون أذان كامل)", "Notification-Only Mode"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = L10n.pick(lang, "عرض تنبيه الصلاة فقط دون تشغيل ملف الأذان الكامل", "Show prayer notification without playing full Adhan audio"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = prefs.adhanNotificationOnly,
+                        onCheckedChange = { viewModel.setAdhanNotificationOnly(it) },
+                        modifier = Modifier.testTag("adhan_notification_only_switch")
                     )
                 }
 
@@ -199,6 +232,24 @@ fun AdhanSettingsScreen(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Independent Adhan Volume Slider
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "مستوى صوت الأذان المستقل: ${(prefs.adhanVolume * 100).toInt()}%",
+                        "Independent Adhan Volume: ${(prefs.adhanVolume * 100).toInt()}%"
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = noorColors.goldAccent
+                )
+                Slider(
+                    value = prefs.adhanVolume,
+                    onValueChange = { viewModel.setAdhanVolume(it) },
+                    valueRange = 0.1f..1.0f,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -211,7 +262,7 @@ fun AdhanSettingsScreen(
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = L10n.pick(lang, "يعرض الصلوات الخمس والعد التنازلي المباشر في الخلفية", "Shows all 5 prayers & live countdown in the notification bar"),
+                            text = L10n.pick(lang, "يعرض الصلوات الخمس والعد التنازلي المباشر في الخلفية", "Shows all 5 prayers & live countdown in notification bar"),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -231,7 +282,7 @@ fun AdhanSettingsScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -248,7 +299,7 @@ fun AdhanSettingsScreen(
                     ) {
                         Icon(Icons.Rounded.NotificationsActive, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(L10n.pick(lang, "تجربة الأذان الآن", "Test Adhan Now"))
+                        Text(L10n.pick(lang, "تجربة الآن", "Test Now"))
                     }
                     OutlinedButton(
                         onClick = { viewModel.stopActiveAdhanAlarm() },
@@ -260,6 +311,105 @@ fun AdhanSettingsScreen(
                         Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(L10n.pick(lang, "إيقاف", "Stop"))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { viewModel.scheduleTestAdhanInSeconds(PrayerName.FAJR, 15) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("schedule_test_adhan_button"),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Rounded.Alarm, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(L10n.pick(lang, "اختبار خلفي (+15ث)", "Bg Test (+15s)"), maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = { viewModel.restoreAdhanDefaults() },
+                        modifier = Modifier.testTag("restore_adhan_defaults_button"),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Icon(Icons.Rounded.Restore, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(L10n.pick(lang, "الافتراضي", "Reset"))
+                    }
+                }
+            }
+        }
+
+        // Default Highlighted Banner: Sheikh Nasser Al-Qatami Offline Download
+        item {
+            val qatami = AdhanCatalog.builtInVoices.first()
+            val qState = downloadStates[qatami.id] ?: AdhanDownloadState.Idle
+            LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp), strong = true, goldBorder = true) {
+                Text(
+                    text = L10n.pick(lang, "المؤذن الافتراضي: الشيخ ناصر القطامي", "Default Reciter: Sheikh Nasser Al-Qatami"),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = noorColors.goldAccent
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "نزّل التسجيل الكامل للشيخ ناصر القطامي محلياً للتحقق من سلامته وضمان عمله التلقائي بدون إنترنت عند دخول وقت الصلاة.",
+                        "Download Sheikh Nasser Al-Qatami's full Adhan locally with integrity verification for reliable offline prayer playback."
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                when (qState) {
+                    is AdhanDownloadState.Downloading -> {
+                        LinearProgressIndicator(
+                            progress = { qState.progress },
+                            modifier = Modifier.fillMaxWidth(),
+                            color = GoldPrimary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = L10n.pick(lang, "جارٍ التنزيل والتحقق... ${(qState.progress * 100).toInt()}%", "Downloading & verifying... ${(qState.progress * 100).toInt()}%"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = noorColors.goldAccent
+                        )
+                    }
+                    is AdhanDownloadState.VerifiedOffline -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.CloudDone, contentDescription = null, tint = SemanticSuccess, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = L10n.pick(
+                                    lang,
+                                    "جاهز للعمل بدون إنترنت ✓ (${qState.sizeBytes / 1024} ك.ب — تم التحقق من صلاحية الملف)",
+                                    "Verified Offline Ready ✓ (${qState.sizeBytes / 1024} KB)"
+                                ),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = SemanticSuccess,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                    else -> {
+                        Button(
+                            onClick = { viewModel.downloadAdhanForOffline(qatami) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("download_qatami_adhan_button"),
+                            colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Icon(Icons.Rounded.Download, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(L10n.pick(lang, "تنزيل أذان ناصر القطامي الكامل (بدون إنترنت)", "Download Nasser Al-Qatami Full Adhan (Offline)"))
+                        }
                     }
                 }
             }
@@ -282,17 +432,15 @@ fun AdhanSettingsScreen(
                 Text(
                     text = L10n.pick(
                         lang,
-                        "اختر ملف أذان محفوظ على هاتفك بصيغة MP3 أو M4A أو WAV. يتم نسخه محلياً داخل التطبيق ليعمل دائماً حتى بعد إغلاق التطبيق.",
-                        "Pick an audio file from your phone (MP3, M4A, or WAV). It is safely copied inside NOOR so it stays available after restart."
+                        "اختر ملف أذان محفوظ على هاتفك بصيغة MP3 أو M4A أو WAV. يتم نسخه محلياً ليعمل دائماً بدون إنترنت.",
+                        "Pick an audio file from your phone (MP3, M4A, or WAV). Copied locally for offline reliability."
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Button(
-                    onClick = {
-                        importAudioLauncher.launch(AdhanCatalog.supportedMimeTypes + arrayOf("audio/*"))
-                    },
+                    onClick = { importAudioLauncher.launch(AdhanCatalog.supportedMimeTypes + arrayOf("audio/*")) },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
@@ -306,7 +454,7 @@ fun AdhanSettingsScreen(
             }
         }
 
-        // Custom Imported Voices (if any)
+        // Custom Imported Voices
         if (prefs.customAdhanRecords.isNotEmpty()) {
             item {
                 NoorSectionHeader(
@@ -324,17 +472,19 @@ fun AdhanSettingsScreen(
                     isSelected = isSelected,
                     isPlaying = isPlaying,
                     isBuffering = isPlaying && isBuffering,
+                    downloadState = AdhanDownloadState.VerifiedOffline(rec.localFilePath, 0L, 0L),
                     onSelect = { viewModel.setDefaultAdhanVoice(rec.id) },
                     onPreviewToggle = { viewModel.previewOrStopAdhan(option) },
+                    onDownload = null,
                     onDelete = { viewModel.deleteCustomAdhanRecord(rec) }
                 )
             }
         }
 
-        // Curated Adhan Recordings (Sheikh Maher Al-Muaiqly first!)
+        // Curated Adhan Recordings (Sheikh Nasser Al-Qatami FIRST!)
         item {
             NoorSectionHeader(
-                title = L10n.pick(lang, "أصوات المؤذنين المختارة", "Curated Adhan Voices"),
+                title = L10n.pick(lang, "أصوات المؤذنين المعتمدة", "Authorized Adhan Voices"),
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -342,22 +492,25 @@ fun AdhanSettingsScreen(
         items(AdhanCatalog.builtInVoices, key = { it.id }) { voice ->
             val isSelected = prefs.adhanConfig.defaultVoiceId == voice.id
             val isPlaying = playingVoiceId == voice.id
+            val dState = downloadStates[voice.id] ?: AdhanDownloadState.Idle
             AdhanVoiceCard(
                 voice = voice,
                 isAr = isAr,
                 isSelected = isSelected,
                 isPlaying = isPlaying,
                 isBuffering = isPlaying && isBuffering,
+                downloadState = dState,
                 onSelect = { viewModel.setDefaultAdhanVoice(voice.id) },
                 onPreviewToggle = { viewModel.previewOrStopAdhan(voice) },
-                onDelete = null
+                onDownload = if (!voice.isSystemDefault) ({ viewModel.downloadAdhanForOffline(voice) }) else null,
+                onDelete = if (dState is AdhanDownloadState.VerifiedOffline) ({ viewModel.deleteOfflineAdhanDownload(voice.id) }) else null
             )
         }
 
-        // Per-Prayer Adhan Voice Assignment
+        // Per-Prayer Enable/Disable & Voice Assignment
         item {
             NoorSectionHeader(
-                title = L10n.pick(lang, "تخصيص صوت مختلف لكل صلاة", "Per-Prayer Adhan Sound"),
+                title = L10n.pick(lang, "تفعيل وتخصيص الأذان لكل صلاة", "Per-Prayer Enable & Voice"),
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -367,8 +520,8 @@ fun AdhanSettingsScreen(
                 Text(
                     text = L10n.pick(
                         lang,
-                        "يمكنك اختيار مؤذن مخصص لكل صلاة (مثل صوت خاص لصلاة الفجر) أو تركها على الصوت الافتراضي.",
-                        "Assign a distinct Adhan voice to each prayer (such as a special Fajr Adhan) or keep the default voice."
+                        "يمكنك تفعيل أو تعطيل الأذان لكل صلاة على حدة وتخصيص مؤذن مختلف لكل وقت.",
+                        "Enable or disable Adhan individually for each prayer and assign a specific voice."
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -376,17 +529,19 @@ fun AdhanSettingsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 PrayerName.fardPrayers.forEach { prayer ->
+                    val enabled = prefs.isPrayerNotificationEnabled(prayer)
                     val hasOverride = prefs.adhanConfig.hasCustomOverride(prayer)
                     val resolved = AdhanCatalog.resolveVoice(
                         prefs.adhanConfig.voiceIdForPrayer(prayer),
-                        prefs.customAdhanRecords
+                        prefs.customAdhanRecords,
+                        context
                     )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .clickable { assigningPrayer = prayer }
-                            .padding(vertical = 10.dp, horizontal = 8.dp),
+                            .padding(vertical = 8.dp, horizontal = 6.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -409,14 +564,79 @@ fun AdhanSettingsScreen(
                             )
                         }
                         TextButton(onClick = { assigningPrayer = prayer }) {
-                            Text(L10n.pick(lang, "تغيير", "Change"), color = noorColors.goldAccent)
+                            Text(L10n.pick(lang, "تغيير", "Voice"), color = noorColors.goldAccent)
                         }
+                        Switch(
+                            checked = enabled,
+                            onCheckedChange = { viewModel.setPrayerNotification(prayer, it) },
+                            modifier = Modifier.testTag("adhan_prayer_toggle_${prayer.name.lowercase()}")
+                        )
                     }
                 }
             }
         }
 
-        // Pin Adhan Settings Shortcut to Home Screen
+        // Background Reliability & Battery Optimization Notice
+        item {
+            LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.BatteryAlert, contentDescription = null, tint = noorColors.goldAccent)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = L10n.pick(lang, "موثوقية الأذان في الخلفية والبطارية", "Background Reliability & Battery"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "لضمان دقة الأذان في الخلفية على أندرويد، يُنصح باستثناء «نور» من تحسين البطارية ومنح إذن المنبهات الدقيقة. ملاحظة: إذا تم عمل «إيقاف إجباري / Force Stop» للتطبيق من إعدادات النظام، يمنع أندرويد تشغيل أي منبهات حتى تفتح التطبيق مجدداً.",
+                        "For accurate background Adhan alarms, exempt NOOR from battery optimization and allow Exact Alarms. Note: Android blocks all alarms if an app is manually Force-Stopped until reopened."
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                context.startActivity(intent)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(L10n.pick(lang, "إعدادات البطارية", "Battery Settings"), maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            runCatching {
+                                val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                } else {
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.parse("package:${context.packageName}")
+                                    }
+                                }
+                                context.startActivity(intent)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(L10n.pick(lang, "المنبهات الدقيقة", "Exact Alarms"), maxLines = 1)
+                    }
+                }
+            }
+        }
+
+        // Pin Adhan Settings Shortcut
         item {
             LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Row(
@@ -507,7 +727,7 @@ fun AdhanSettingsScreen(
                                 colors = RadioButtonDefaults.colors(selectedColor = GoldPrimary)
                             )
                             Text(
-                                text = L10n.pick(lang, "استخدام الصوت الافتراضي", "Use Default Adhan Voice"),
+                                text = L10n.pick(lang, "استخدام الصوت الافتراضي (الشيخ ناصر القطامي)", "Use Default Adhan Voice"),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium
                             )
@@ -575,8 +795,10 @@ private fun AdhanVoiceCard(
     isSelected: Boolean,
     isPlaying: Boolean,
     isBuffering: Boolean,
+    downloadState: AdhanDownloadState,
     onSelect: () -> Unit,
     onPreviewToggle: () -> Unit,
+    onDownload: (() -> Unit)?,
     onDelete: (() -> Unit)?
 ) {
     val noorColors = LocalNoorColors.current
@@ -594,7 +816,7 @@ private fun AdhanVoiceCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
+                    .size(48.dp)
                     .clip(CircleShape)
                     .background(
                         if (isPlaying) GoldPrimary.copy(alpha = 0.28f)
@@ -641,13 +863,40 @@ private fun AdhanVoiceCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (downloadState is AdhanDownloadState.VerifiedOffline && !voice.isCustomImported) {
+                    Text(
+                        text = if (isAr) "محفوظ بدون إنترنت ✓" else "Offline Verified ✓",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = SemanticSuccess,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+
+            if (onDownload != null && downloadState !is AdhanDownloadState.VerifiedOffline) {
+                if (downloadState is AdhanDownloadState.Downloading) {
+                    CircularProgressIndicator(
+                        progress = { downloadState.progress },
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp,
+                        color = GoldPrimary
+                    )
+                } else {
+                    IconButton(onClick = onDownload, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            imageVector = Icons.Rounded.Download,
+                            contentDescription = "Download offline",
+                            tint = noorColors.goldAccent
+                        )
+                    }
+                }
             }
 
             if (onDelete != null) {
-                IconButton(onClick = onDelete, modifier = Modifier.size(40.dp)) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(44.dp)) {
                     Icon(
                         imageVector = Icons.Rounded.DeleteOutline,
-                        contentDescription = "Delete imported Adhan",
+                        contentDescription = "Delete local Adhan",
                         tint = MaterialTheme.colorScheme.error
                     )
                 }

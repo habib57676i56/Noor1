@@ -1,6 +1,7 @@
 package com.example.ui.screens.ecosystem
 
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,7 @@ import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Logout
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.UploadFile
@@ -53,6 +55,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.db.LocalAiKnowledgeEntity
 import com.example.security.LocalAdminRole
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
@@ -81,26 +84,54 @@ fun OfflineSuperAdminScreen(
     val hasSuperAdmin by viewModel.hasSuperAdmin.collectAsStateWithLifecycle()
     val session by viewModel.adminSession.collectAsStateWithLifecycle()
     val allKb by viewModel.allAiKnowledge.collectAsStateWithLifecycle()
+    val importedDocs by viewModel.importedAiDocuments.collectAsStateWithLifecycle()
+    val indexStats by viewModel.aiIndexStats.collectAsStateWithLifecycle()
     val books by viewModel.libraryBooks.collectAsStateWithLifecycle()
     val circles by viewModel.circles.collectAsStateWithLifecycle()
     val students by viewModel.students.collectAsStateWithLifecycle()
     val teachers by viewModel.teachers.collectAsStateWithLifecycle()
     val assessments by viewModel.assessments.collectAsStateWithLifecycle()
+    val hifzLogs by viewModel.hifzRevisionLogs.collectAsStateWithLifecycle()
+    val recordings by viewModel.recitationRecordings.collectAsStateWithLifecycle()
+    val playbackState by viewModel.recordingPlaybackState.collectAsStateWithLifecycle()
     val quizzes by viewModel.quizQuestions.collectAsStateWithLifecycle()
-    val khatmPlans by viewModel.khatmPlans.collectAsStateWithLifecycle()
     val localAdmins by viewModel.localAdmins.collectAsStateWithLifecycle()
     val auditLogs by viewModel.localAuditLogs.collectAsStateWithLifecycle()
     val errorLogs by viewModel.systemErrorLogs.collectAsStateWithLifecycle()
     val backups by viewModel.backupSnapshots.collectAsStateWithLifecycle()
+    val adminSettings by viewModel.adminSettings.collectAsStateWithLifecycle()
+    val storageUsage by viewModel.storageUsage.collectAsStateWithLifecycle()
 
-    // SAF launchers for Knowledge import, Full Backup Export, and Full Backup Restore
-    val importKnowledgeLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+    // SAF launcher for TXT / JSON / DOCX / PDF AI knowledge documents
+    val importDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
             runCatching {
-                val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
-                val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "knowledge.txt"
-                if (text.isNotBlank()) {
-                    viewModel.importKnowledgeFileContent(text, fileName, "GENERAL")
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@runCatching
+                val displayName = resolveDocumentDisplayName(context, uri)
+                if (bytes.isNotEmpty()) {
+                    viewModel.importKnowledgeDocumentBytes(displayName, bytes, "AUTO")
+                }
+            }
+        }
+    }
+
+    val exportKbLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    val json = viewModel.exportAiKnowledgeJson()
+                    context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(json) }
+                }
+            }
+        }
+    }
+
+    val exportReportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                runCatching {
+                    val text = viewModel.exportHalaqatReportText()
+                    context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { it.write(text) }
                 }
             }
         }
@@ -128,7 +159,7 @@ fun OfflineSuperAdminScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         NoorScreenHeader(
-            title = L10n.pick(lang, "الإدارة العامة المحلية (NOOR Admin)", "Offline Local Super Admin"),
+            title = L10n.pick(lang, "لوحة إدارة نور المتقدمة (NOOR Admin)", "NOOR Advanced Admin"),
             subtitle = if (session.isSignedIn) {
                 "${session.account?.displayName} · ${session.role.labelAr}"
             } else {
@@ -155,15 +186,18 @@ fun OfflineSuperAdminScreen(
 
         val role = session.role
         var selectedTab by remember { mutableIntStateOf(0) }
+        var editingKb by remember { mutableStateOf<LocalAiKnowledgeEntity?>(null) }
         var showAddKbDialog by remember { mutableStateOf(false) }
         var showAddQuizDialog by remember { mutableStateOf(false) }
         var showAddStaffDialog by remember { mutableStateOf(false) }
 
         val tabs = listOf(
-            "الإحصائيات",
-            "معرفة الذكاء (${allKb.size})",
+            "نظرة عامة",
+            "الطلاب والتسجيلات",
+            "ذكاء نور (${allKb.size})",
             "المسابقات (${quizzes.size})",
             "الحسابات (${localAdmins.size})",
+            "إعدادات الإدارة",
             "النسخ والسجلات"
         )
 
@@ -180,76 +214,151 @@ fun OfflineSuperAdminScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             when (selectedTab) {
-                // 0: Dashboard & Analytics
-                0 -> {
-                    item {
-                        LiquidGlassCard(strong = true, goldBorder = true) {
-                            Text("لوحة الإحصائيات المحلية", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = noorColors.goldAccent)
-                            Spacer(Modifier.height(8.dp))
-                            Text("• قاعدة المعرفة المحلية: ${allKb.size} (معتمد: ${allKb.count { it.approvalStatus == "APPROVED" }} · بانتظار المراجعة: ${allKb.count { it.approvalStatus == "PENDING" }})")
-                            Text("• المكتبة الإسلامية: ${books.size} كتاب/مرجع")
-                            Text("• الحلقات: ${circles.size} · الطلاب: ${students.size} · المعلمون: ${teachers.size} · التقييمات: ${assessments.size}")
-                            Text("• بنك المسابقات: ${quizzes.size} سؤال · خطط الختمة: ${khatmPlans.size}")
-                            Spacer(Modifier.height(8.dp))
-                            Text(
-                                text = "ملاحظة تقنية شفافة: هذه اللوحة تدير بيانات هذا الجهاز محلياً بالكامل وتصدّر/تستورد حزم JSON لمشاركتها بين الأجهزة دون خادم سحابي. وهي لا تتحكم عن بُعد بأجهزة غير متصلة بخادم مزامنة.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                0 -> adminOverviewTabItems(
+                    students = students,
+                    teachers = teachers,
+                    circles = circles,
+                    assessments = assessments,
+                    hifzLogs = hifzLogs,
+                    recordings = recordings,
+                    allKb = allKb,
+                    importedDocs = importedDocs,
+                    books = books,
+                    indexStats = indexStats,
+                    storage = storageUsage,
+                    sttAvailable = viewModel.isSpeechRecognitionAvailable(),
+                    auditLogs = auditLogs,
+                    onRefreshDiagnostics = {
+                        viewModel.refreshStorageUsage()
+                        viewModel.reindexKnowledgeBase()
                     }
-                }
+                )
 
-                // 1: AI Knowledge Management (Q&A + Import TXT/JSON + Approval + Reindex)
-                1 -> {
+                1 -> adminHalaqatAndRecordingsTabItems(
+                    role = role,
+                    students = students,
+                    teachers = teachers,
+                    circles = circles,
+                    recordings = recordings,
+                    playbackState = playbackState,
+                    onExportReport = { exportReportLauncher.launch("noor_halaqat_report_${viewModel.todayKey()}.txt") },
+                    onPlayRecording = { viewModel.playSavedRecording(it) },
+                    onStopRecording = { viewModel.stopSavedRecording() },
+                    onReviewRecording = { id, status, comment -> viewModel.reviewStudentRecording(id, status, comment) },
+                    onDeleteRecording = { viewModel.deleteSavedRecording(it) }
+                )
+
+                // 2: Trainable Local AI (RAG) Management — Q&A + TXT/JSON/DOCX/PDF + Edit + Export + Reindex
+                2 -> {
                     item {
                         if (!role.canManageAiKnowledge()) {
-                            LiquidGlassCard { Text("تحتاج صلاحية «مدير النظام العام» أو «محرر المحتوى» لإدارة قاعدة المعرفة.") }
+                            LiquidGlassCard { Text("تحتاج صلاحية «مدير النظام العام» أو «مشرف المحتوى» لإدارة قاعدة المعرفة.") }
                         } else {
                             LiquidGlassCard(strong = true, goldBorder = true) {
-                                Text("إدارة فهرس المعرفة المحلية للذكاء", fontWeight = FontWeight.Bold, color = noorColors.goldAccent)
+                                Text("تدريب وتغذية فهرس الذكاء المحلي (Local RAG)", fontWeight = FontWeight.Bold, color = noorColors.goldAccent)
                                 Spacer(Modifier.height(4.dp))
                                 Text(
-                                    "تحديث أو استيراد الملفات يضيفها إلى فهرس البحث المحلي (RAG) مع كشف التكرار ولا يعني إعادة تدريب نموذج لغوي عصبي على الجهاز.",
+                                    "استيراد ملفات TXT / JSON / DOCX / PDF يقسّم النصوص إلى مقاطع قابلة للبحث (RAG) ويكشف اللغة والتصنيف تلقائياً — ولا يعيد تدريب أوزان نموذج لغوي عصبي.",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    "الفهرس الحالي: ${indexStats.approvedEntries}/${indexStats.totalEntries} معتمد · ${indexStats.uniqueTokenCount} كلمة مفهرسة · ${importedDocs.size} مستند مستورد",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = noorColors.goldAccent
                                 )
                                 Spacer(Modifier.height(8.dp))
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     Button(
-                                        onClick = { showAddKbDialog = true },
+                                        onClick = {
+                                            editingKb = null
+                                            showAddKbDialog = true
+                                        },
                                         modifier = Modifier.weight(1f),
                                         colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
                                     ) {
                                         Icon(Icons.Rounded.Add, contentDescription = null)
                                         Spacer(Modifier.width(4.dp))
-                                        Text("إضافة سؤال/جواب")
+                                        Text("إضافة درس/سؤال")
                                     }
                                     OutlinedButton(
-                                        onClick = { importKnowledgeLauncher.launch(arrayOf("text/plain", "application/json", "*/*")) },
-                                        modifier = Modifier.weight(1f)
+                                        onClick = {
+                                            importDocLauncher.launch(
+                                                arrayOf(
+                                                    "text/plain",
+                                                    "application/json",
+                                                    "application/pdf",
+                                                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                                    "*/*"
+                                                )
+                                            )
+                                        },
+                                        modifier = Modifier.weight(1f).testTag("admin_import_ai_doc_btn")
                                     ) {
                                         Icon(Icons.Rounded.UploadFile, contentDescription = null)
                                         Spacer(Modifier.width(4.dp))
-                                        Text("استيراد TXT/JSON")
+                                        Text("PDF/DOCX/TXT")
                                     }
                                 }
                                 Spacer(Modifier.height(6.dp))
-                                OutlinedButton(onClick = { viewModel.reindexKnowledgeBase() }, modifier = Modifier.fillMaxWidth()) {
-                                    Icon(Icons.Rounded.Refresh, contentDescription = null)
-                                    Spacer(Modifier.width(6.dp))
-                                    Text("إعادة فهرسة قاعدة المعرفة المحلية")
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedButton(onClick = { viewModel.reindexKnowledgeBase() }, modifier = Modifier.weight(1f)) {
+                                        Icon(Icons.Rounded.Refresh, contentDescription = null)
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("إعادة الفهرسة")
+                                    }
+                                    OutlinedButton(
+                                        onClick = { exportKbLauncher.launch("noor_ai_kb_${viewModel.todayKey()}.json") },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Rounded.Backup, contentDescription = null)
+                                        Spacer(Modifier.width(4.dp))
+                                        Text("تصدير KB")
+                                    }
                                 }
                             }
                         }
                     }
+
+                    if (importedDocs.isNotEmpty()) {
+                        item { NoorSectionHeader(title = "المستندات المستوردة (${importedDocs.size})") }
+                        items(importedDocs.take(10), key = { it.id }) { doc ->
+                            LiquidGlassCard {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("${doc.fileName} [${doc.format}]", fontWeight = FontWeight.Bold)
+                                        Text("اللغة: ${doc.detectedLanguage} · التصنيف: ${doc.category} · المقاطع: ${doc.chunkCount}", style = MaterialTheme.typography.labelSmall, color = noorColors.goldAccent)
+                                        if (doc.warningNote.isNotBlank()) Text(doc.warningNote, style = MaterialTheme.typography.labelSmall, color = SemanticError)
+                                    }
+                                    if (role.canManageAiKnowledge()) {
+                                        IconButton(onClick = { viewModel.deleteImportedDocument(doc.id) }) {
+                                            Icon(Icons.Rounded.Delete, contentDescription = "Delete Doc", tint = SemanticError)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    item { NoorSectionHeader(title = "مواد قاعدة المعرفة (${allKb.size})") }
                     items(allKb, key = { it.id }) { kb ->
                         LiquidGlassCard(goldBorder = kb.approvalStatus == "PENDING") {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                 Column(Modifier.weight(1f)) {
                                     Text("${kb.titleAr} [${kb.category}]", fontWeight = FontWeight.Bold)
                                     Text("الحالة: ${kb.approvalStatus} · المصدر: ${kb.sourceRef}", style = MaterialTheme.typography.labelSmall, color = noorColors.goldAccent)
+                                    if (kb.keywords.isNotBlank()) {
+                                        Text("كلمات مفتاحية: ${kb.keywords}", style = MaterialTheme.typography.labelSmall)
+                                    }
                                     Text(kb.questionAr, style = MaterialTheme.typography.bodySmall, maxLines = 2)
+                                }
+                                if (role.canManageAiKnowledge()) {
+                                    IconButton(onClick = {
+                                        editingKb = kb
+                                        showAddKbDialog = true
+                                    }) {
+                                        Icon(Icons.Rounded.Edit, contentDescription = "Edit KB", tint = noorColors.goldAccent)
+                                    }
                                 }
                                 if (role.canApproveContent()) {
                                     IconButton(onClick = {
@@ -273,8 +382,8 @@ fun OfflineSuperAdminScreen(
                     }
                 }
 
-                // 2: Quiz Management
-                2 -> {
+                // 3: Quiz & Content Management
+                3 -> {
                     item {
                         Button(
                             onClick = { showAddQuizDialog = true },
@@ -304,8 +413,8 @@ fun OfflineSuperAdminScreen(
                     }
                 }
 
-                // 3: Staff & Role-Based Accounts
-                3 -> {
+                // 4: 4-Tier RBAC Staff & User Accounts
+                4 -> {
                     item {
                         if (!role.canManageAccounts()) {
                             LiquidGlassCard { Text("إدارة الحسابات والصلاحيات مخصصة للمدير العام فقط (SUPER_ADMIN).") }
@@ -317,7 +426,7 @@ fun OfflineSuperAdminScreen(
                             ) {
                                 Icon(Icons.Rounded.Add, contentDescription = null)
                                 Spacer(Modifier.width(6.dp))
-                                Text("إنشاء حساب معلم أو محرر محلي")
+                                Text("إنشاء حساب (مدير / مشرف / معلم / طالب)")
                             }
                         }
                     }
@@ -339,14 +448,24 @@ fun OfflineSuperAdminScreen(
                     }
                 }
 
-                // 4: Backup / Restore & Audit / Error Logs
-                4 -> {
+                // 5: Advanced Admin Settings
+                5 -> adminAdvancedSettingsTabItems(
+                    role = role,
+                    settings = adminSettings,
+                    storage = storageUsage,
+                    onUpdateSetting = { k, v -> viewModel.updateAdminSetting(k, v) },
+                    onClearAudioCache = { viewModel.clearCachedQuranAudioStorage() },
+                    onRefreshStorage = { viewModel.refreshStorageUsage() }
+                )
+
+                // 6: Local Backup / Restore & Audit / Error Logs
+                6 -> {
                     item {
                         LiquidGlassCard(strong = true, goldBorder = true) {
                             Text("النسخ الاحتياطي ونقل الحزم بين الأجهزة (JSON)", fontWeight = FontWeight.Bold, color = noorColors.goldAccent)
                             Spacer(Modifier.height(6.dp))
                             Text(
-                                "صدّر نسخة كاملة من قاعدة المعرفة والحلقات والطلاب والكتب والمسابقات والملاحظات كملف JSON آمن لاستيراده على أي جهاز آخر.",
+                                "صدّر نسخة كاملة من قاعدة المعرفة والحلقات والطلاب والكتب والمسابقات والملاحظات كملف JSON آمن لاستيراده على أي جهاز آخر دون خادم سحابي.",
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Spacer(Modifier.height(10.dp))
@@ -379,7 +498,7 @@ fun OfflineSuperAdminScreen(
                     }
                     if (role.canViewAuditLogs()) {
                         item { NoorSectionHeader(title = "سجل التدقيق الأمني (${auditLogs.size})") }
-                        items(auditLogs.take(15), key = { it.id }) { log ->
+                        items(auditLogs.take(20), key = { it.id }) { log ->
                             LiquidGlassCard {
                                 Text("[${log.category}] ${log.action} — ${log.actorUid}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                                 if (log.details.isNotBlank()) Text(log.details, style = MaterialTheme.typography.bodySmall)
@@ -398,11 +517,11 @@ fun OfflineSuperAdminScreen(
             }
         }
 
-        // Dialogs
         if (showAddKbDialog) {
-            AddKnowledgeDialog(
+            AddOrEditKnowledgeDialog(
+                initial = editingKb,
                 onDismiss = { showAddKbDialog = false },
-                onSave = { cat, title, q, a, src, notes ->
+                onSave = { cat, title, q, a, src, notes, kw ->
                     viewModel.addOrUpdateAiKnowledge(
                         category = cat,
                         titleAr = title,
@@ -411,7 +530,9 @@ fun OfflineSuperAdminScreen(
                         sourceRef = src,
                         scholarlyNotes = notes,
                         verificationStatus = "VERIFIED",
-                        approvalStatus = if (role == LocalAdminRole.SUPER_ADMIN) "APPROVED" else "PENDING"
+                        approvalStatus = if (role.canApproveContent()) "APPROVED" else "PENDING",
+                        keywords = kw,
+                        existingId = editingKb?.id
                     )
                     showAddKbDialog = false
                 }
@@ -436,6 +557,21 @@ fun OfflineSuperAdminScreen(
             )
         }
     }
+}
+
+private fun resolveDocumentDisplayName(context: android.content.Context, uri: Uri): String {
+    runCatching {
+        context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0) {
+                    val name = c.getString(idx)
+                    if (!name.isNullOrBlank()) return name
+                }
+            }
+        }
+    }
+    return uri.lastPathSegment?.substringAfterLast('/') ?: "document.txt"
 }
 
 @Composable
@@ -472,7 +608,7 @@ private fun LocalAdminAuthGate(
                 text = if (isFirstRunSetup) {
                     "لا توجد كلمات مرور افتراضية مخزّنة في التطبيق. أنشئ الآن حساب المدير العام المحلي بكلمة مرور خاصة بك (تُحفظ مشفرة محلياً بخوارزمية PBKDF2-SHA256)."
                 } else {
-                    "أدخل اسم المستخدم ورمز المرور الخاص بحسابك (مدير عام / معلم / محرر)."
+                    "أدخل اسم المستخدم ورمز المرور الخاص بحسابك (مدير عام / مشرف / معلم / طالب)."
                 },
                 style = MaterialTheme.typography.bodySmall
             )
@@ -519,35 +655,38 @@ private fun LocalAdminAuthGate(
 }
 
 @Composable
-private fun AddKnowledgeDialog(
+private fun AddOrEditKnowledgeDialog(
+    initial: LocalAiKnowledgeEntity?,
     onDismiss: () -> Unit,
-    onSave: (String, String, String, String, String, String) -> Unit
+    onSave: (String, String, String, String, String, String, String) -> Unit
 ) {
-    var category by remember { mutableStateOf("QURAN") }
-    var title by remember { mutableStateOf("") }
-    var question by remember { mutableStateOf("") }
-    var answer by remember { mutableStateOf("") }
-    var source by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var category by remember { mutableStateOf(initial?.category ?: "QURAN") }
+    var title by remember { mutableStateOf(initial?.titleAr ?: "") }
+    var question by remember { mutableStateOf(initial?.questionAr ?: "") }
+    var answer by remember { mutableStateOf(initial?.answerAr ?: "") }
+    var source by remember { mutableStateOf(initial?.sourceRef ?: "") }
+    var notes by remember { mutableStateOf(initial?.scholarlyNotes ?: "") }
+    var keywords by remember { mutableStateOf(initial?.keywords ?: "") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة مادة معرفية موثّقة") },
+        title = { Text(if (initial == null) "إضافة مادة معرفية موثّقة" else "تعديل المادة المعرفية") },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    items(listOf("QURAN", "HADITH", "FIQH", "AQEEDAH", "TAJWEED", "SEERAH", "WORSHIP")) { c ->
+                    items(listOf("QURAN", "HIFZ", "TAJWEED", "HADITH", "FIQH", "AQEEDAH", "SEERAH", "WORSHIP")) { c ->
                         LiquidGlassChip(c, category == c, { category = c })
                     }
                 }
                 OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("العنوان") }, singleLine = true)
-                OutlinedTextField(value = question, onValueChange = { question = it }, label = { Text("السؤال") })
-                OutlinedTextField(value = answer, onValueChange = { answer = it }, label = { Text("الإجابة الموثّقة") }, minLines = 3)
+                OutlinedTextField(value = question, onValueChange = { question = it }, label = { Text("السؤال / موضوع الدرس") })
+                OutlinedTextField(value = answer, onValueChange = { answer = it }, label = { Text("الإجابة أو نص الدرس الموثّق") }, minLines = 3)
+                OutlinedTextField(value = keywords, onValueChange = { keywords = it }, label = { Text("كلمات مفتاحية ووسوم (مفصولة بفاصلة)") }, singleLine = true)
                 OutlinedTextField(value = source, onValueChange = { source = it }, label = { Text("المصدر والمرجع الشرعي") }, singleLine = true)
-                OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("ملاحظات الخلاف الفقهي (اختياري)") })
+                OutlinedTextField(value = notes, onValueChange = { notes = it }, label = { Text("ملاحظات علمية (اختياري)") })
             }
         },
-        confirmButton = { Button(onClick = { onSave(category, title, question, answer, source, notes) }) { Text("حفظ") } },
+        confirmButton = { Button(onClick = { onSave(category, title, question, answer, source, notes, keywords) }) { Text("حفظ") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
     )
 }
@@ -610,16 +749,16 @@ private fun AddStaffDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("إنشاء حساب صلاحيات محلي") },
+        title = { Text("إنشاء حساب صلاحيات محلي (RBAC)") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text("اسم المستخدم") }, singleLine = true)
                 OutlinedTextField(value = displayName, onValueChange = { displayName = it }, label = { Text("الاسم الكامل") }, singleLine = true)
                 OutlinedTextField(value = passcode, onValueChange = { passcode = it }, label = { Text("رمز المرور (٦+ أحرف)") }, visualTransformation = PasswordVisualTransformation(), singleLine = true)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    LiquidGlassChip("معلم", role == LocalAdminRole.TEACHER, { role = LocalAdminRole.TEACHER })
-                    LiquidGlassChip("محرر", role == LocalAdminRole.EDITOR, { role = LocalAdminRole.EDITOR })
-                    LiquidGlassChip("مدير عام", role == LocalAdminRole.SUPER_ADMIN, { role = LocalAdminRole.SUPER_ADMIN })
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    items(LocalAdminRole.entries) { r ->
+                        LiquidGlassChip(r.labelAr.substringBefore(" "), role == r, { role = r })
+                    }
                 }
             }
         },

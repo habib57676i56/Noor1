@@ -143,6 +143,7 @@ data class LocalAiKnowledgeEntity(
     val sourceRef: String,
     val verificationStatus: String = "VERIFIED", // VERIFIED, REVIEW, UNCERTAIN
     val scholarlyNotes: String = "",
+    val keywords: String = "",
     val contentHash: String = "",
     val approvalStatus: String = "APPROVED", // APPROVED, PENDING, REJECTED
     val isUserAdded: Boolean = false,
@@ -306,9 +307,56 @@ data class LocalAdminAccountEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val username: String,
     val displayName: String,
-    val role: String, // SUPER_ADMIN, TEACHER, EDITOR
+    val role: String, // SUPER_ADMIN, ADMIN, TEACHER, STUDENT
     val passwordHash: String,
     val passwordSalt: String,
     val active: Boolean = true,
     val createdAtMillis: Long = System.currentTimeMillis()
 )
+
+// =========================================================================
+// 10. NOOR v5 — Recitation Recordings, Imported AI Documents & Admin Settings
+// =========================================================================
+
+@Entity(tableName = "student_recitation_recordings")
+data class StudentRecitationRecordingEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val studentId: Long? = null,
+    val studentName: String = "",
+    val surahNumber: Int,
+    val fromAyah: Int,
+    val toAyah: Int,
+    val testMode: String = "LIVE_RECITATION",
+    val filePath: String,
+    val durationMs: Long = 0L,
+    val recognizedTranscript: String = "",
+    val accuracyPercent: Int = 0,
+    val suspectedMistakesSummary: String = "",
+    val uncertainCount: Int = 0,
+    val teacherReviewStatus: String = "PENDING", // PENDING, APPROVED, NEEDS_REVISION
+    val teacherComment: String = "",
+    val createdAtMillis: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "imported_ai_documents")
+data class ImportedAiDocumentEntity(
+    @PrimaryKey val id: String,
+    val fileName: String,
+    val format: String, // TXT, JSON, DOCX, PDF
+    val detectedLanguage: String = "AR",
+    val category: String = "GENERAL",
+    val chunkCount: Int = 0,
+    val charCount: Int = 0,
+    val importedBy: String = "local_admin",
+    val warningNote: String = "",
+    val createdAtMillis: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "admin_config_entries")
+data class AdminConfigEntryEntity(
+    @PrimaryKey val configKey: String,
+    val configValue: String,
+    val updatedBy: String = "local_admin",
+    val updatedAtMillis: Long = System.currentTimeMillis()
+)
+
