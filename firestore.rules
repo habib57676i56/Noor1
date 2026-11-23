@@ -175,13 +175,25 @@ service cloud.firestore {
         'maintenanceMode', 'maintenanceMessageAr', 'maintenanceMessageEn', 'minSupportedVersion',
         'founderName', 'founderTitleAr', 'founderTitleEn', 'founderProjectAr', 'founderProjectEn',
         'founderBioAr', 'founderBioEn', 'supportEmail', 'supportWhatsApp', 'supportTelegram',
-        'featureQuranEnabled', 'featureAudioEnabled', 'featureMosquesEnabled',
-        'featureQiblaEnabled', 'featureCalendarEnabled', 'defaultCalcMethod', 'defaultReciterId',
+        'featureQuranEnabled', 'featureMushafImagesEnabled', 'featureAudioEnabled',
+        'featureMemorizationEnabled', 'featureListeningAssessmentEnabled',
+        'featureKhatmahEnabled', 'featureFastingEnabled', 'featureDailyWirdEnabled',
+        'featureNotificationsEnabled', 'featureAdsEnabled',
+        'featureMosquesEnabled', 'featureQiblaEnabled', 'featureCalendarEnabled',
+        'defaultCalcMethod', 'defaultReciterId',
         'updatedBy', 'updatedAt'
       ])
       && data.appNameEn is string && data.appNameEn.size() >= 1 && data.appNameEn.size() <= 60
       && (!('appNameAr' in data) || (data.appNameAr is string && data.appNameAr.size() <= 60))
       && data.maintenanceMode is bool
+      && (!('featureMushafImagesEnabled' in data) || data.featureMushafImagesEnabled is bool)
+      && (!('featureMemorizationEnabled' in data) || data.featureMemorizationEnabled is bool)
+      && (!('featureListeningAssessmentEnabled' in data) || data.featureListeningAssessmentEnabled is bool)
+      && (!('featureKhatmahEnabled' in data) || data.featureKhatmahEnabled is bool)
+      && (!('featureFastingEnabled' in data) || data.featureFastingEnabled is bool)
+      && (!('featureDailyWirdEnabled' in data) || data.featureDailyWirdEnabled is bool)
+      && (!('featureNotificationsEnabled' in data) || data.featureNotificationsEnabled is bool)
+      && (!('featureAdsEnabled' in data) || data.featureAdsEnabled is bool)
       && data.updatedBy == request.auth.uid
       && data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
@@ -255,7 +267,7 @@ service cloud.firestore {
         && data.actorUid == request.auth.uid
         && (!('actorEmail' in data) || (data.actorEmail is string && data.actorEmail.size() <= 254))
         && data.action is string && data.action.size() >= 2 && data.action.size() <= 150
-        && data.category in ['AUTH', 'USER_MGMT', 'CMS', 'SETTINGS', 'SECURITY', 'SYSTEM']
+        && data.category in ['AUTH', 'USER_MGMT', 'CMS', 'SETTINGS', 'SECURITY', 'SYSTEM', 'ADS', 'MESSAGING']
         && data.severity in ['INFO', 'WARNING', 'CRITICAL']
         && (!('details' in data) || (data.details is string && data.details.size() <= 2000))
         && data.createdAt is timestamp && data.createdAt <= request.time;
@@ -279,6 +291,75 @@ service cloud.firestore {
       && (!('sectionAdhkarHits' in data) || (data.sectionAdhkarHits is number && data.sectionAdhkarHits >= 0))
       && (!('sectionAudioHits' in data) || (data.sectionAudioHits is number && data.sectionAudioHits >= 0))
       && data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAdCard(data) {
+      return data.keys().hasOnly([
+        'titleAr', 'titleEn', 'descriptionAr', 'descriptionEn', 'imageUrl', 'destinationUrl',
+        'placement', 'enabled', 'startAtMillis', 'endAtMillis', 'displayOrder',
+        'impressionsCount', 'clicksCount', 'createdBy', 'createdAt', 'updatedAt'
+      ])
+      && data.titleAr is string && data.titleAr.size() >= 1 && data.titleAr.size() <= 180
+      && (!('titleEn' in data) || (data.titleEn is string && data.titleEn.size() <= 180))
+      && (!('descriptionAr' in data) || (data.descriptionAr is string && data.descriptionAr.size() <= 600))
+      && (!('descriptionEn' in data) || (data.descriptionEn is string && data.descriptionEn.size() <= 600))
+      && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 500 && (data.imageUrl == '' || data.imageUrl.matches('^https://.*'))))
+      && (!('destinationUrl' in data) || (data.destinationUrl is string && data.destinationUrl.size() <= 500 && (data.destinationUrl == '' || data.destinationUrl.matches('^https://.*'))))
+      && data.placement in ['HOME', 'ECOSYSTEM_HUB', 'AUDIO_LIBRARY']
+      && data.enabled is bool
+      && (!('startAtMillis' in data) || (data.startAtMillis is number && data.startAtMillis >= 0))
+      && (!('endAtMillis' in data) || (data.endAtMillis is number && data.endAtMillis >= 0))
+      && data.displayOrder is number && data.displayOrder >= 1 && data.displayOrder <= 999
+      && (!('impressionsCount' in data) || (data.impressionsCount is number && data.impressionsCount >= 0))
+      && (!('clicksCount' in data) || (data.clicksCount is number && data.clicksCount >= 0))
+      && data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128
+      && (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time))
+      && data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAdTelemetryUpdate(newData, oldData) {
+      let oldImp = ('impressionsCount' in oldData) ? oldData.impressionsCount : 0;
+      let oldClk = ('clicksCount' in oldData) ? oldData.clicksCount : 0;
+      let newImp = ('impressionsCount' in newData) ? newData.impressionsCount : oldImp;
+      let newClk = ('clicksCount' in newData) ? newData.clicksCount : oldClk;
+      return newData.diff(oldData).affectedKeys().hasOnly(['impressionsCount', 'clicksCount', 'updatedAt'])
+        && newImp is number && newImp >= oldImp && newImp <= oldImp + 1
+        && newClk is number && newClk >= oldClk && newClk <= oldClk + 1
+        && newData.updatedAt is timestamp && newData.updatedAt <= request.time;
+    }
+
+    function isValidAdminMessage(data) {
+      return data.keys().hasOnly([
+        'targetType', 'targetGroup', 'targetUserUid', 'targetUserEmail',
+        'titleAr', 'titleEn', 'bodyAr', 'bodyEn', 'messageType', 'priority',
+        'imageUrl', 'scheduledAtMillis', 'active', 'readByUids',
+        'createdBy', 'createdByEmail', 'createdAt'
+      ])
+      && data.targetType in ['ALL', 'GROUP', 'USER']
+      && (!('targetGroup' in data) || (data.targetGroup is string && data.targetGroup.size() <= 32))
+      && (!('targetUserUid' in data) || (data.targetUserUid is string && data.targetUserUid.size() <= 128))
+      && (!('targetUserEmail' in data) || (data.targetUserEmail is string && data.targetUserEmail.size() <= 254))
+      && data.titleAr is string && data.titleAr.size() >= 1 && data.titleAr.size() <= 200
+      && (!('titleEn' in data) || (data.titleEn is string && data.titleEn.size() <= 200))
+      && data.bodyAr is string && data.bodyAr.size() >= 1 && data.bodyAr.size() <= 2500
+      && (!('bodyEn' in data) || (data.bodyEn is string && data.bodyEn.size() <= 2500))
+      && data.messageType in ['SYSTEM', 'MAINTENANCE', 'FEATURE_UPDATE', 'REMINDER', 'EDUCATIONAL', 'DIRECT']
+      && data.priority in ['LOW', 'NORMAL', 'HIGH', 'URGENT']
+      && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 500 && (data.imageUrl == '' || data.imageUrl.matches('^https://.*'))))
+      && (!('scheduledAtMillis' in data) || (data.scheduledAtMillis is number && data.scheduledAtMillis >= 0))
+      && data.active is bool
+      && (!('readByUids' in data) || (data.readByUids is list && data.readByUids.size() <= 200))
+      && data.createdBy is string && data.createdBy.size() >= 1 && data.createdBy.size() <= 128
+      && (!('createdByEmail' in data) || (data.createdByEmail is string && data.createdByEmail.size() <= 254))
+      && data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidAdminMessageReadUpdate(newData, oldData) {
+      return oldData.active == true
+        && (oldData.targetType in ['ALL', 'GROUP'] || oldData.targetUserUid == request.auth.uid)
+        && newData.diff(oldData).affectedKeys().hasOnly(['readByUids'])
+        && newData.readByUids is list && newData.readByUids.size() <= 200
+        && request.auth.uid in newData.readByUids;
     }
 
     // -------------------------------------------------------------------------
@@ -350,6 +431,23 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow create, update: if isAuthenticated() && isValidId(dateKey) && isValidAnalyticsDaily(request.resource.data);
       allow delete: if false;
+    }
+
+    match /ad_cards/{adId} {
+      allow get, list: if (isAuthenticated() && resource.data.enabled == true) || isAdmin();
+      allow create: if isSuperAdmin() && isValidId(adId) && isValidAdCard(request.resource.data);
+      allow update: if (isSuperAdmin() && isValidAdCard(request.resource.data))
+        || (isAuthenticated() && resource.data.enabled == true && isValidAdTelemetryUpdate(request.resource.data, resource.data));
+      allow delete: if isSuperAdmin();
+    }
+
+    match /admin_messages/{messageId} {
+      allow get, list: if isAdmin()
+        || (isAuthenticated() && (resource.data.targetType in ['ALL', 'GROUP'] || resource.data.targetUserUid == request.auth.uid));
+      allow create: if isAdmin() && isValidId(messageId) && isValidAdminMessage(request.resource.data);
+      allow update: if (isAdmin() && isValidAdminMessage(request.resource.data))
+        || (isAuthenticated() && isValidAdminMessageReadUpdate(request.resource.data, resource.data));
+      allow delete: if isAdmin();
     }
 
     // Default deny catch-all

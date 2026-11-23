@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.NoorApplication
+import com.example.data.cloud.AdCardDoc
+import com.example.data.cloud.AdPlacement
+import com.example.data.cloud.AdminMessageDoc
 import com.example.data.cloud.AdminRole
 import com.example.data.cloud.AdminSecurityRateLimiter
 import com.example.data.cloud.AppAnnouncementDoc
@@ -17,18 +20,23 @@ import com.example.data.cloud.FirebaseAuthHelper
 import com.example.data.cloud.GlobalAppConfigDoc
 import com.example.data.cloud.NoorCloudRepository
 import com.example.data.cloud.NoorPlatformConstants
+import com.example.data.cloud.NoorSecurityValidators
 import com.example.data.cloud.SupportTicketDoc
 import com.example.data.cloud.UserAccountDoc
 import com.example.data.cloud.UserReportDoc
 import com.example.data.local.catalog.AdhkarCatalog
+import com.example.data.local.db.AdminAdCardEntity
+import com.example.data.local.db.AdminMessageEntity
 import com.example.data.local.db.BackupSnapshotEntity
 import com.example.data.local.db.SystemErrorLogEntity
+import com.example.data.repository.EcosystemRepository
 import com.example.data.repository.NoorRepository
 import com.example.domain.model.AdhkarCategory
 import com.example.domain.model.DhikrItem
 import com.example.domain.verification.AdhkarVerificationEngine
 import com.example.domain.verification.AdhkarVerificationReport
 import com.google.firebase.auth.FirebaseAuth
+import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -59,13 +67,24 @@ data class AdminDashboardKpis(
     val totalAudioPlays: Long = 0L,
     val totalTasbihTaps: Long = 0L,
     val sectionHits: Map<String, Long> = emptyMap(),
-    val systemHealthScore: Int = 100
+    val systemHealthScore: Int = 100,
+    val khatmPlansCount: Int = 0,
+    val completedKhatmCount: Int = 0,
+    val fastingDaysCount: Int = 0,
+    val hifzSessionsCount: Int = 0,
+    val weakVersesCount: Int = 0,
+    val activeAdsCount: Int = 0,
+    val totalAdImpressions: Long = 0L,
+    val totalAdClicks: Long = 0L,
+    val totalAdminMessagesSent: Int = 0,
+    val systemErrorCount: Int = 0
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     private val localRepo: NoorRepository = (application as NoorApplication).repository
+    private val ecosystemRepo: EcosystemRepository = (application as NoorApplication).ecosystemRepository
     private val cloudRepo: NoorCloudRepository = (application as NoorApplication).cloudRepository
 
     val rateLimiter = AdminSecurityRateLimiter()
@@ -136,6 +155,81 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     val systemErrorLogs: StateFlow<List<SystemErrorLogEntity>> = localRepo.systemErrorLogs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    private val cloudAdCards = isAuthorizedStream
+        .flatMapLatest { ok -> if (ok) cloudRepo.observeAllAdCardsAdmin() else flowOf(emptyList()) }
+
+    val allAdCards: StateFlow<List<AdCardDoc>> = combine(
+        cloudAdCards,
+        ecosystemRepo.adminAdCards
+    ) { cloud, local ->
+        val merged = LinkedHashMap<String, AdCardDoc>()
+        local.forEach { e ->
+            merged[e.id] = AdCardDoc(
+                id = e.id,
+                titleAr = e.titleAr,
+                titleEn = e.titleEn,
+                descriptionAr = e.descriptionAr,
+                descriptionEn = e.descriptionEn,
+                imageUrl = e.imageUriOrUrl,
+                destinationUrl = e.destinationUrl,
+                placement = e.placement,
+                enabled = e.enabled,
+                startAtMillis = e.startAtMillis,
+                endAtMillis = e.endAtMillis,
+                displayOrder = e.displayOrder,
+                impressionsCount = e.impressionsCount,
+                clicksCount = e.clicksCount,
+                createdBy = e.createdBy
+            )
+        }
+        cloud.forEach { c ->
+            val existing = merged[c.id]
+            merged[c.id] = if (existing != null && c.imageUrl.isBlank() && existing.imageUrl.isNotBlank()) {
+                c.copy(
+                    imageUrl = existing.imageUrl,
+                    impressionsCount = maxOf(c.impressionsCount, existing.impressionsCount),
+                    clicksCount = maxOf(c.clicksCount, existing.clicksCount)
+                )
+            } else {
+                c
+            }
+        }
+        merged.values.sortedWith(compareBy<AdCardDoc> { it.displayOrder }.thenBy { it.titleAr })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val cloudAdminMessages = isAuthorizedStream
+        .flatMapLatest { ok -> if (ok) cloudRepo.observeAllAdminMessagesAdmin() else flowOf(emptyList()) }
+
+    val allAdminMessages: StateFlow<List<AdminMessageDoc>> = combine(
+        cloudAdminMessages,
+        ecosystemRepo.adminMessages
+    ) { cloud, local ->
+        val merged = LinkedHashMap<String, AdminMessageDoc>()
+        local.forEach { e ->
+            merged[e.id] = AdminMessageDoc(
+                id = e.id,
+                targetType = e.targetType,
+                targetGroup = e.targetGroup,
+                targetUserUid = e.targetUserUid,
+                targetUserEmail = e.targetUserEmail,
+                titleAr = e.titleAr,
+                titleEn = e.titleEn,
+                bodyAr = e.bodyAr,
+                bodyEn = e.bodyEn,
+                messageType = e.messageType,
+                priority = e.priority,
+                imageUrl = e.imageUriOrUrl,
+                scheduledAtMillis = e.scheduledAtMillis,
+                active = e.delivered,
+                readByUids = if (e.readByCurrentUser) listOf("local_user") else emptyList(),
+                createdBy = e.sentByUid,
+                createdByEmail = e.sentByEmail
+            )
+        }
+        cloud.forEach { c -> merged[c.id] = c }
+        merged.values.toList()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val adhkarVerificationReport: StateFlow<AdhkarVerificationReport> = allCmsContent
         .map { cmsItems ->
             val cmsAsDhikr = cmsItems
@@ -165,7 +259,30 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             AdhkarVerificationEngine.verifyCollection(AdhkarCatalog.allAdhkar)
         )
 
-    val dashboardKpis: StateFlow<AdminDashboardKpis> = combine(
+    private data class EcosystemTelemetryBundle(
+        val khatmPlansCount: Int = 0,
+        val completedKhatmCount: Int = 0,
+        val fastingDaysCount: Int = 0,
+        val hifzSessionsCount: Int = 0,
+        val weakVersesCount: Int = 0
+    )
+
+    private val ecosystemTelemetry = combine(
+        ecosystemRepo.khatmPlans,
+        ecosystemRepo.fastingLogs,
+        ecosystemRepo.hifzRevisionLogs,
+        ecosystemRepo.hifzWeakVerses
+    ) { khatms, fasts, hifzLogs, weak ->
+        EcosystemTelemetryBundle(
+            khatmPlansCount = khatms.size,
+            completedKhatmCount = khatms.count { it.isCompleted },
+            fastingDaysCount = fasts.count { it.completed },
+            hifzSessionsCount = hifzLogs.size,
+            weakVersesCount = weak.count { !it.resolved }
+        )
+    }
+
+    private val baseDashboardKpis = combine(
         allUsers,
         allCmsContent,
         allSupportTickets,
@@ -211,6 +328,29 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             totalTasbihTaps = totalTasbih,
             sectionHits = sections,
             systemHealthScore = health
+        )
+    }
+
+    val dashboardKpis: StateFlow<AdminDashboardKpis> = combine(
+        baseDashboardKpis,
+        ecosystemTelemetry,
+        allAdCards,
+        allAdminMessages,
+        systemErrorLogs
+    ) { base, eco, ads, msgs, errors ->
+        val healthAdjusted = (base.systemHealthScore - (errors.size.coerceAtMost(10))).coerceIn(50, 100)
+        base.copy(
+            systemHealthScore = healthAdjusted,
+            khatmPlansCount = eco.khatmPlansCount,
+            completedKhatmCount = eco.completedKhatmCount,
+            fastingDaysCount = eco.fastingDaysCount,
+            hifzSessionsCount = eco.hifzSessionsCount,
+            weakVersesCount = eco.weakVersesCount,
+            activeAdsCount = ads.count { it.isCurrentlyActive() },
+            totalAdImpressions = ads.sumOf { it.impressionsCount },
+            totalAdClicks = ads.sumOf { it.clicksCount },
+            totalAdminMessagesSent = msgs.size,
+            systemErrorCount = errors.size
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AdminDashboardKpis())
 
@@ -465,5 +605,148 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             if (res.isSuccess) imported++
         }
         _adminFeedback.value = "Imported $imported CMS entries as DRAFT for verification"
+    }
+
+    // --- Super Admin Exclusive: Administrative Advertisement Cards ---
+
+    fun saveAdCard(card: AdCardDoc) = viewModelScope.launch {
+        if (!_currentRole.value.canManageAds) {
+            _adminFeedback.value = "فقط المالك / المشرف الأعلى يمكنه إدارة بطاقات الإعلانات."
+            return@launch
+        }
+        if (card.titleAr.isBlank() && card.titleEn.isBlank()) {
+            _adminFeedback.value = "عنوان بطاقة الإعلان مطلوب."
+            return@launch
+        }
+        if (!AdPlacement.isAllowedPlacement(card.placement)) {
+            _adminFeedback.value = "موضع العرض غير مسموح (يُمنع عرض الإعلانات في القرآن أو الحفظ أو الصلاة)."
+            return@launch
+        }
+        if (!NoorSecurityValidators.isSafeOptionalHttpsUrl(card.destinationUrl)) {
+            _adminFeedback.value = "رابط الوجهة يجب أن يبدأ بـ https:// وبصيغة صحيحة."
+            return@launch
+        }
+        val adId = card.id.ifBlank { "ad_${UUID.randomUUID().toString().take(10)}" }
+        val normalized = card.copy(
+            id = adId,
+            titleAr = card.titleAr.ifBlank { card.titleEn }.trim().take(180),
+            titleEn = card.titleEn.ifBlank { card.titleAr }.trim().take(180),
+            placement = AdPlacement.fromKey(card.placement).key,
+            displayOrder = card.displayOrder.coerceIn(1, 999)
+        )
+        // Always persist locally in Room so it works offline & supports local Photo Picker URIs
+        ecosystemRepo.saveAdCardLocal(
+            AdminAdCardEntity(
+                id = normalized.id,
+                titleAr = normalized.titleAr,
+                titleEn = normalized.titleEn,
+                descriptionAr = normalized.descriptionAr,
+                descriptionEn = normalized.descriptionEn,
+                imageUriOrUrl = normalized.imageUrl,
+                destinationUrl = normalized.destinationUrl,
+                placement = normalized.placement,
+                enabled = normalized.enabled,
+                startAtMillis = normalized.startAtMillis,
+                endAtMillis = normalized.endAtMillis,
+                displayOrder = normalized.displayOrder,
+                impressionsCount = normalized.impressionsCount,
+                clicksCount = normalized.clicksCount,
+                createdBy = FirebaseAuth.getInstance().currentUser?.uid ?: "super_admin"
+            )
+        )
+        val cloudRes = cloudRepo.upsertAdCard(normalized)
+        _adminFeedback.value = if (cloudRes.isSuccess) {
+            "تم حفظ ونشر بطاقة الإعلان بنجاح"
+        } else {
+            "تم حفظ البطاقة محلياً (السحابة: ${cloudRes.exceptionOrNull()?.message ?: "غير متصل"})"
+        }
+    }
+
+    fun toggleAdCardEnabled(card: AdCardDoc, enabled: Boolean) {
+        saveAdCard(card.copy(enabled = enabled))
+    }
+
+    fun deleteAdCard(adId: String) = viewModelScope.launch {
+        if (!_currentRole.value.canManageAds) {
+            _adminFeedback.value = "فقط المالك / المشرف الأعلى يمكنه حذف بطاقات الإعلانات."
+            return@launch
+        }
+        ecosystemRepo.deleteAdCardLocal(adId)
+        val cloudRes = cloudRepo.deleteAdCard(adId)
+        _adminFeedback.value = if (cloudRes.isSuccess) {
+            "تم حذف بطاقة الإعلان مع تسجيل العملية في سجل التدقيق"
+        } else {
+            "تم حذف البطاقة محلياً"
+        }
+    }
+
+    // --- Admin-to-User Messaging & Notifications ---
+
+    fun sendAdminMessage(message: AdminMessageDoc) = viewModelScope.launch {
+        if (!_currentRole.value.canSendAdminMessages) {
+            _adminFeedback.value = "لا تملك صلاحية إرسال رسائل أو إشعارات للمستخدمين."
+            return@launch
+        }
+        if (message.titleAr.isBlank() && message.titleEn.isBlank()) {
+            _adminFeedback.value = "عنوان الرسالة مطلوب."
+            return@launch
+        }
+        if (message.bodyAr.isBlank() && message.bodyEn.isBlank()) {
+            _adminFeedback.value = "نص الرسالة مطلوب."
+            return@launch
+        }
+        if (message.targetType == "USER" && message.targetUserUid.isBlank() && message.targetUserEmail.isBlank()) {
+            _adminFeedback.value = "يرجى اختيار المستخدم المستهدف."
+            return@launch
+        }
+        val msgId = message.id.ifBlank { "msg_${UUID.randomUUID().toString().take(10)}" }
+        val user = FirebaseAuth.getInstance().currentUser
+        val normalized = message.copy(
+            id = msgId,
+            titleAr = message.titleAr.ifBlank { message.titleEn }.trim().take(200),
+            titleEn = message.titleEn.ifBlank { message.titleAr }.trim().take(200),
+            bodyAr = message.bodyAr.ifBlank { message.bodyEn }.trim().take(2500),
+            bodyEn = message.bodyEn.ifBlank { message.bodyAr }.trim().take(2500),
+            active = true,
+            createdBy = user?.uid ?: "admin",
+            createdByEmail = user?.email ?: ""
+        )
+        ecosystemRepo.saveAdminMessageLocal(
+            AdminMessageEntity(
+                id = normalized.id,
+                targetType = normalized.targetType,
+                targetGroup = normalized.targetGroup,
+                targetUserUid = normalized.targetUserUid,
+                targetUserEmail = normalized.targetUserEmail,
+                titleAr = normalized.titleAr,
+                titleEn = normalized.titleEn,
+                bodyAr = normalized.bodyAr,
+                bodyEn = normalized.bodyEn,
+                messageType = normalized.messageType,
+                priority = normalized.priority,
+                imageUriOrUrl = normalized.imageUrl,
+                scheduledAtMillis = normalized.scheduledAtMillis,
+                sentByUid = normalized.createdBy,
+                sentByEmail = normalized.createdByEmail,
+                delivered = true,
+                readByCurrentUser = false
+            )
+        )
+        val cloudRes = cloudRepo.sendAdminMessage(normalized)
+        _adminFeedback.value = if (cloudRes.isSuccess) {
+            "تم إرسال الرسالة وحفظها في سجل التنبيهات بنجاح"
+        } else {
+            "تم حفظ الرسالة محلياً في صندوق الإشعارات"
+        }
+    }
+
+    fun deleteAdminMessage(messageId: String) = viewModelScope.launch {
+        if (!_currentRole.value.canSendAdminMessages) {
+            _adminFeedback.value = "صلاحية غير كافية."
+            return@launch
+        }
+        ecosystemRepo.deleteAdminMessageLocal(messageId)
+        cloudRepo.deleteAdminMessage(messageId)
+        _adminFeedback.value = "تم حذف الرسالة الإدارية"
     }
 }

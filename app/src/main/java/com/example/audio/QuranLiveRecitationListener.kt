@@ -41,6 +41,8 @@ data class LiveRecitationState(
     val longestPauseMs: Long = 0L,
     val isOfflinePreferred: Boolean = true,
     val isOfflineFallbackUsed: Boolean = false,
+    val lastErrorCode: Int? = null,
+    val isRateLimited: Boolean = false,
     val statusNoteAr: String = "",
     val statusNoteEn: String = "",
     val errorMessageAr: String = "",
@@ -55,18 +57,207 @@ data class LiveRecitationState(
         get() = accumulatedTranscript.ifBlank { heardText }
 }
 
+enum class SpeechErrorAction {
+    RESTART_AFTER_DELAY,
+    SWITCH_TO_HYBRID_AND_RESTART,
+    PAUSE_CLEANLY,
+    STOP_WITH_ERROR
+}
+
+data class SpeechErrorDecision(
+    val action: SpeechErrorAction,
+    val delayMs: Long = 0L,
+    val destroyRecognizerFirst: Boolean = false,
+    val isRateLimited: Boolean = false,
+    val statusNoteAr: String = "",
+    val statusNoteEn: String = "",
+    val errorMessageAr: String = "",
+    val errorMessageEn: String = ""
+)
+
+/**
+ * Pure, deterministic recovery policy for Android SpeechRecognizer errors —
+ * specifically fixing Error 10 (ERROR_TOO_MANY_REQUESTS) caused by rapid restart loops
+ * on Android 12+ devices, plus silence auto-pause, busy backoff, and offline-pack fallback.
+ */
+object SpeechErrorRecoveryPolicy {
+    const val ERROR_TOO_MANY_REQUESTS = 10
+    const val ERROR_LANGUAGE_NOT_SUPPORTED = 12
+    const val ERROR_LANGUAGE_UNAVAILABLE = 13
+    const val MIN_SESSION_SPACING_MS = 1200L
+    const val MAX_CONSECUTIVE_SILENCE_TIMEOUTS = 3
+    const val MAX_RATE_LIMIT_RETRIES = 2
+
+    fun decide(
+        errorCode: Int,
+        consecutiveSilence: Int,
+        consecutiveRateLimits: Int,
+        consecutiveOtherErrors: Int,
+        sessionOfflineFlag: Boolean
+    ): SpeechErrorDecision {
+        return when (errorCode) {
+            // Normal silence/pause during recitation — DO NOT tight-loop forever!
+            SpeechRecognizer.ERROR_NO_MATCH,
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
+                if (consecutiveSilence >= MAX_CONSECUTIVE_SILENCE_TIMEOUTS) {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.PAUSE_CLEANLY,
+                        destroyRecognizerFirst = true,
+                        statusNoteAr = "توقف الاستماع مؤقتاً لعدم سماع صوت — اضغط «استئناف» عند متابعة التلاوة.",
+                        statusNoteEn = "Listening paused during silence — tap Resume when continuing recitation."
+                    )
+                } else {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.RESTART_AFTER_DELAY,
+                        delayMs = MIN_SESSION_SPACING_MS + (consecutiveSilence * 500L),
+                        destroyRecognizerFirst = false,
+                        statusNoteAr = "في انتظار متابعة التلاوة...",
+                        statusNoteEn = "Waiting for recitation..."
+                    )
+                }
+            }
+
+            // CRITICAL FIX FOR ERROR 10 (SpeechRecognizer.ERROR_TOO_MANY_REQUESTS):
+            // Never rapid-retry! Destroy recognizer immediately and apply exponential backoff,
+            // or pause cleanly preserving the full transcript and offering System Voice / Audio Recording.
+            ERROR_TOO_MANY_REQUESTS -> {
+                if (consecutiveRateLimits >= MAX_RATE_LIMIT_RETRIES) {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.PAUSE_CLEANLY,
+                        destroyRecognizerFirst = true,
+                        isRateLimited = true,
+                        statusNoteAr = "تم إيقاف التعرف التلقائي مؤقتاً لتفادي حد النظام (خطأ 10). تم حفظ النص — انتظر ثواني ثم اضغط «استئناف» أو استخدم «إملاء صوتي بديل» أو «تسجيل صوتي».",
+                        statusNoteEn = "Auto speech recognition paused to respect Android rate limit (Error 10). Transcript preserved — wait a moment and tap Resume, or use System Voice Fallback / Audio Recorder."
+                    )
+                } else {
+                    val backoffMs = when (consecutiveRateLimits) {
+                        0 -> 3500L
+                        1 -> 7000L
+                        else -> 12000L
+                    }
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.RESTART_AFTER_DELAY,
+                        delayMs = backoffMs,
+                        destroyRecognizerFirst = true,
+                        isRateLimited = true,
+                        statusNoteAr = "تهدئة مؤقتة لمحرك الصوت (${backoffMs / 1000} ثوانٍ) لتجاوز حد الطلبات (خطأ 10)...",
+                        statusNoteEn = "Cooling down speech recognizer (${backoffMs / 1000}s) after Android rate limit (Error 10)..."
+                    )
+                }
+            }
+
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
+                if (consecutiveOtherErrors >= 3) {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.PAUSE_CLEANLY,
+                        destroyRecognizerFirst = true,
+                        statusNoteAr = "محرك الصوت مشغول حالياً — تم الإيقاف المؤقت مع حفظ النص. اضغط استئناف بعد لحظة.",
+                        statusNoteEn = "Speech recognizer busy — paused cleanly with transcript saved. Tap Resume shortly."
+                    )
+                } else {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.RESTART_AFTER_DELAY,
+                        delayMs = 1800L + (consecutiveOtherErrors * 800L),
+                        destroyRecognizerFirst = true,
+                        statusNoteAr = "إعادة تهيئة محرك الصوت بهدوء...",
+                        statusNoteEn = "Resetting speech recognizer..."
+                    )
+                }
+            }
+
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
+                SpeechErrorDecision(
+                    action = SpeechErrorAction.STOP_WITH_ERROR,
+                    destroyRecognizerFirst = true,
+                    statusNoteAr = "يرجى تفعيل إذن الميكروفون من إعدادات التطبيق.",
+                    statusNoteEn = "Please grant Microphone permission to continue.",
+                    errorMessageAr = "إذن الميكروفون مرفوض.",
+                    errorMessageEn = "Microphone permission rejected."
+                )
+            }
+
+            SpeechRecognizer.ERROR_AUDIO -> {
+                SpeechErrorDecision(
+                    action = SpeechErrorAction.PAUSE_CLEANLY,
+                    destroyRecognizerFirst = true,
+                    statusNoteAr = "الميكروفون مشغول أو تعذّر التقاط الصوت. أغلق أي تسجيل آخر ثم اضغط استئناف.",
+                    statusNoteEn = "Microphone busy or audio capture error. Stop any other recording then tap Resume.",
+                    errorMessageAr = "تعذّر فتح الميكروفون (خطأ صوتي).",
+                    errorMessageEn = "Audio capture error."
+                )
+            }
+
+            ERROR_LANGUAGE_NOT_SUPPORTED,
+            ERROR_LANGUAGE_UNAVAILABLE,
+            SpeechRecognizer.ERROR_NETWORK,
+            SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+            SpeechRecognizer.ERROR_SERVER -> {
+                if (sessionOfflineFlag && (errorCode == ERROR_LANGUAGE_NOT_SUPPORTED || errorCode == ERROR_LANGUAGE_UNAVAILABLE)) {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.SWITCH_TO_HYBRID_AND_RESTART,
+                        delayMs = MIN_SESSION_SPACING_MS,
+                        destroyRecognizerFirst = true,
+                        statusNoteAr = "حزمة العربية غير المتصلة غير مثبّتة على الجهاز — تم التحويل للتعرف الصوتي الهجين تلقائياً.",
+                        statusNoteEn = "Offline Arabic speech pack not installed — switched to hybrid recognition."
+                    )
+                } else if (consecutiveOtherErrors >= 2) {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.STOP_WITH_ERROR,
+                        destroyRecognizerFirst = true,
+                        statusNoteAr = "تعذّر التعرف الصوتي للغة العربية (قد يلزم تثبيت حزمة العربية دون إنترنت أو اتصال شبكي أو استخدام التسجيل الصوتي / الإملاء البديل).",
+                        statusNoteEn = "Arabic STT unavailable (install offline Arabic pack, check internet, or use Audio Recorder / System Voice Fallback).",
+                        errorMessageAr = "رمز خطأ التعرف الصوتي: $errorCode",
+                        errorMessageEn = "SpeechRecognizer error code: $errorCode"
+                    )
+                } else {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.RESTART_AFTER_DELAY,
+                        delayMs = 2000L,
+                        destroyRecognizerFirst = true,
+                        statusNoteAr = "إعادة محاولة التعرف الصوتي للغة العربية...",
+                        statusNoteEn = "Retrying Arabic speech recognition..."
+                    )
+                }
+            }
+
+            else -> {
+                if (consecutiveOtherErrors >= 2) {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.PAUSE_CLEANLY,
+                        destroyRecognizerFirst = true,
+                        statusNoteAr = "توقف التعرف الصوتي مؤقتاً (رمز $errorCode) مع حفظ النص. يمكنك الضغط على استئناف أو استخدام الإملاء الصوتي البديل.",
+                        statusNoteEn = "Speech recognition paused (code $errorCode) with transcript preserved. Tap Resume or use System Voice Fallback.",
+                        errorMessageAr = "رمز خطأ التعرف الصوتي: $errorCode",
+                        errorMessageEn = "SpeechRecognizer error code: $errorCode"
+                    )
+                } else {
+                    SpeechErrorDecision(
+                        action = SpeechErrorAction.RESTART_AFTER_DELAY,
+                        delayMs = 2000L,
+                        destroyRecognizerFirst = true,
+                        statusNoteAr = "إعادة تهيئة التعرف الصوتي...",
+                        statusNoteEn = "Reinitializing speech recognition..."
+                    )
+                }
+            }
+        }
+    }
+}
+
 /**
  * Repaired, resilient Arabic Speech-to-Text & Live Quran Recitation Listener.
  *
- * Key repairs:
- * - Android 11+ <queries> manifest visibility enabled so SpeechRecognizer works on modern Android.
- * - Offline-first (ar-SA) with automatic one-shot fallback to hybrid/online recognition when the
- *   device lacks an installed Arabic offline speech pack (ERROR_LANGUAGE_UNAVAILABLE / NOT_SUPPORTED),
- *   always informing the user transparently instead of looping silently with empty text.
- * - Preserves full accumulated Arabic transcript across recognizer restarts AND after stopListening()
- *   so Hifz recitation assessment always receives the complete spoken verses.
- * - Tracks real pause durations between spoken segments (pauses >= 2.5s) for Hifz hesitation analysis.
- * - Supports injecting text from Android's system RecognizerIntent Activity fallback seamlessly.
+ * Key repairs (v6 Error-10 Fix):
+ * - Eliminates Android 12+ `SpeechRecognizer.ERROR_TOO_MANY_REQUESTS` (Error 10) by enforcing
+ *   a strict 1200ms minimum spacing between `startListening()` calls, tracking active session
+ *   lifecycle (`isSessionRunning`), auto-pausing cleanly after 3 silent timeouts instead of
+ *   infinite 300ms loops, and applying exponential cooldown backoff (3.5s -> 7s -> clean pause).
+ * - Preserves full accumulated Arabic transcript across recognizer pauses/restarts and after
+ *   `stopListening()` so memorization assessment always receives the recited verses.
+ * - Offline-first (`ar-SA`) with automatic one-shot fallback to hybrid recognition when an
+ *   offline Arabic speech pack is not installed on the device.
+ * - Cleanly supports Android's system `RecognizerIntent` Activity fallback (never hits
+ *   background Error 10 throttling).
  */
 class QuranLiveRecitationListener(private val appContext: Context) {
 
@@ -75,9 +266,13 @@ class QuranLiveRecitationListener(private val appContext: Context) {
     private var speechRecognizer: SpeechRecognizer? = null
     private var shouldKeepListening = false
     private var isPaused = false
+    private var isSessionRunning = false
     private var preferOfflineMode = true
     private var sessionOfflineFlag = true
     private var consecutiveErrors = 0
+    private var consecutiveSilenceTimeouts = 0
+    private var consecutiveRateLimits = 0
+    private var lastSessionStartMs = 0L
     private var lastSpeechEndMs = 0L
 
     private val accumulatedSegments = mutableListOf<String>()
@@ -99,8 +294,8 @@ class QuranLiveRecitationListener(private val appContext: Context) {
     }
 
     /**
-     * Builds a system RecognizerIntent for fallback voice dictation via ActivityResultLauncher
-     * when on-device background SpeechRecognizer is blocked by OEM restrictions.
+     * Builds a system RecognizerIntent for reliable voice dictation via ActivityResultLauncher.
+     * Works smoothly even when OEMs throttle background SpeechRecognizer (Error 10).
      */
     fun buildSystemSpeechIntent(promptAr: String = "اتلُ الآيات الآن بوضوح"): Intent {
         return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -140,6 +335,8 @@ class QuranLiveRecitationListener(private val appContext: Context) {
             accumulatedTranscript = "",
             pauseCount = 0,
             longestPauseMs = 0L,
+            lastErrorCode = null,
+            isRateLimited = false,
             errorMessageAr = "",
             errorMessageEn = ""
         )
@@ -155,10 +352,11 @@ class QuranLiveRecitationListener(private val appContext: Context) {
         handleHypotheses(listOf(cleaned), isFinal = isFinal)
     }
 
-    fun startListening(resetTranscript: Boolean = false) {
+    fun startListening(resetTranscript: Boolean = false, initialDelayMs: Long = 0L) {
         if (!hasMicrophonePermission()) {
             _state.value = _state.value.copy(
                 status = LiveRecitationStatus.ERROR,
+                lastErrorCode = SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS,
                 statusNoteAr = "يرجى منح إذن الميكروفون لتشغيل التعرف الصوتي.",
                 statusNoteEn = "Microphone permission is required for speech recognition.",
                 errorMessageAr = "إذن الميكروفون غير ممنوح.",
@@ -182,15 +380,20 @@ class QuranLiveRecitationListener(private val appContext: Context) {
             lastSpeechEndMs = 0L
         }
 
+        mainHandler.removeCallbacksAndMessages(null)
         shouldKeepListening = true
         isPaused = false
         consecutiveErrors = 0
+        consecutiveSilenceTimeouts = 0
+        consecutiveRateLimits = 0
         sessionOfflineFlag = preferOfflineMode
         trackerEngine.resetTrackingState()
         _state.value = _state.value.copy(
             status = LiveRecitationStatus.LISTENING,
             isOfflinePreferred = preferOfflineMode,
             isOfflineFallbackUsed = false,
+            lastErrorCode = null,
+            isRateLimited = false,
             heardText = if (resetTranscript) "" else _state.value.heardText,
             accumulatedTranscript = if (resetTranscript) "" else _state.value.accumulatedTranscript,
             pauseCount = if (resetTranscript) 0 else _state.value.pauseCount,
@@ -208,11 +411,20 @@ class QuranLiveRecitationListener(private val appContext: Context) {
                 "Listening to Arabic recitation..."
             }
         )
-        mainHandler.post { startRecognizerSession() }
+
+        val elapsedSinceLastStart = System.currentTimeMillis() - lastSessionStartMs
+        val cooldownNeeded = (SpeechErrorRecoveryPolicy.MIN_SESSION_SPACING_MS - elapsedSinceLastStart)
+            .coerceAtLeast(initialDelayMs)
+        if (cooldownNeeded > 0L) {
+            mainHandler.postDelayed({ startRecognizerSession() }, cooldownNeeded)
+        } else {
+            mainHandler.post { startRecognizerSession() }
+        }
     }
 
     fun pauseListening() {
         isPaused = true
+        isSessionRunning = false
         mainHandler.removeCallbacksAndMessages(null)
         mainHandler.post {
             try {
@@ -234,12 +446,21 @@ class QuranLiveRecitationListener(private val appContext: Context) {
             return
         }
         isPaused = false
+        consecutiveSilenceTimeouts = 0
+        consecutiveRateLimits = 0
+        consecutiveErrors = 0
         _state.value = _state.value.copy(
             status = LiveRecitationStatus.LISTENING,
+            isRateLimited = false,
+            errorMessageAr = "",
+            errorMessageEn = "",
             statusNoteAr = "تم استئناف الاستماع للتلاوة...",
             statusNoteEn = "Resumed listening..."
         )
-        mainHandler.post { startRecognizerSession() }
+        val elapsed = System.currentTimeMillis() - lastSessionStartMs
+        val waitMs = (SpeechErrorRecoveryPolicy.MIN_SESSION_SPACING_MS - elapsed).coerceAtLeast(250L)
+        mainHandler.removeCallbacksAndMessages(null)
+        mainHandler.postDelayed({ startRecognizerSession() }, waitMs)
     }
 
     /**
@@ -249,6 +470,7 @@ class QuranLiveRecitationListener(private val appContext: Context) {
     fun stopListening(clearTranscript: Boolean = false) {
         shouldKeepListening = false
         isPaused = false
+        isSessionRunning = false
         mainHandler.removeCallbacksAndMessages(null)
         mainHandler.post { destroyRecognizer() }
         if (clearTranscript) {
@@ -261,14 +483,22 @@ class QuranLiveRecitationListener(private val appContext: Context) {
             heardText = if (clearTranscript) "" else _state.value.heardText,
             accumulatedTranscript = if (clearTranscript) "" else _state.value.accumulatedTranscript,
             crossSurahJumpTarget = null,
+            isRateLimited = false,
             statusNoteAr = if (clearTranscript) "" else _state.value.statusNoteAr,
             statusNoteEn = if (clearTranscript) "" else _state.value.statusNoteEn
         )
     }
 
     private fun startRecognizerSession() {
-        if (!shouldKeepListening || isPaused) return
+        if (!shouldKeepListening || isPaused || isSessionRunning) return
         try {
+            val now = System.currentTimeMillis()
+            val sinceLast = now - lastSessionStartMs
+            if (lastSessionStartMs > 0L && sinceLast < SpeechErrorRecoveryPolicy.MIN_SESSION_SPACING_MS) {
+                scheduleRestart(SpeechErrorRecoveryPolicy.MIN_SESSION_SPACING_MS - sinceLast)
+                return
+            }
+
             if (speechRecognizer == null) {
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(appContext).apply {
                     setRecognitionListener(listener)
@@ -282,11 +512,14 @@ class QuranLiveRecitationListener(private val appContext: Context) {
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, sessionOfflineFlag)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
-                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2800L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L)
+                putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 3500L)
             }
+            isSessionRunning = true
+            lastSessionStartMs = System.currentTimeMillis()
             speechRecognizer?.startListening(intent)
         } catch (e: Exception) {
+            isSessionRunning = false
             shouldKeepListening = false
             _state.value = _state.value.copy(
                 status = LiveRecitationStatus.ERROR,
@@ -298,19 +531,22 @@ class QuranLiveRecitationListener(private val appContext: Context) {
         }
     }
 
-    private fun scheduleRestart(delayMs: Long = 350L) {
+    private fun scheduleRestart(delayMs: Long = SpeechErrorRecoveryPolicy.MIN_SESSION_SPACING_MS) {
         if (!shouldKeepListening || isPaused) return
+        val safeDelay = delayMs.coerceAtLeast(SpeechErrorRecoveryPolicy.MIN_SESSION_SPACING_MS)
         mainHandler.removeCallbacksAndMessages(null)
         mainHandler.postDelayed({
-            if (shouldKeepListening && !isPaused) {
+            if (shouldKeepListening && !isPaused && !isSessionRunning) {
                 startRecognizerSession()
             }
-        }, delayMs)
+        }, safeDelay)
     }
 
     private fun handleHypotheses(hypotheses: List<String>, isFinal: Boolean) {
         val bestRaw = hypotheses.firstOrNull { it.isNotBlank() } ?: return
         consecutiveErrors = 0
+        consecutiveSilenceTimeouts = 0
+        consecutiveRateLimits = 0
 
         if (isFinal) {
             val trimmed = bestRaw.trim()
@@ -343,6 +579,7 @@ class QuranLiveRecitationListener(private val appContext: Context) {
                 accumulatedTranscript = combinedTranscript,
                 confidence = bestDecision.confidence,
                 crossSurahJumpTarget = bestDecision.matchedSurah to bestDecision.matchedAyah,
+                isRateLimited = false,
                 errorMessageAr = "",
                 errorMessageEn = "",
                 statusNoteAr = "تم التعرّف على تلاوة سورة ${bestDecision.matchedSurah} · آية ${bestDecision.matchedAyah}",
@@ -361,6 +598,7 @@ class QuranLiveRecitationListener(private val appContext: Context) {
                 trackedPage = bestDecision.matchedPage,
                 confidence = bestDecision.confidence,
                 isRepeatedVerse = bestDecision.isRepeatedVerse,
+                isRateLimited = false,
                 errorMessageAr = "",
                 errorMessageEn = "",
                 statusNoteAr = if (bestDecision.isRepeatedVerse) {
@@ -380,6 +618,7 @@ class QuranLiveRecitationListener(private val appContext: Context) {
                 heardText = bestRaw.take(180),
                 accumulatedTranscript = combinedTranscript,
                 confidence = bestDecision.confidence,
+                isRateLimited = false,
                 errorMessageAr = "",
                 errorMessageEn = "",
                 statusNoteAr = "جارٍ الاستماع والتحقق من التلاوة...",
@@ -402,6 +641,7 @@ class QuranLiveRecitationListener(private val appContext: Context) {
         }
 
         override fun onBeginningOfSpeech() {
+            consecutiveSilenceTimeouts = 0
             val now = System.currentTimeMillis()
             if (lastSpeechEndMs > 0L) {
                 val pauseMs = now - lastSpeechEndMs
@@ -427,81 +667,88 @@ class QuranLiveRecitationListener(private val appContext: Context) {
         }
 
         override fun onError(error: Int) {
-            _state.value = _state.value.copy(rmsLevel = 0f)
+            isSessionRunning = false
+            _state.value = _state.value.copy(rmsLevel = 0f, lastErrorCode = error)
+
+            val decision = SpeechErrorRecoveryPolicy.decide(
+                errorCode = error,
+                consecutiveSilence = consecutiveSilenceTimeouts,
+                consecutiveRateLimits = consecutiveRateLimits,
+                consecutiveOtherErrors = consecutiveErrors,
+                sessionOfflineFlag = sessionOfflineFlag
+            )
+
+            // Update counters strictly after computing decision
             when (error) {
                 SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> {
-                    // Normal silence/pause during recitation -> continue cleanly without losing transcript
-                    scheduleRestart(300L)
-                }
-                SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> {
-                    scheduleRestart(650L)
-                }
-                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> {
-                    shouldKeepListening = false
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> consecutiveSilenceTimeouts += 1
+                SpeechErrorRecoveryPolicy.ERROR_TOO_MANY_REQUESTS -> consecutiveRateLimits += 1
+                else -> consecutiveErrors += 1
+            }
+
+            if (decision.destroyRecognizerFirst) {
+                destroyRecognizer()
+            }
+
+            when (decision.action) {
+                SpeechErrorAction.RESTART_AFTER_DELAY -> {
                     _state.value = _state.value.copy(
-                        status = LiveRecitationStatus.ERROR,
-                        statusNoteAr = "يرجى تفعيل إذن الميكروفون من إعدادات التطبيق.",
-                        statusNoteEn = "Please grant Microphone permission to continue.",
-                        errorMessageAr = "إذن الميكروفون مرفوض.",
-                        errorMessageEn = "Microphone permission rejected."
+                        isRateLimited = decision.isRateLimited,
+                        statusNoteAr = decision.statusNoteAr.ifBlank { _state.value.statusNoteAr },
+                        statusNoteEn = decision.statusNoteEn.ifBlank { _state.value.statusNoteEn }
+                    )
+                    scheduleRestart(decision.delayMs)
+                }
+
+                SpeechErrorAction.SWITCH_TO_HYBRID_AND_RESTART -> {
+                    sessionOfflineFlag = false
+                    consecutiveErrors = 0
+                    _state.value = _state.value.copy(
+                        isOfflineFallbackUsed = true,
+                        isRateLimited = false,
+                        statusNoteAr = decision.statusNoteAr,
+                        statusNoteEn = decision.statusNoteEn
+                    )
+                    scheduleRestart(decision.delayMs)
+                }
+
+                SpeechErrorAction.PAUSE_CLEANLY -> {
+                    isPaused = true
+                    mainHandler.removeCallbacksAndMessages(null)
+                    _state.value = _state.value.copy(
+                        status = LiveRecitationStatus.PAUSED,
+                        isRateLimited = decision.isRateLimited,
+                        statusNoteAr = decision.statusNoteAr,
+                        statusNoteEn = decision.statusNoteEn,
+                        errorMessageAr = decision.errorMessageAr,
+                        errorMessageEn = decision.errorMessageEn
                     )
                 }
-                12, // SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED
-                13, // SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE
-                SpeechRecognizer.ERROR_NETWORK,
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
-                SpeechRecognizer.ERROR_SERVER -> {
-                    // If offline-only pack isn't installed on this device, retry once in hybrid mode
-                    if (sessionOfflineFlag && (error == 12 || error == 13)) {
-                        sessionOfflineFlag = false
-                        _state.value = _state.value.copy(
-                            isOfflineFallbackUsed = true,
-                            statusNoteAr = "حزمة العربية غير المتصلة غير مثبّتة على الجهاز — تم التحويل للتعرف الصوتي الهجين تلقائياً.",
-                            statusNoteEn = "Offline Arabic speech pack not installed — switched to hybrid recognition."
-                        )
-                        destroyRecognizer()
-                        scheduleRestart(350L)
-                    } else {
-                        consecutiveErrors += 1
-                        if (consecutiveErrors >= 3) {
-                            shouldKeepListening = false
-                            _state.value = _state.value.copy(
-                                status = LiveRecitationStatus.ERROR,
-                                statusNoteAr = "تعذّر التعرف الصوتي للغة العربية (قد يلزم تثبيت حزمة العربية دون إنترنت أو اتصال شبكي أو استخدام التسجيل الصوتي).",
-                                statusNoteEn = "Arabic STT unavailable (install offline Arabic pack, check internet, or use Audio Recorder).",
-                                errorMessageAr = "رمز خطأ التعرف الصوتي: $error",
-                                errorMessageEn = "SpeechRecognizer error code: $error"
-                            )
-                        } else {
-                            scheduleRestart(900L)
-                        }
-                    }
-                }
-                else -> {
-                    consecutiveErrors += 1
-                    if (consecutiveErrors >= 4) {
-                        shouldKeepListening = false
-                        _state.value = _state.value.copy(
-                            status = LiveRecitationStatus.ERROR,
-                            statusNoteAr = "توقف التعرف الصوتي مؤقتاً (خطأ $error). يمكنك إعادة المحاولة أو استخدام زر الإملاء البديل.",
-                            statusNoteEn = "Speech recognition paused (error $error). Retry or use System Voice Fallback.",
-                            errorMessageAr = "رمز خطأ التعرف الصوتي: $error",
-                            errorMessageEn = "SpeechRecognizer error code: $error"
-                        )
-                    } else {
-                        scheduleRestart(850L)
-                    }
+
+                SpeechErrorAction.STOP_WITH_ERROR -> {
+                    shouldKeepListening = false
+                    isPaused = false
+                    mainHandler.removeCallbacksAndMessages(null)
+                    _state.value = _state.value.copy(
+                        status = LiveRecitationStatus.ERROR,
+                        isRateLimited = decision.isRateLimited,
+                        statusNoteAr = decision.statusNoteAr,
+                        statusNoteEn = decision.statusNoteEn,
+                        errorMessageAr = decision.errorMessageAr,
+                        errorMessageEn = decision.errorMessageEn
+                    )
                 }
             }
         }
 
         override fun onResults(results: Bundle?) {
+            isSessionRunning = false
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty()
             if (matches.isNotEmpty()) {
                 handleHypotheses(matches, isFinal = true)
             }
-            scheduleRestart(250L)
+            // Enforce polite spacing between recognition sessions to prevent Error 10 throttling
+            scheduleRestart(SpeechErrorRecoveryPolicy.MIN_SESSION_SPACING_MS)
         }
 
         override fun onPartialResults(partialResults: Bundle?) {
@@ -515,6 +762,7 @@ class QuranLiveRecitationListener(private val appContext: Context) {
     }
 
     private fun destroyRecognizer() {
+        isSessionRunning = false
         try {
             speechRecognizer?.cancel()
             speechRecognizer?.destroy()

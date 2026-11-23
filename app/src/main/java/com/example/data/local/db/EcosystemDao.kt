@@ -220,6 +220,9 @@ interface EcosystemDao {
     @Query("SELECT * FROM khatm_reading_logs ORDER BY createdAtMillis DESC LIMIT 200")
     fun observeKhatmLogs(): Flow<List<KhatmReadingLogEntity>>
 
+    @Query("SELECT * FROM khatm_reading_logs WHERE planId = :planId AND dateKey = :dateKey")
+    suspend fun getKhatmLogsForPlanOnDateOnce(planId: Long, dateKey: String): List<KhatmReadingLogEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertKhatmLog(log: KhatmReadingLogEntity): Long
 
@@ -330,4 +333,47 @@ interface EcosystemDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAdminConfigEntry(entry: AdminConfigEntryEntity)
+
+    // ======================== ADMIN AD CARDS (v6) ========================
+
+    @Query("SELECT * FROM admin_ad_cards ORDER BY displayOrder ASC, updatedAtMillis DESC")
+    fun observeAllAdCards(): Flow<List<AdminAdCardEntity>>
+
+    @Query("SELECT * FROM admin_ad_cards WHERE enabled = 1 ORDER BY displayOrder ASC, updatedAtMillis DESC")
+    fun observeEnabledAdCards(): Flow<List<AdminAdCardEntity>>
+
+    @Query("SELECT * FROM admin_ad_cards ORDER BY displayOrder ASC, updatedAtMillis DESC")
+    suspend fun getAllAdCardsOnce(): List<AdminAdCardEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAdCard(card: AdminAdCardEntity)
+
+    @Query("DELETE FROM admin_ad_cards WHERE id = :id")
+    suspend fun deleteAdCard(id: String)
+
+    @Query("UPDATE admin_ad_cards SET impressionsCount = impressionsCount + 1, updatedAtMillis = :now WHERE id = :id")
+    suspend fun incrementAdImpression(id: String, now: Long = System.currentTimeMillis())
+
+    @Query("UPDATE admin_ad_cards SET clicksCount = clicksCount + 1, updatedAtMillis = :now WHERE id = :id")
+    suspend fun incrementAdClick(id: String, now: Long = System.currentTimeMillis())
+
+    // ======================== ADMIN MESSAGES (v6) ========================
+
+    @Query("SELECT * FROM admin_messages ORDER BY createdAtMillis DESC LIMIT 200")
+    fun observeAllAdminMessages(): Flow<List<AdminMessageEntity>>
+
+    @Query("SELECT * FROM admin_messages ORDER BY createdAtMillis DESC")
+    suspend fun getAllAdminMessagesOnce(): List<AdminMessageEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAdminMessage(message: AdminMessageEntity)
+
+    @Query("UPDATE admin_messages SET readByCurrentUser = 1, readAtMillis = :readAt WHERE id = :id")
+    suspend fun markAdminMessageRead(id: String, readAt: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM admin_messages WHERE id = :id")
+    suspend fun deleteAdminMessage(id: String)
+
+    @Query("SELECT COUNT(*) FROM admin_messages WHERE readByCurrentUser = 0")
+    fun observeUnreadAdminMessageCount(): Flow<Int>
 }

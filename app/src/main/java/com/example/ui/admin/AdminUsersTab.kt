@@ -16,11 +16,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Flag
+import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Verified
@@ -63,7 +65,8 @@ import com.example.viewmodel.AdminViewModel
 @Composable
 fun AdminUsersTab(
     adminViewModel: AdminViewModel,
-    onRequireMfa: (() -> Unit) -> Unit
+    onRequireMfa: (() -> Unit) -> Unit,
+    onMessageUser: (UserAccountDoc) -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val users by adminViewModel.allUsers.collectAsStateWithLifecycle()
@@ -74,6 +77,7 @@ fun AdminUsersTab(
     var searchQuery by remember { mutableStateOf("") }
     var statusFilter by remember { mutableStateOf("ALL") }
 
+    var viewingUser by remember { mutableStateOf<UserAccountDoc?>(null) }
     var editingUser by remember { mutableStateOf<UserAccountDoc?>(null) }
     var deletingUser by remember { mutableStateOf<UserAccountDoc?>(null) }
     var reviewingReport by remember { mutableStateOf<UserReportDoc?>(null) }
@@ -220,7 +224,7 @@ fun AdminUsersTab(
 
                         if (currentRole.canManageUsers) {
                             Spacer(modifier = Modifier.height(10.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                                 OutlinedButton(
                                     onClick = { editingUser = user },
                                     modifier = Modifier.weight(1f),
@@ -228,7 +232,15 @@ fun AdminUsersTab(
                                 ) {
                                     Icon(Icons.Rounded.Edit, null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text(L10n.pick(lang, "تعديل / صلاحيات", "Manage"), style = MaterialTheme.typography.labelMedium)
+                                    Text(L10n.pick(lang, "إدارة", "Manage"), style = MaterialTheme.typography.labelMedium)
+                                }
+                                IconButton(onClick = { viewingUser = user }) {
+                                    Icon(Icons.Rounded.Info, contentDescription = "View Profile", tint = AdminPalette.AccentCyan)
+                                }
+                                if (currentRole.canSendAdminMessages) {
+                                    IconButton(onClick = { onMessageUser(user) }) {
+                                        Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "Message User", tint = AdminPalette.AccentEmerald)
+                                    }
                                 }
                                 if (!isPrimaryOwner && currentRole == AdminRole.SUPER_ADMIN) {
                                     IconButton(onClick = {
@@ -450,6 +462,48 @@ fun AdminUsersTab(
                     reviewingReport = null
                 }) {
                     Text(L10n.pick(lang, "رفض البلاغ", "Dismiss"))
+                }
+            }
+        )
+    }
+
+    // Read-Only User Profile & Worship Activity Summary Dialog (zero password/token exposure)
+    viewingUser?.let { target ->
+        AlertDialog(
+            onDismissRequest = { viewingUser = null },
+            title = { Text(L10n.pick(lang, "ملف المستخدم والنشاط", "User Profile & Activity")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("${target.displayName.ifBlank { "NOOR Member" }} (${target.role})", fontWeight = FontWeight.Bold)
+                    Text("Email: ${target.email}", style = MaterialTheme.typography.bodySmall, color = AdminPalette.AccentCyan)
+                    Text("Status: ${target.status} · Verified: ${target.verified}", style = MaterialTheme.typography.bodySmall)
+                    Text("City: ${target.cityName} · Language: ${target.preferredLanguage}", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = L10n.pick(
+                            lang,
+                            "القرآن: ${target.quranVersesRead} آية · الأذكار: ${target.adhkarCompleted} · التسبيح: ${target.tasbihCount} · الصوتيات: ${target.audioPlays}",
+                            "Quran: ${target.quranVersesRead} verses · Adhkar: ${target.adhkarCompleted} · Tasbih: ${target.tasbihCount} · Audio: ${target.audioPlays}"
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = AdminPalette.AccentEmerald
+                    )
+                }
+            },
+            confirmButton = {
+                if (currentRole.canSendAdminMessages) {
+                    Button(onClick = {
+                        val u = target
+                        viewingUser = null
+                        onMessageUser(u)
+                    }) {
+                        Text(L10n.pick(lang, "إرسال رسالة", "Send Message"))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewingUser = null }) {
+                    Text(L10n.pick(lang, "إغلاق", "Close"))
                 }
             }
         )

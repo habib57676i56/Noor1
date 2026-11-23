@@ -360,3 +360,51 @@ data class AdminConfigEntryEntity(
     val updatedAtMillis: Long = System.currentTimeMillis()
 )
 
+// =========================================================================
+// 11. NOOR v6 — Administrative Advertisement Cards & Admin-to-User Messaging
+// =========================================================================
+
+@Entity(tableName = "admin_ad_cards")
+data class AdminAdCardEntity(
+    @PrimaryKey val id: String,
+    val titleAr: String,
+    val titleEn: String = "",
+    val descriptionAr: String = "",
+    val descriptionEn: String = "",
+    val imageUriOrUrl: String = "",
+    val destinationUrl: String = "",
+    val placement: String = "HOME", // ONLY: HOME, ECOSYSTEM_HUB, AUDIO_LIBRARY
+    val enabled: Boolean = true,
+    val startAtMillis: Long = 0L,
+    val endAtMillis: Long = 0L,
+    val displayOrder: Int = 1,
+    val impressionsCount: Long = 0L,
+    val clicksCount: Long = 0L,
+    val createdBy: String = "super_admin",
+    val updatedAtMillis: Long = System.currentTimeMillis()
+)
+
+@Entity(tableName = "admin_messages")
+data class AdminMessageEntity(
+    @PrimaryKey val id: String,
+    val targetType: String = "ALL", // ALL, GROUP, USER
+    val targetGroup: String = "ALL", // ALL, ACTIVE, VERIFIED, ADMINS
+    val targetUserUid: String = "",
+    val targetUserEmail: String = "",
+    val titleAr: String,
+    val titleEn: String = "",
+    val bodyAr: String,
+    val bodyEn: String = "",
+    val messageType: String = "SYSTEM", // SYSTEM, MAINTENANCE, FEATURE_UPDATE, REMINDER, EDUCATIONAL, DIRECT
+    val priority: String = "NORMAL", // LOW, NORMAL, HIGH, URGENT
+    val imageUriOrUrl: String = "",
+    val scheduledAtMillis: Long = 0L,
+    val sentByUid: String = "",
+    val sentByEmail: String = "",
+    val delivered: Boolean = true,
+    val readByCurrentUser: Boolean = false,
+    val readAtMillis: Long = 0L,
+    val createdAtMillis: Long = System.currentTimeMillis()
+)
+
+

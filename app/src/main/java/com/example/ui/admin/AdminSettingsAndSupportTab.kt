@@ -60,7 +60,8 @@ import com.example.viewmodel.AdminViewModel
 @Composable
 fun AdminSettingsAndSupportTab(
     adminViewModel: AdminViewModel,
-    onRequireMfa: (() -> Unit) -> Unit
+    onRequireMfa: (() -> Unit) -> Unit,
+    onOpenAdsAndMessaging: (Int) -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val currentRole by adminViewModel.currentRole.collectAsStateWithLifecycle()
@@ -111,6 +112,20 @@ fun AdminSettingsAndSupportTab(
                         label = L10n.pick(lang, "الدعم الفني ($openCount)", "Support Inbox ($openCount)"),
                         selected = subTab == 2,
                         onClick = { subTab = 2 }
+                    )
+                }
+                item {
+                    AdminFilterPill(
+                        label = L10n.pick(lang, "بطاقات الإعلانات", "Ad Cards"),
+                        selected = false,
+                        onClick = { onOpenAdsAndMessaging(0) }
+                    )
+                }
+                item {
+                    AdminFilterPill(
+                        label = L10n.pick(lang, "رسائل المستخدمين", "Messaging"),
+                        selected = false,
+                        onClick = { onOpenAdsAndMessaging(1) }
                     )
                 }
             }
@@ -176,16 +191,29 @@ fun AdminSettingsAndSupportTab(
                     }
                 }
 
-                // Live Feature Flags
+                // Live Feature Flags (Super Admin Exclusive)
                 item {
                     AdminPanelCard {
-                        Text(L10n.pick(lang, "تبديل الميزات الحية (Feature Flags)", "Live Feature Availability"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Text(
+                            L10n.pick(lang, "التحكم الكامل بميزات التطبيق (Super Admin)", "Application Feature Controls (Super Admin)"),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
                         Spacer(modifier = Modifier.height(6.dp))
-                        AdminSwitchRow(L10n.pick(lang, "القرآن الكريم", "Holy Quran Module"), draftConfig.featureQuranEnabled) { draftConfig = draftConfig.copy(featureQuranEnabled = it) }
-                        AdminSwitchRow(L10n.pick(lang, "المكتبة الصوتية", "Audio Library & Streaming"), draftConfig.featureAudioEnabled) { draftConfig = draftConfig.copy(featureAudioEnabled = it) }
-                        AdminSwitchRow(L10n.pick(lang, "البحث عن المساجد", "Nearby Mosques Finder"), draftConfig.featureMosquesEnabled) { draftConfig = draftConfig.copy(featureMosquesEnabled = it) }
-                        AdminSwitchRow(L10n.pick(lang, "بوصلة القبلة", "Qibla Compass"), draftConfig.featureQiblaEnabled) { draftConfig = draftConfig.copy(featureQiblaEnabled = it) }
-                        AdminSwitchRow(L10n.pick(lang, "التقويم الهجري", "Hijri Calendar"), draftConfig.featureCalendarEnabled) { draftConfig = draftConfig.copy(featureCalendarEnabled = it) }
+                        val isSuperAdmin = currentRole.canControlGlobalFeatures
+                        AdminSwitchRow(L10n.pick(lang, "قارئ القرآن الكريم", "Quran Reader"), draftConfig.featureQuranEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureQuranEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "صفحات مصحف المدينة المصوّرة (٦٠٤ ص)", "Madinah Mushaf Page Images"), draftConfig.featureMushafImagesEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureMushafImagesEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "المكتبة الصوتية والتلاوة", "Audio & Recitation"), draftConfig.featureAudioEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureAudioEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "نظام الحفظ والمراجعة (Hifz)", "Memorization (Hifz)"), draftConfig.featureMemorizationEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureMemorizationEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "الاستماع والتسميع والتقييم", "Listening & Recitation Assessment"), draftConfig.featureListeningAssessmentEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureListeningAssessmentEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "ختمة القرآن الكريم", "Khatmah Tracker"), draftConfig.featureKhatmahEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureKhatmahEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "تتبع الصيام", "Fasting Tracker"), draftConfig.featureFastingEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureFastingEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "الورد اليومي", "Daily Wird"), draftConfig.featureDailyWirdEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureDailyWirdEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "الإشعارات والإعلانات الرسمية", "Notifications & Announcements"), draftConfig.featureNotificationsEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureNotificationsEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "بطاقات الإعلانات الإدارية", "Administrative Ad Cards"), draftConfig.featureAdsEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureAdsEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "البحث عن المساجد", "Nearby Mosques Finder"), draftConfig.featureMosquesEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureMosquesEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "بوصلة القبلة", "Qibla Compass"), draftConfig.featureQiblaEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureQiblaEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "التقويم الهجري", "Hijri Calendar"), draftConfig.featureCalendarEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureCalendarEnabled = it) }
                     }
                 }
 
@@ -459,13 +487,23 @@ fun AdminSettingsAndSupportTab(
 }
 
 @Composable
-private fun AdminSwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun AdminSwitchRow(
+    label: String,
+    checked: Boolean,
+    enabled: Boolean = true,
+    onCheckedChange: (Boolean) -> Unit
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = AdminPalette.TextPrimary, modifier = Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Text(
+            label,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (enabled) AdminPalette.TextPrimary else AdminPalette.TextMuted,
+            modifier = Modifier.weight(1f)
+        )
+        Switch(checked = checked, enabled = enabled, onCheckedChange = onCheckedChange)
     }
 }

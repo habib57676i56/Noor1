@@ -75,6 +75,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
+import com.example.data.cloud.AdPlacement
 import com.example.data.local.catalog.AudioLibraryCatalog
 import com.example.data.local.catalog.SurahCatalog
 import com.example.domain.calendar.HijriCalendarEngine
@@ -82,6 +83,7 @@ import com.example.domain.model.HomeDashboardConfig
 import com.example.domain.model.PrayerName
 import com.example.ui.components.IslamicRosetteOrnament
 import com.example.ui.components.LiquidGlassCard
+import com.example.ui.components.NoorAdCardBannerSection
 import com.example.ui.components.NoorSectionHeader
 import com.example.ui.components.prayerIcon
 import com.example.ui.i18n.L10n
@@ -132,6 +134,8 @@ fun HomeScreen(
     val recentAudio by viewModel.recentAudioTracks.collectAsStateWithLifecycle()
     val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
     val announcements by viewModel.activeAnnouncements.collectAsStateWithLifecycle()
+    val activeAdCards by viewModel.activeAdCards.collectAsStateWithLifecycle()
+    val unreadMessagesCount by viewModel.unreadAdminMessagesCount.collectAsStateWithLifecycle()
     val resolvedRole by viewModel.resolvedAdminRole.collectAsStateWithLifecycle()
     val morningItems by viewModel.morningAdhkarItems.collectAsStateWithLifecycle()
     val eveningItems by viewModel.eveningAdhkarItems.collectAsStateWithLifecycle()
@@ -194,13 +198,39 @@ fun HomeScreen(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                IconButton(
-                    onClick = onOpenNotifications,
-                    modifier = Modifier
-                        .size(44.dp)
-                        .testTag("home_notifications_button")
-                ) {
-                    Icon(Icons.Rounded.Notifications, contentDescription = "Notifications", tint = noorColors.goldAccent)
+                if (resolvedRole.isPrivileged) {
+                    IconButton(
+                        onClick = onOpenAdminCenter,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .testTag("home_corner_super_admin_button")
+                    ) {
+                        Icon(
+                            Icons.Rounded.AdminPanelSettings,
+                            contentDescription = "Super Admin Dashboard",
+                            tint = GoldBright
+                        )
+                    }
+                }
+                Box {
+                    IconButton(
+                        onClick = onOpenNotifications,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .testTag("home_notifications_button")
+                    ) {
+                        Icon(Icons.Rounded.Notifications, contentDescription = "Notifications", tint = noorColors.goldAccent)
+                    }
+                    if (unreadMessagesCount > 0) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 8.dp, end = 8.dp)
+                                .size(9.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFFE53935))
+                        )
+                    }
                 }
                 IconButton(
                     onClick = { showCustomizeDialog = true },
@@ -260,7 +290,19 @@ fun HomeScreen(
             }
         }
 
-        // 1C. Live Owner Announcement Banner (if any active announcement exists)
+        // 1C. Administrative Advertisement Cards (Approved HOME placement only, Super Admin controlled)
+        if (globalConfig.featureAdsEnabled && activeAdCards.any { it.placement == AdPlacement.HOME.key }) {
+            item(key = "home_admin_ad_cards") {
+                NoorAdCardBannerSection(
+                    adCards = activeAdCards,
+                    placement = AdPlacement.HOME,
+                    onImpression = { viewModel.recordAdImpression(it) },
+                    onClick = { viewModel.recordAdClick(it) }
+                )
+            }
+        }
+
+        // 1D. Live Owner Announcement Banner (if any active announcement exists)
         val latestAnnouncement = announcements.firstOrNull()
         if (latestAnnouncement != null) {
             item {

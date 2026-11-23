@@ -48,6 +48,9 @@ enum class AdminRole(val key: String, val labelAr: String, val labelEn: String) 
     val canManageSupport: Boolean get() = this == SUPER_ADMIN || this == ADMIN || this == SUPPORT_AGENT
     val canManageUsers: Boolean get() = this == SUPER_ADMIN || this == ADMIN
     val canAssignRoles: Boolean get() = this == SUPER_ADMIN
+    val canManageAds: Boolean get() = this == SUPER_ADMIN
+    val canControlGlobalFeatures: Boolean get() = this == SUPER_ADMIN
+    val canSendAdminMessages: Boolean get() = this == SUPER_ADMIN || this == ADMIN
 
     companion object {
         fun fromKey(key: String?): AdminRole =
@@ -193,7 +196,15 @@ data class GlobalAppConfigDoc(
     val supportWhatsApp: String = NoorPlatformConstants.SUPPORT_WHATSAPP,
     val supportTelegram: String = NoorPlatformConstants.SUPPORT_TELEGRAM,
     val featureQuranEnabled: Boolean = true,
+    val featureMushafImagesEnabled: Boolean = true,
     val featureAudioEnabled: Boolean = true,
+    val featureMemorizationEnabled: Boolean = true,
+    val featureListeningAssessmentEnabled: Boolean = true,
+    val featureKhatmahEnabled: Boolean = true,
+    val featureFastingEnabled: Boolean = true,
+    val featureDailyWirdEnabled: Boolean = true,
+    val featureNotificationsEnabled: Boolean = true,
+    val featureAdsEnabled: Boolean = true,
     val featureMosquesEnabled: Boolean = true,
     val featureQiblaEnabled: Boolean = true,
     val featureCalendarEnabled: Boolean = true,
@@ -277,3 +288,141 @@ data class DailyAnalyticsDoc(
     val sectionAudioHits: Long = 0L,
     @ServerTimestamp val updatedAt: Timestamp? = null
 )
+
+/**
+ * Strictly allowed placements for Administrative Advertisement Cards.
+ * Ads are NEVER permitted inside Quran reading, recitation, memorization (Hifz), or Prayer Times.
+ */
+enum class AdPlacement(val key: String, val labelAr: String, val labelEn: String) {
+    HOME("HOME", "الشاشة الرئيسية", "Home Screen"),
+    ECOSYSTEM_HUB("ECOSYSTEM_HUB", "مركز منظومة نور", "NOOR Ecosystem Hub"),
+    AUDIO_LIBRARY("AUDIO_LIBRARY", "مكتبة الصوتيات", "Audio Library");
+
+    companion object {
+        private val FORBIDDEN_ROUTE_TOKENS = setOf(
+            "quran", "mushaf", "recitation", "hifz", "memorization", "prayer", "prayers", "adhan"
+        )
+
+        fun fromKey(key: String?): AdPlacement =
+            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: HOME
+
+        fun isAllowedPlacement(placementKey: String?): Boolean =
+            entries.any { it.key.equals(placementKey, ignoreCase = true) }
+
+        fun isForbiddenScreenRoute(routeOrScreenName: String): Boolean {
+            val lower = routeOrScreenName.lowercase()
+            return FORBIDDEN_ROUTE_TOKENS.any { token -> lower.contains(token) }
+        }
+    }
+}
+
+object NoorSecurityValidators {
+    /**
+     * Validates an optional external destination URL for advertisement cards or links.
+     * Empty string is allowed (informational card without external link).
+     * Non-empty URLs MUST strictly use https:// and must not contain control chars or javascript:.
+     */
+    fun isSafeOptionalHttpsUrl(url: String): Boolean {
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return true
+        if (trimmed.length > 500) return false
+        if (!trimmed.startsWith("https://", ignoreCase = true)) return false
+        val hostPart = trimmed.substringAfter("https://", "").substringBefore("/")
+        if (hostPart.isBlank() || !hostPart.contains(".") || hostPart.contains(" ")) return false
+        if (trimmed.any { it.isISOControl() }) return false
+        return true
+    }
+
+    /**
+     * Validates an optional image URI/URL (either https:// or local content:// / file:// from Photo Picker).
+     */
+    fun isSafeOptionalImageUri(uriOrUrl: String): Boolean {
+        val trimmed = uriOrUrl.trim()
+        if (trimmed.isEmpty()) return true
+        if (trimmed.length > 600) return false
+        if (trimmed.any { it.isISOControl() }) return false
+        return trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.startsWith("content://", ignoreCase = true) ||
+            trimmed.startsWith("file://", ignoreCase = true)
+    }
+}
+
+@Keep
+@IgnoreExtraProperties
+data class AdCardDoc(
+    @DocumentId val id: String = "",
+    val titleAr: String = "",
+    val titleEn: String = "",
+    val descriptionAr: String = "",
+    val descriptionEn: String = "",
+    val imageUrl: String = "",
+    val destinationUrl: String = "",
+    val placement: String = AdPlacement.HOME.key,
+    val enabled: Boolean = true,
+    val startAtMillis: Long = 0L,
+    val endAtMillis: Long = 0L,
+    val displayOrder: Int = 1,
+    val impressionsCount: Long = 0L,
+    val clicksCount: Long = 0L,
+    val createdBy: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null,
+    @ServerTimestamp val updatedAt: Timestamp? = null
+) {
+    fun isCurrentlyActive(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        if (!enabled) return false
+        if (!AdPlacement.isAllowedPlacement(placement)) return false
+        if (startAtMillis > 0L && nowMillis < startAtMillis) return false
+        if (endAtMillis > 0L && nowMillis > endAtMillis) return false
+        return true
+    }
+}
+
+enum class AdminMessageType(val key: String, val labelAr: String, val labelEn: String) {
+    SYSTEM("SYSTEM", "تنبيه نظام", "System"),
+    MAINTENANCE("MAINTENANCE", "صيانة", "Maintenance"),
+    FEATURE_UPDATE("FEATURE_UPDATE", "تحديث ميزة", "Feature Update"),
+    REMINDER("REMINDER", "تذكير", "Reminder"),
+    EDUCATIONAL("EDUCATIONAL", "رسالة تعليمية", "Educational"),
+    DIRECT("DIRECT", "رسالة مباشرة", "Direct Message");
+
+    companion object {
+        fun fromKey(key: String?): AdminMessageType =
+            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: SYSTEM
+    }
+}
+
+enum class AdminMessagePriority(val key: String, val labelAr: String, val labelEn: String) {
+    LOW("LOW", "منخفضة", "Low"),
+    NORMAL("NORMAL", "عادية", "Normal"),
+    HIGH("HIGH", "مرتفعة", "High"),
+    URGENT("URGENT", "عاجلة", "Urgent");
+
+    companion object {
+        fun fromKey(key: String?): AdminMessagePriority =
+            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: NORMAL
+    }
+}
+
+@Keep
+@IgnoreExtraProperties
+data class AdminMessageDoc(
+    @DocumentId val id: String = "",
+    val targetType: String = "ALL", // ALL, GROUP, USER
+    val targetGroup: String = "ALL", // ALL, ACTIVE, VERIFIED, ADMINS
+    val targetUserUid: String = "",
+    val targetUserEmail: String = "",
+    val titleAr: String = "",
+    val titleEn: String = "",
+    val bodyAr: String = "",
+    val bodyEn: String = "",
+    val messageType: String = AdminMessageType.SYSTEM.key,
+    val priority: String = AdminMessagePriority.NORMAL.key,
+    val imageUrl: String = "",
+    val scheduledAtMillis: Long = 0L,
+    val active: Boolean = true,
+    val readByUids: List<String> = emptyList(),
+    val createdBy: String = "",
+    val createdByEmail: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null
+)
+

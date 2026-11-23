@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,13 +24,18 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Campaign
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Event
+import androidx.compose.material.icons.rounded.MarkEmailRead
+import androidx.compose.material.icons.rounded.MarkEmailUnread
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,17 +43,21 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.cloud.AdminMessagePriority
+import com.example.data.cloud.AdminMessageType
+import com.example.data.cloud.NoorSecurityValidators
 import com.example.domain.model.PrayerName
 import com.example.notifications.NoorNotificationHelper
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.NoorSectionHeader
+import com.example.ui.components.NoorUriImage
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.theme.GoldPrimary
@@ -57,9 +67,12 @@ import com.example.ui.theme.SemanticSuccess
 import com.example.viewmodel.NoorViewModel
 
 /**
- * Part 8 — Advanced Notification Center.
- * Displays live Owner global announcements (General, Islamic Events, App Updates, Emergency)
- * alongside independent personal worship & prayer notification preferences.
+ * Advanced Notification Center & Admin-to-User Inbox.
+ * Displays:
+ * 1. Direct, Group, and Broadcast Admin Messages with unread indicator, priority badge,
+ *    optional image, and mark-as-read tracking.
+ * 2. Official Owner Announcements (General, Islamic Events, App Updates, Emergency).
+ * 3. Personal Worship & Prayer Notification preferences + Non-Essential opt-out toggle.
  */
 @Composable
 fun NotificationCenterScreen(
@@ -70,6 +83,11 @@ fun NotificationCenterScreen(
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
     val announcements by viewModel.activeAnnouncements.collectAsStateWithLifecycle()
+    val adminMessages by viewModel.userAdminMessages.collectAsStateWithLifecycle()
+    val unreadCount by viewModel.unreadAdminMessagesCount.collectAsStateWithLifecycle()
+    val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val nonEssentialEnabled by viewModel.nonEssentialNotificationsEnabled.collectAsStateWithLifecycle()
+    val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
 
     val notifPermLauncher = rememberLauncherForActivityResult(
@@ -78,6 +96,8 @@ fun NotificationCenterScreen(
         if (granted) viewModel.sendTestNotification()
     }
 
+    val myUid = currentUser?.uid ?: "local_user"
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -85,23 +105,48 @@ fun NotificationCenterScreen(
         contentPadding = PaddingValues(bottom = 104.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        item {
+        item(key = "notif_header") {
             NoorScreenHeader(
-                title = L10n.pick(lang, "مركز الإشعارات والتنبيهات", "Notification Center"),
-                subtitle = L10n.pick(lang, "إعلانات نور الرسمية وتنبيهات العبادة الشخصية", "Official NOOR broadcasts & personal worship alerts"),
+                title = L10n.pick(lang, "مركز الإشعارات والرسائل", "Notification Center"),
+                subtitle = L10n.pick(
+                    lang,
+                    "رسائل الإدارة ($unreadCount غير مقروءة) وتنبيهات العبادة الشخصية",
+                    "Admin Inbox ($unreadCount unread) & personal worship alerts"
+                ),
                 onBack = onBack
             )
         }
 
-        item {
+        if (!globalConfig.featureNotificationsEnabled) {
+            item(key = "notif_admin_disabled") {
+                LiquidGlassCard(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    goldBorder = true,
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    Text(
+                        text = L10n.pick(
+                            lang,
+                            "تنبيه: الإشعارات الإدارية العامة متوقفة مؤقتاً من لوحة المشرف الأعلى. تبقى منبهات الصلاة الشخصية فعالة.",
+                            "Note: Global admin notifications are temporarily paused in Super Admin settings. Personal prayer alerts remain active."
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // Section 1: Admin-to-User Messages Inbox (Direct, Group, Broadcast)
+        item(key = "admin_msgs_header") {
             NoorSectionHeader(
-                title = L10n.pick(lang, "الإعلانات والتنبيهات الرسمية", "Official Announcements"),
+                title = L10n.pick(lang, "صندوق الرسائل الإدارية ($unreadCount جديد)", "Admin Messages Inbox ($unreadCount unread)"),
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
 
-        if (announcements.isEmpty()) {
-            item {
+        if (adminMessages.isEmpty()) {
+            item(key = "admin_msgs_empty") {
                 LiquidGlassCard(
                     modifier = Modifier.padding(horizontal = 16.dp),
                     contentPadding = PaddingValues(18.dp)
@@ -109,7 +154,137 @@ fun NotificationCenterScreen(
                     Text(
                         text = L10n.pick(
                             lang,
-                            "لا توجد إعلانات جديدة حالياً. ستظهر هنا التحديثات والمناسبات الإسلامية والتنبيهات الهامة.",
+                            "لا توجد رسائل إدارية في صندوقك حالياً.",
+                            "No admin messages in your inbox right now."
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            items(adminMessages, key = { "inbox_msg_${it.id}" }) { msg ->
+                val isRead = msg.readByUids.contains(myUid) || msg.readByUids.contains("local_user")
+                val msgType = AdminMessageType.fromKey(msg.messageType)
+                val msgPriority = AdminMessagePriority.fromKey(msg.priority)
+                val tint = when (msgPriority) {
+                    AdminMessagePriority.URGENT -> SemanticError
+                    AdminMessagePriority.HIGH -> GoldPrimary
+                    AdminMessagePriority.LOW -> MaterialTheme.colorScheme.onSurfaceVariant
+                    AdminMessagePriority.NORMAL -> SemanticSuccess
+                }
+
+                LiquidGlassCard(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp)
+                        .testTag("inbox_message_card_${msg.id}"),
+                    goldBorder = !isRead || msgPriority == AdminMessagePriority.URGENT,
+                    contentPadding = PaddingValues(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(tint.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (isRead) Icons.Rounded.MarkEmailRead else Icons.Rounded.MarkEmailUnread,
+                                contentDescription = null,
+                                tint = tint
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = L10n.pick(lang, msg.titleAr, msg.titleEn.ifBlank { msg.titleAr }),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = if (isRead) FontWeight.SemiBold else FontWeight.ExtraBold
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = tint.copy(alpha = 0.16f)
+                                ) {
+                                    Text(
+                                        text = L10n.pick(lang, msgType.labelAr, msgType.labelEn),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = tint,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                                Text(
+                                    text = L10n.pick(lang, msgPriority.labelAr, msgPriority.labelEn),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = tint,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    if (msg.imageUrl.isNotBlank() && NoorSecurityValidators.isSafeOptionalImageUri(msg.imageUrl)) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        NoorUriImage(
+                            uriString = msg.imageUrl,
+                            contentDescription = msg.titleAr,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, GoldPrimary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = L10n.pick(lang, msg.bodyAr, msg.bodyEn.ifBlank { msg.bodyAr }),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (!isRead) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.markAdminMessageRead(msg.id) },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.testTag("mark_read_msg_${msg.id}")
+                        ) {
+                            Icon(Icons.Rounded.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(L10n.pick(lang, "تحديد كمقروء", "Mark as Read"))
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section 2: Official Announcements
+        item(key = "announcements_header") {
+            NoorSectionHeader(
+                title = L10n.pick(lang, "الإعلانات والتنبيهات الرسمية", "Official Announcements"),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+
+        if (announcements.isEmpty()) {
+            item(key = "announcements_empty") {
+                LiquidGlassCard(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    contentPadding = PaddingValues(18.dp)
+                ) {
+                    Text(
+                        text = L10n.pick(
+                            lang,
+                            "لا توجد إعلانات عامة جديدة حالياً. ستظهر هنا التحديثات والمناسبات الإسلامية والتنبيهات الهامة.",
                             "No active announcements right now. Islamic event reminders, updates, and notices will appear here."
                         ),
                         style = MaterialTheme.typography.bodyMedium,
@@ -118,7 +293,7 @@ fun NotificationCenterScreen(
                 }
             }
         } else {
-            items(announcements, key = { it.id }) { ann ->
+            items(announcements, key = { "ann_${it.id}" }) { ann ->
                 val (icon, tint) = when (ann.kind) {
                     "EMERGENCY" -> Icons.Rounded.Warning to SemanticError
                     "ISLAMIC_EVENT" -> Icons.Rounded.Event to GoldPrimary
@@ -164,18 +339,28 @@ fun NotificationCenterScreen(
             }
         }
 
-        item {
+        // Section 3: Personal Worship Reminders & Opt-Out Preferences
+        item(key = "personal_reminders_header") {
             NoorSectionHeader(
-                title = L10n.pick(lang, "تنبيهات عبادتك الشخصية", "Your Personal Worship Reminders"),
+                title = L10n.pick(lang, "تفضيلات الإشعارات وتنبيهات العبادة", "Notification Preferences & Worship Reminders"),
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
 
-        item {
+        item(key = "personal_reminders_card") {
             LiquidGlassCard(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 contentPadding = PaddingValues(16.dp)
             ) {
+                NotifSwitchRow(
+                    label = L10n.pick(
+                        lang,
+                        "الرسائل التعليمية والتذكيرات غير العاجلة",
+                        "Educational & Non-Essential Admin Notices"
+                    ),
+                    checked = nonEssentialEnabled,
+                    onCheckedChange = { viewModel.setNonEssentialNotificationsEnabled(it) }
+                )
                 PrayerName.fardPrayers.forEach { prayer ->
                     NotifSwitchRow(
                         label = L10n.pick(lang, "تنبيه صلاة ${L10n.prayerName(prayer, lang)}", "${L10n.prayerName(prayer, lang)} Prayer"),

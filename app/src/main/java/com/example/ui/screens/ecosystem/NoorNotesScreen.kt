@@ -108,7 +108,7 @@ fun NoorNotesScreen(
                     { favoritesOnly = !favoritesOnly }
                 )
             }
-            items(collections, key = { it.id }) { col ->
+            items(collections, key = { "col_${it.id}" }) { col ->
                 LiquidGlassChip(
                     col.name,
                     selectedCollectionId == col.id,
@@ -144,7 +144,7 @@ fun NoorNotesScreen(
                 }
             }
 
-            items(filteredNotes, key = { it.id }) { note ->
+            items(filteredNotes, key = { "note_${it.id}" }) { note ->
                 val surah = SurahCatalog.findSurah(note.surahNumber)
                 val colName = collections.firstOrNull { it.id == note.collectionId }?.name
                 LiquidGlassCard(goldBorder = note.isFavorite) {

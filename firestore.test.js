@@ -321,3 +321,212 @@ test("support tickets are user-scoped on create/read and admin-managed on update
     })
   );
 });
+
+test("ad_cards are Super Admin exclusive for CRUD, enforce allowed placements & HTTPS, and allow safe telemetry", async () => {
+  const ownerDb = dbFor(
+    testEnv.authenticatedContext("owner-uid", { email: OWNER_EMAIL, email_verified: true })
+  );
+  const adminDb = dbFor(
+    testEnv.authenticatedContext("admin-1", { email: "admin1@example.com", email_verified: true })
+  );
+  const userDb = dbFor(
+    testEnv.authenticatedContext("user-1", { email: "u1@example.com", email_verified: true })
+  );
+  const unauthDb = dbFor(testEnv.unauthenticatedContext());
+
+  // Seed ordinary ADMIN role
+  await assertSucceeds(
+    ownerDb.collection("admins").doc("admin-1").set({
+      uid: "admin-1",
+      email: "admin1@example.com",
+      role: "ADMIN",
+      permissions: ["CMS_EDIT"],
+      active: true,
+      grantedBy: "owner-uid",
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Super Admin creates valid HOME ad card
+  await assertSucceeds(
+    ownerDb.collection("ad_cards").doc("ad_ramadan_1").set({
+      titleAr: "دورة تجويد مجانية",
+      titleEn: "Free Tajweed Course",
+      descriptionAr: "انضم إلى حلقات نور التعليمية",
+      descriptionEn: "Join NOOR learning circles",
+      imageUrl: "https://example.com/banner.png",
+      destinationUrl: "https://noor.example.com/tajweed",
+      placement: "HOME",
+      enabled: true,
+      startAtMillis: 0,
+      endAtMillis: 0,
+      displayOrder: 1,
+      impressionsCount: 0,
+      clicksCount: 0,
+      createdBy: "owner-uid",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Forbidden placement (QURAN_READER) MUST be rejected even for Super Admin
+  await assertFails(
+    ownerDb.collection("ad_cards").doc("ad_bad_place").set({
+      titleAr: "إعلان ممنوع",
+      placement: "QURAN_READER",
+      enabled: true,
+      displayOrder: 1,
+      createdBy: "owner-uid",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Unsafe javascript: or http:// destinationUrl MUST be rejected
+  await assertFails(
+    ownerDb.collection("ad_cards").doc("ad_bad_url").set({
+      titleAr: "رابط غير آمن",
+      destinationUrl: "javascript:alert(1)",
+      placement: "HOME",
+      enabled: true,
+      displayOrder: 1,
+      createdBy: "owner-uid",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Ordinary ADMIN CANNOT create or delete ad cards (Super Admin exclusive)
+  await assertFails(
+    adminDb.collection("ad_cards").doc("ad_by_admin").set({
+      titleAr: "محاولة مشرف عادي",
+      placement: "HOME",
+      enabled: true,
+      displayOrder: 2,
+      createdBy: "admin-1",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await assertFails(adminDb.collection("ad_cards").doc("ad_ramadan_1").delete());
+
+  // Unauthenticated cannot read ad cards
+  await assertFails(unauthDb.collection("ad_cards").doc("ad_ramadan_1").get());
+
+  // Regular authenticated user can read enabled ad card & increment impression/click by 1
+  await assertSucceeds(userDb.collection("ad_cards").doc("ad_ramadan_1").get());
+  await assertSucceeds(
+    userDb.collection("ad_cards").where("enabled", "==", true).get()
+  );
+  await assertSucceeds(
+    userDb.collection("ad_cards").doc("ad_ramadan_1").update({
+      impressionsCount: 1,
+      updatedAt: serverTimestamp(),
+    })
+  );
+
+  // Regular user CANNOT tamper with ad card title or destinationUrl
+  await assertFails(
+    userDb.collection("ad_cards").doc("ad_ramadan_1").update({
+      titleAr: "Tampered",
+      updatedAt: serverTimestamp(),
+    })
+  );
+});
+
+test("admin_messages enforce direct-message privacy, admin-only creation, and user read-receipt updates", async () => {
+  const ownerDb = dbFor(
+    testEnv.authenticatedContext("owner-uid", { email: OWNER_EMAIL, email_verified: true })
+  );
+  const user1Db = dbFor(
+    testEnv.authenticatedContext("user-1", { email: "u1@example.com", email_verified: true })
+  );
+  const user2Db = dbFor(
+    testEnv.authenticatedContext("user-2", { email: "u2@example.com", email_verified: true })
+  );
+
+  // Admin sends broadcast message to ALL
+  await assertSucceeds(
+    ownerDb.collection("admin_messages").doc("msg_all_1").set({
+      targetType: "ALL",
+      targetGroup: "ALL",
+      targetUserUid: "",
+      targetUserEmail: "",
+      titleAr: "تحديث مصحف المدينة",
+      titleEn: "Madinah Mushaf Update",
+      bodyAr: "تمت إضافة صفحات مصحف المدينة الكاملة.",
+      bodyEn: "Full 604 Madinah Mushaf pages added.",
+      messageType: "FEATURE_UPDATE",
+      priority: "HIGH",
+      imageUrl: "",
+      scheduledAtMillis: 0,
+      active: true,
+      readByUids: [],
+      createdBy: "owner-uid",
+      createdByEmail: OWNER_EMAIL,
+      createdAt: serverTimestamp(),
+    })
+  );
+
+  // Admin sends DIRECT message to user-1 only
+  await assertSucceeds(
+    ownerDb.collection("admin_messages").doc("msg_direct_u1").set({
+      targetType: "USER",
+      targetGroup: "",
+      targetUserUid: "user-1",
+      targetUserEmail: "u1@example.com",
+      titleAr: "رسالة خاصة",
+      titleEn: "Private Notice",
+      bodyAr: "مرحباً بك في نور",
+      bodyEn: "Welcome to NOOR",
+      messageType: "DIRECT",
+      priority: "NORMAL",
+      imageUrl: "",
+      scheduledAtMillis: 0,
+      active: true,
+      readByUids: [],
+      createdBy: "owner-uid",
+      createdByEmail: OWNER_EMAIL,
+      createdAt: serverTimestamp(),
+    })
+  );
+
+  // user-1 can read both broadcast and own direct message
+  await assertSucceeds(user1Db.collection("admin_messages").doc("msg_all_1").get());
+  await assertSucceeds(user1Db.collection("admin_messages").doc("msg_direct_u1").get());
+  await assertSucceeds(
+    user1Db.collection("admin_messages").where("targetUserUid", "==", "user-1").get()
+  );
+
+  // user-2 can read broadcast, CANNOT read user-1's direct message
+  await assertSucceeds(user2Db.collection("admin_messages").doc("msg_all_1").get());
+  await assertFails(user2Db.collection("admin_messages").doc("msg_direct_u1").get());
+
+  // user-1 can mark own message read (only readByUids)
+  await assertSucceeds(
+    user1Db.collection("admin_messages").doc("msg_direct_u1").update({
+      readByUids: ["user-1"],
+    })
+  );
+
+  // user-1 CANNOT modify message body or create admin messages
+  await assertFails(
+    user1Db.collection("admin_messages").doc("msg_direct_u1").update({
+      bodyAr: "Tampered",
+    })
+  );
+  await assertFails(
+    user1Db.collection("admin_messages").doc("msg_fake").set({
+      targetType: "ALL",
+      titleAr: "Fake",
+      bodyAr: "Fake",
+      messageType: "SYSTEM",
+      priority: "URGENT",
+      active: true,
+      readByUids: [],
+      createdBy: "user-1",
+      createdAt: serverTimestamp(),
+    })
+  );
+});
+

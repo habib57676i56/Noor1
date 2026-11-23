@@ -135,6 +135,7 @@ fun QuranReaderScreen(
     val bookmarks by viewModel.quranBookmarks.collectAsStateWithLifecycle()
     val audioState by viewModel.audioState.collectAsStateWithLifecycle()
     val liveRecitation by viewModel.liveRecitationState.collectAsStateWithLifecycle()
+    val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
 
     val surahMeta = remember(surahNumber) { SurahCatalog.findSurah(surahNumber) }
     val listState = rememberLazyListState()
@@ -142,6 +143,8 @@ fun QuranReaderScreen(
     var showTafsir by remember { mutableStateOf(true) }
     var showEnglish by remember { mutableStateOf(true) }
     var repeatPerAyah by remember { mutableIntStateOf(1) }
+    var useMushafPageImages by rememberSaveable { mutableStateOf(true) }
+    val effectiveMushafImageMode = useMushafPageImages && globalConfig.featureMushafImagesEnabled
     val revealedInMemorize = remember { mutableStateMapOf<Int, Boolean>() }
 
     // Intelligent Auto-Scrolling state (persists seamlessly across Surah transitions!)
@@ -626,8 +629,28 @@ fun QuranReaderScreen(
                         }
                     }
 
-                    // Existing Study / Memorize secondary toggles preserved untouched
-                    if (prefs.quranDisplayMode == QuranDisplayMode.STUDY || prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
+                    // Mushaf Page Image vs Interactive Text sub-toggle + existing Study/Memorize toggles
+                    if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && globalConfig.featureMushafImagesEnabled) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            LiquidGlassChip(
+                                label = L10n.pick(lang, "مصحف المدينة المصوّر (٦٠٤ ص)", "Madinah Mushaf Images (604p)"),
+                                selected = effectiveMushafImageMode,
+                                onClick = { useMushafPageImages = true },
+                                modifier = Modifier.weight(1f).testTag("mushaf_image_mode_chip")
+                            )
+                            LiquidGlassChip(
+                                label = L10n.pick(lang, "نص عثماني تفاعلي", "Uthmani Text"),
+                                selected = !effectiveMushafImageMode,
+                                onClick = { useMushafPageImages = false },
+                                modifier = Modifier.weight(1f).testTag("mushaf_text_mode_chip")
+                            )
+                        }
+                    } else if (prefs.quranDisplayMode == QuranDisplayMode.STUDY || prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -663,8 +686,8 @@ fun QuranReaderScreen(
                 }
             }
 
-            // Bismillah Header (except At-Tawbah 9 and Al-Fatiha 1 which already contains it as Ayah 1)
-            if (surahNumber != 1 && surahNumber != 9) {
+            // Bismillah Header (except At-Tawbah 9, Al-Fatiha 1, and Printed Madinah Mushaf Image Mode which already prints Bismillah)
+            if (surahNumber != 1 && surahNumber != 9 && !(prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode)) {
                 item(key = "bismillah_header") {
                     Text(
                         text = "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ",
@@ -716,7 +739,50 @@ fun QuranReaderScreen(
                 }
 
                 is SurahReaderState.Ready -> {
-                    if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF) {
+                    if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode) {
+                        item(key = "madinah_mushaf_image_viewer") {
+                            val activeSyncedVerseObj = activeSyncedAyah?.let { ay ->
+                                state.verses.firstOrNull { it.numberInSurah == ay }
+                            }
+                            val syncedPage = activeSyncedVerseObj?.pageNumber
+                                ?: liveRecitation.trackedPage
+                            val initialPageForSurah = state.verses
+                                .firstOrNull { it.numberInSurah == lastVisibleAyah }
+                                ?.pageNumber
+                                ?: surahMeta.startPage
+                            val isDarkReader = prefs.quranReadingTheme == QuranReadingTheme.NIGHT ||
+                                (prefs.quranReadingTheme == QuranReadingTheme.AUTO && noorColors.isDark)
+
+                            MadinahMushafReaderView(
+                                imageManager = viewModel.mushafPageImageManager,
+                                initialPage = initialPageForSurah,
+                                activeSyncedPage = syncedPage,
+                                activeSyncedVerse = activeSyncedVerseObj,
+                                isAudioPlaying = audioState.isPlaying,
+                                isNightTheme = isDarkReader,
+                                onPageChanged = { pageNum, primarySurah ->
+                                    val firstAyahOnPage = state.verses
+                                        .firstOrNull { it.pageNumber == pageNum }
+                                        ?.numberInSurah ?: 1
+                                    lastVisibleAyah = firstAyahOnPage
+                                    viewModel.saveLastRead(primarySurah, firstAyahOnPage)
+                                },
+                                onToggleAudio = {
+                                    if (audioState.hasActiveSession) {
+                                        viewModel.toggleAudioPauseResume()
+                                    } else if (state.verses.isNotEmpty()) {
+                                        viewModel.playSurahVerseByVerse(
+                                            surahNumber = surahNumber,
+                                            verses = state.verses,
+                                            reciter = prefs.quranReciter,
+                                            startAyah = lastVisibleAyah.coerceAtLeast(1)
+                                        )
+                                    }
+                                },
+                                onSwitchToTextMushaf = { useMushafPageImages = false }
+                            )
+                        }
+                    } else if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF) {
                         // Continuous Mushaf Page Flow with LIVE inline gold Ayah highlighting (Sheikh audio + Live Mic!)
                         val groupedByPage = state.verses.groupBy { it.pageNumber }
                         val mushafPageBg = when (prefs.quranReadingTheme) {

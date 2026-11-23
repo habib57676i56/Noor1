@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AdminPanelSettings
+import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Group
 import androidx.compose.material.icons.rounded.LibraryBooks
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.cloud.AdminRole
+import com.example.data.cloud.UserAccountDoc
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.viewmodel.AdminViewModel
@@ -99,6 +101,8 @@ fun AdminControlCenterScreen(
     val isUnlocked by adminViewModel.isPrivilegedUnlocked.collectAsStateWithLifecycle()
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var adsMessagingSubTab by rememberSaveable { mutableIntStateOf(0) }
+    var messageRecipient by remember { mutableStateOf<UserAccountDoc?>(null) }
     var showMfaDialog by remember { mutableStateOf(false) }
     var pendingMfaAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
@@ -233,6 +237,19 @@ fun AdminControlCenterScreen(
                                     color = AdminPalette.TextMuted
                                 )
                             }
+                            IconButton(
+                                onClick = {
+                                    adsMessagingSubTab = 0
+                                    selectedTab = 5
+                                },
+                                modifier = Modifier.testTag("admin_open_ads_messaging_button")
+                            ) {
+                                Icon(
+                                    Icons.Rounded.Campaign,
+                                    contentDescription = "Ads & Messaging",
+                                    tint = if (selectedTab == 5) AdminPalette.AccentAmber else AdminPalette.AccentCyan
+                                )
+                            }
                             AdminStatusBadge(
                                 label = L10n.pick(lang, resolvedRole.labelAr, resolvedRole.labelEn),
                                 color = if (resolvedRole == AdminRole.SUPER_ADMIN) AdminPalette.AccentAmber else AdminPalette.AccentCyan
@@ -271,10 +288,25 @@ fun AdminControlCenterScreen(
                             .padding(innerPadding)
                     ) {
                         when (selectedTab) {
-                            0 -> AdminDashboardTab(adminViewModel = adminViewModel)
+                            0 -> AdminDashboardTab(
+                                adminViewModel = adminViewModel,
+                                onOpenAdsManager = {
+                                    adsMessagingSubTab = 0
+                                    selectedTab = 5
+                                },
+                                onOpenMessaging = {
+                                    adsMessagingSubTab = 1
+                                    selectedTab = 5
+                                }
+                            )
                             1 -> AdminUsersTab(
                                 adminViewModel = adminViewModel,
-                                onRequireMfa = ::requireMfa
+                                onRequireMfa = ::requireMfa,
+                                onMessageUser = { targetUser ->
+                                    messageRecipient = targetUser
+                                    adsMessagingSubTab = 1
+                                    selectedTab = 5
+                                }
                             )
                             2 -> AdminCmsTab(
                                 adminViewModel = adminViewModel,
@@ -282,7 +314,18 @@ fun AdminControlCenterScreen(
                             )
                             3 -> AdminSettingsAndSupportTab(
                                 adminViewModel = adminViewModel,
-                                onRequireMfa = ::requireMfa
+                                onRequireMfa = ::requireMfa,
+                                onOpenAdsAndMessaging = { sub ->
+                                    adsMessagingSubTab = sub
+                                    selectedTab = 5
+                                }
+                            )
+                            5 -> AdminAdsAndMessagingTab(
+                                adminViewModel = adminViewModel,
+                                onRequireMfa = ::requireMfa,
+                                initialSubTab = adsMessagingSubTab,
+                                preselectedRecipient = messageRecipient,
+                                onConsumedPreselectedRecipient = { messageRecipient = null }
                             )
                             else -> AdminSecuritySystemTab(
                                 adminViewModel = adminViewModel,

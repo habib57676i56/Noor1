@@ -570,6 +570,7 @@ fun NoorAppShell(
                             }
                             // NOOR Complete Islamic Ecosystem Destinations
                             composable(NoorRoutes.ECOSYSTEM_HUB) {
+                                val activeAdCards by viewModel.activeAdCards.collectAsStateWithLifecycle()
                                 EcosystemHubScreen(
                                     viewModel = ecosystemViewModel,
                                     onBack = { navController.popBackStack() },
@@ -586,7 +587,10 @@ fun NoorAppShell(
                                     onOpenTafseer = { navController.navigate(NoorRoutes.TAFSEER_EXPLORER) },
                                     onOpenDuaa = { navController.navigate(NoorRoutes.DUAA) },
                                     onOpenRadio = { navController.navigate(NoorRoutes.RADIO) },
-                                    onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) }
+                                    onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) },
+                                    activeAdCards = activeAdCards,
+                                    onAdImpression = { viewModel.recordAdImpression(it) },
+                                    onAdClick = { viewModel.recordAdClick(it) }
                                 )
                             }
                             composable(NoorRoutes.HALAQAT) {
@@ -596,9 +600,11 @@ fun NoorAppShell(
                                 )
                             }
                             composable(NoorRoutes.HIFZ_AI) {
+                                val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
                                 HifzAiScreen(
                                     viewModel = ecosystemViewModel,
-                                    onBack = { navController.popBackStack() }
+                                    onBack = { navController.popBackStack() },
+                                    globalConfig = globalConfig
                                 )
                             }
                             composable(NoorRoutes.LOCAL_AI) {
@@ -640,12 +646,14 @@ fun NoorAppShell(
                                 )
                             }
                             composable(NoorRoutes.KHATM) {
+                                val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
                                 val currentPage = com.example.data.local.catalog.SurahCatalog.findSurah(prefs.lastReadSurah).startPage
                                 KhatmAndWorshipScreen(
                                     viewModel = ecosystemViewModel,
                                     currentReaderPage = currentPage,
                                     onBack = { navController.popBackStack() },
-                                    onOpenQuran = { navigateToTab(NoorRoutes.QURAN) }
+                                    onOpenQuran = { navigateToTab(NoorRoutes.QURAN) },
+                                    globalConfig = globalConfig
                                 )
                             }
                             composable(NoorRoutes.QUIZ) {

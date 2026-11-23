@@ -183,7 +183,15 @@ class NoorCloudRepository(private val appContext: Context) {
                 "supportWhatsApp" to config.supportWhatsApp.trim().ifBlank { NoorPlatformConstants.SUPPORT_WHATSAPP },
                 "supportTelegram" to config.supportTelegram.trim().ifBlank { NoorPlatformConstants.SUPPORT_TELEGRAM },
                 "featureQuranEnabled" to config.featureQuranEnabled,
+                "featureMushafImagesEnabled" to config.featureMushafImagesEnabled,
                 "featureAudioEnabled" to config.featureAudioEnabled,
+                "featureMemorizationEnabled" to config.featureMemorizationEnabled,
+                "featureListeningAssessmentEnabled" to config.featureListeningAssessmentEnabled,
+                "featureKhatmahEnabled" to config.featureKhatmahEnabled,
+                "featureFastingEnabled" to config.featureFastingEnabled,
+                "featureDailyWirdEnabled" to config.featureDailyWirdEnabled,
+                "featureNotificationsEnabled" to config.featureNotificationsEnabled,
+                "featureAdsEnabled" to config.featureAdsEnabled,
                 "featureMosquesEnabled" to config.featureMosquesEnabled,
                 "featureQiblaEnabled" to config.featureQiblaEnabled,
                 "featureCalendarEnabled" to config.featureCalendarEnabled,
@@ -732,5 +740,242 @@ class NoorCloudRepository(private val appContext: Context) {
                 trySend(list)
             }
         awaitClose { reg.remove() }
+    }
+
+    // -------------------------------------------------------------------------
+    // Administrative Advertisement Cards (Super Admin Exclusive — Zero 3P SDKs)
+    // -------------------------------------------------------------------------
+
+    fun observeEnabledAdCards(): Flow<List<AdCardDoc>> = callbackFlow {
+        val reg = db.collection("ad_cards")
+            .whereEqualTo("enabled", true)
+            .limit(30)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    FirestoreErrorHandler.handleFirestoreError(error, OperationType.LIST, "ad_cards")
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents
+                    ?.mapNotNull { it.toObject(AdCardDoc::class.java) }
+                    ?.sortedWith(compareBy<AdCardDoc> { it.displayOrder }.thenByDescending { it.updatedAt?.seconds ?: 0L })
+                    .orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun observeAllAdCardsAdmin(): Flow<List<AdCardDoc>> = callbackFlow {
+        val reg = db.collection("ad_cards")
+            .limit(60)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    FirestoreErrorHandler.handleFirestoreError(error, OperationType.LIST, "ad_cards")
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents
+                    ?.mapNotNull { it.toObject(AdCardDoc::class.java) }
+                    ?.sortedWith(compareBy<AdCardDoc> { it.displayOrder }.thenByDescending { it.updatedAt?.seconds ?: 0L })
+                    .orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun upsertAdCard(card: AdCardDoc): Result<String> {
+        val uid = currentUserOrNull()?.uid ?: return Result.failure(IllegalStateException("Not authenticated"))
+        if (!AdPlacement.isAllowedPlacement(card.placement)) {
+            return Result.failure(IllegalArgumentException("Placement is not allowed for NOOR ad cards"))
+        }
+        if (!NoorSecurityValidators.isSafeOptionalHttpsUrl(card.destinationUrl)) {
+            return Result.failure(IllegalArgumentException("Destination link must use https://"))
+        }
+        val docId = card.id.ifBlank { "ad_${UUID.randomUUID().toString().take(10)}" }
+        val safeImageUrl = card.imageUrl.trim().take(500).let {
+            if (it.startsWith("https://", ignoreCase = true)) it else ""
+        }
+        return try {
+            val payload = mapOf(
+                "titleAr" to card.titleAr.trim().take(180),
+                "titleEn" to card.titleEn.trim().take(180),
+                "descriptionAr" to card.descriptionAr.trim().take(600),
+                "descriptionEn" to card.descriptionEn.trim().take(600),
+                "imageUrl" to safeImageUrl,
+                "destinationUrl" to card.destinationUrl.trim().take(500),
+                "placement" to AdPlacement.fromKey(card.placement).key,
+                "enabled" to card.enabled,
+                "startAtMillis" to card.startAtMillis.coerceAtLeast(0L),
+                "endAtMillis" to card.endAtMillis.coerceAtLeast(0L),
+                "displayOrder" to card.displayOrder.coerceIn(1, 999),
+                "impressionsCount" to card.impressionsCount.coerceAtLeast(0L),
+                "clicksCount" to card.clicksCount.coerceAtLeast(0L),
+                "createdBy" to (card.createdBy.ifBlank { uid }),
+                "createdAt" to (card.createdAt ?: FieldValue.serverTimestamp()),
+                "updatedAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("ad_cards").document(docId).set(payload).await()
+            recordAuditLog("AD_CARD_UPSERT", "ADS", "INFO", "Saved ad card $docId (${card.placement}, enabled=${card.enabled})")
+            Result.success(docId)
+        } catch (e: Exception) {
+            FirestoreErrorHandler.handleFirestoreError(e, OperationType.WRITE, "ad_cards/$docId")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAdCard(adId: String): Result<Unit> = try {
+        db.collection("ad_cards").document(adId).delete().await()
+        recordAuditLog("AD_CARD_DELETE", "ADS", "WARNING", "Deleted ad card $adId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        FirestoreErrorHandler.handleFirestoreError(e, OperationType.DELETE, "ad_cards/$adId")
+        Result.failure(e)
+    }
+
+    suspend fun recordAdImpression(adId: String) {
+        if (currentUserOrNull() == null || adId.isBlank()) return
+        try {
+            db.collection("ad_cards").document(adId).update(
+                mapOf(
+                    "impressionsCount" to FieldValue.increment(1L),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } catch (_: Exception) {
+            // Non-blocking basic counter
+        }
+    }
+
+    suspend fun recordAdClick(adId: String) {
+        if (currentUserOrNull() == null || adId.isBlank()) return
+        try {
+            db.collection("ad_cards").document(adId).update(
+                mapOf(
+                    "clicksCount" to FieldValue.increment(1L),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+        } catch (_: Exception) {
+            // Non-blocking basic counter
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Admin-to-User Messaging & Notifications (Broadcast, Group & Direct)
+    // -------------------------------------------------------------------------
+
+    fun observeBroadcastAndGroupMessages(): Flow<List<AdminMessageDoc>> = callbackFlow {
+        val reg = db.collection("admin_messages")
+            .whereIn("targetType", listOf("ALL", "GROUP"))
+            .limit(60)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    FirestoreErrorHandler.handleFirestoreError(error, OperationType.LIST, "admin_messages")
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents
+                    ?.mapNotNull { it.toObject(AdminMessageDoc::class.java) }
+                    ?.filter { it.active }
+                    ?.sortedByDescending { it.createdAt?.seconds ?: 0L }
+                    .orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun observeDirectMessagesForUser(uid: String): Flow<List<AdminMessageDoc>> = callbackFlow {
+        val reg = db.collection("admin_messages")
+            .whereEqualTo("targetUserUid", uid)
+            .limit(60)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    FirestoreErrorHandler.handleFirestoreError(error, OperationType.LIST, "admin_messages")
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents
+                    ?.mapNotNull { it.toObject(AdminMessageDoc::class.java) }
+                    ?.filter { it.active }
+                    ?.sortedByDescending { it.createdAt?.seconds ?: 0L }
+                    .orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    fun observeAllAdminMessagesAdmin(): Flow<List<AdminMessageDoc>> = callbackFlow {
+        val reg = db.collection("admin_messages")
+            .limit(100)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    FirestoreErrorHandler.handleFirestoreError(error, OperationType.LIST, "admin_messages")
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents
+                    ?.mapNotNull { it.toObject(AdminMessageDoc::class.java) }
+                    ?.sortedByDescending { it.createdAt?.seconds ?: 0L }
+                    .orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun sendAdminMessage(message: AdminMessageDoc): Result<String> {
+        val user = currentUserOrNull() ?: return Result.failure(IllegalStateException("Not authenticated"))
+        val docId = message.id.ifBlank { "msg_${UUID.randomUUID().toString().take(10)}" }
+        val safeImageUrl = message.imageUrl.trim().take(500).let {
+            if (it.startsWith("https://", ignoreCase = true)) it else ""
+        }
+        return try {
+            val payload = mapOf(
+                "targetType" to message.targetType.uppercase(Locale.US),
+                "targetGroup" to message.targetGroup.uppercase(Locale.US),
+                "targetUserUid" to message.targetUserUid.trim().take(128),
+                "targetUserEmail" to message.targetUserEmail.trim().take(254),
+                "titleAr" to message.titleAr.trim().take(200),
+                "titleEn" to message.titleEn.trim().take(200),
+                "bodyAr" to message.bodyAr.trim().take(2500),
+                "bodyEn" to message.bodyEn.trim().take(2500),
+                "messageType" to AdminMessageType.fromKey(message.messageType).key,
+                "priority" to AdminMessagePriority.fromKey(message.priority).key,
+                "imageUrl" to safeImageUrl,
+                "scheduledAtMillis" to message.scheduledAtMillis.coerceAtLeast(0L),
+                "active" to message.active,
+                "readByUids" to message.readByUids.take(200),
+                "createdBy" to user.uid,
+                "createdByEmail" to (user.email ?: ""),
+                "createdAt" to FieldValue.serverTimestamp()
+            )
+            db.collection("admin_messages").document(docId).set(payload).await()
+            recordAuditLog(
+                "SEND_ADMIN_MESSAGE",
+                "MESSAGING",
+                "INFO",
+                "Sent ${message.messageType} (${message.priority}) to ${message.targetType}:${message.targetGroup.ifBlank { message.targetUserUid }}"
+            )
+            Result.success(docId)
+        } catch (e: Exception) {
+            FirestoreErrorHandler.handleFirestoreError(e, OperationType.WRITE, "admin_messages/$docId")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun markAdminMessageReadCloud(messageId: String): Result<Unit> {
+        val uid = currentUserOrNull()?.uid ?: return Result.failure(IllegalStateException("Not authenticated"))
+        return try {
+            db.collection("admin_messages").document(messageId).update(
+                mapOf("readByUids" to FieldValue.arrayUnion(uid))
+            ).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            FirestoreErrorHandler.handleFirestoreError(e, OperationType.UPDATE, "admin_messages/$messageId")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteAdminMessage(messageId: String): Result<Unit> = try {
+        db.collection("admin_messages").document(messageId).delete().await()
+        recordAuditLog("DELETE_ADMIN_MESSAGE", "MESSAGING", "WARNING", "Deleted admin message $messageId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        FirestoreErrorHandler.handleFirestoreError(e, OperationType.DELETE, "admin_messages/$messageId")
+        Result.failure(e)
     }
 }

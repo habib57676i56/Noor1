@@ -7,6 +7,7 @@ import com.example.audio.QuranAudioService
 import com.example.data.cloud.NoorCloudRepository
 import com.example.data.local.db.NoorDatabase
 import com.example.data.local.prefs.UserPreferencesRepository
+import com.example.data.quran.MushafPageImageManager
 import com.example.data.remote.OverpassApiService
 import com.example.data.remote.QuranApiService
 import com.example.data.repository.EcosystemRepository
@@ -34,6 +35,9 @@ class NoorApplication : Application() {
         private set
 
     lateinit var ecosystemRepository: EcosystemRepository
+        private set
+
+    lateinit var mushafPageImageManager: MushafPageImageManager
         private set
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -86,6 +90,7 @@ class NoorApplication : Application() {
             noorDao = db.noorDao(),
             appContext = applicationContext
         )
+        mushafPageImageManager = MushafPageImageManager(applicationContext)
 
         appScope.launch {
             runCatching { ecosystemRepository.ensureSeeded() }

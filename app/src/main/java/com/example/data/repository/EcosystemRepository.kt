@@ -2,8 +2,10 @@ package com.example.data.repository
 
 import android.content.Context
 import com.example.data.local.catalog.EcosystemContentCatalog
+import com.example.data.local.db.AdminAdCardEntity
 import com.example.data.local.db.AdminAuditLogLocalEntity
 import com.example.data.local.db.AdminConfigEntryEntity
+import com.example.data.local.db.AdminMessageEntity
 import com.example.data.local.db.BackupSnapshotEntity
 import com.example.data.local.db.CustomQuizQuestionEntity
 import com.example.data.local.db.EcosystemDao
@@ -97,6 +99,11 @@ class EcosystemRepository(
 
     val libraryBooks: Flow<List<LibraryBookEntity>> = dao.observeLibraryBooks()
     val libraryNotes: Flow<List<LibraryNoteEntity>> = dao.observeAllLibraryNotes()
+
+    val adminAdCards: Flow<List<AdminAdCardEntity>> = dao.observeAllAdCards()
+    val enabledAdCards: Flow<List<AdminAdCardEntity>> = dao.observeEnabledAdCards()
+    val adminMessages: Flow<List<AdminMessageEntity>> = dao.observeAllAdminMessages()
+    val unreadAdminMessageCount: Flow<Int> = dao.observeUnreadAdminMessageCount()
 
     val tajweedProgress: Flow<List<TajweedProgressEntity>> = dao.observeTajweedProgress()
     val kidsProgress: Flow<List<KidsProgressEntity>> = dao.observeKidsProgress()
@@ -445,21 +452,61 @@ class EcosystemRepository(
     // ======================== FASTING & KHATM ========================
 
     suspend fun saveFastingLog(log: FastingLogEntity) = withContext(Dispatchers.IO) {
-        dao.upsertFastingLog(log.copy(updatedAtMillis = System.currentTimeMillis()))
+        val cleanDate = log.dateKey.trim().ifBlank { todayKey() }
+        val cleanType = log.fastType.trim().uppercase().ifBlank { "SUNNAH" }
+        dao.upsertFastingLog(
+            log.copy(
+                dateKey = cleanDate,
+                fastType = cleanType,
+                completed = true,
+                notes = log.notes.trim().take(200),
+                updatedAtMillis = System.currentTimeMillis()
+            )
+        )
     }
 
     suspend fun deleteFastingLog(dateKey: String) = withContext(Dispatchers.IO) {
-        dao.deleteFastingLog(dateKey)
+        dao.deleteFastingLog(dateKey.trim())
     }
 
     suspend fun saveKhatmPlan(plan: KhatmPlanEntity): Long = withContext(Dispatchers.IO) {
-        dao.upsertKhatmPlan(plan)
+        val total = plan.totalPages.coerceIn(1, 604)
+        val clampedPage = plan.currentPage.coerceIn(1, total)
+        val juz = ((clampedPage - 1) / 20 + 1).coerceIn(1, 30)
+        dao.upsertKhatmPlan(
+            plan.copy(
+                title = plan.title.trim().take(120),
+                totalPages = total,
+                currentPage = clampedPage,
+                currentJuz = juz,
+                dailyTargetPages = plan.dailyTargetPages.coerceIn(1, 100),
+                isCompleted = clampedPage >= total
+            )
+        )
     }
 
-    suspend fun advanceKhatmPlan(plan: KhatmPlanEntity, pagesAdded: Int) = withContext(Dispatchers.IO) {
-        val nextPage = (plan.currentPage + pagesAdded).coerceIn(1, plan.totalPages)
+    /**
+     * Advances a Khatm plan safely and records a Daily Wird log without creating duplicate
+     * records for the same plan on the same day unless `allowExtraSameDay = true`.
+     * Returns true if the plan was advanced, false if today's wird was already completed.
+     */
+    suspend fun advanceKhatmPlan(
+        plan: KhatmPlanEntity,
+        pagesAdded: Int,
+        allowExtraSameDay: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
+        val today = todayKey()
+        val safeDelta = pagesAdded.coerceIn(1, 200)
+        if (!allowExtraSameDay) {
+            val existingToday = dao.getKhatmLogsForPlanOnDateOnce(plan.id, today)
+            if (existingToday.isNotEmpty()) {
+                return@withContext false
+            }
+        }
+        val total = plan.totalPages.coerceIn(1, 604)
+        val nextPage = (plan.currentPage + safeDelta).coerceIn(1, total)
         val nextJuz = ((nextPage - 1) / 20 + 1).coerceIn(1, 30)
-        val done = nextPage >= plan.totalPages
+        val done = nextPage >= total
         dao.updateKhatmPlan(
             plan.copy(
                 currentPage = nextPage,
@@ -470,21 +517,23 @@ class EcosystemRepository(
         dao.insertKhatmLog(
             KhatmReadingLogEntity(
                 planId = plan.id,
-                dateKey = todayKey(),
-                pagesRead = pagesAdded,
+                dateKey = today,
+                pagesRead = safeDelta,
                 reachedPage = nextPage
             )
         )
+        true
     }
 
     suspend fun syncKhatmPlanToPage(plan: KhatmPlanEntity, page: Int) = withContext(Dispatchers.IO) {
-        val clamped = page.coerceIn(1, plan.totalPages)
+        val total = plan.totalPages.coerceIn(1, 604)
+        val clamped = page.coerceIn(1, total)
         val juz = ((clamped - 1) / 20 + 1).coerceIn(1, 30)
         dao.updateKhatmPlan(
             plan.copy(
                 currentPage = clamped,
                 currentJuz = juz,
-                isCompleted = clamped >= plan.totalPages
+                isCompleted = clamped >= total
             )
         )
     }
@@ -958,4 +1007,36 @@ class EcosystemRepository(
             )
             RestoreSummary(kbCount, bookCount, circleCount, studentCount, teacherCount, quizCount, noteCount, khatmCount)
         }
+
+    // ======================== v6 ADMIN AD CARDS (LOCAL / OFFLINE) ========================
+
+    suspend fun saveAdCardLocal(card: AdminAdCardEntity) = withContext(Dispatchers.IO) {
+        dao.upsertAdCard(card.copy(updatedAtMillis = System.currentTimeMillis()))
+    }
+
+    suspend fun deleteAdCardLocal(id: String) = withContext(Dispatchers.IO) {
+        dao.deleteAdCard(id)
+    }
+
+    suspend fun recordAdImpressionLocal(id: String) = withContext(Dispatchers.IO) {
+        dao.incrementAdImpression(id)
+    }
+
+    suspend fun recordAdClickLocal(id: String) = withContext(Dispatchers.IO) {
+        dao.incrementAdClick(id)
+    }
+
+    // ======================== v6 ADMIN MESSAGES (LOCAL / OFFLINE) ========================
+
+    suspend fun saveAdminMessageLocal(message: AdminMessageEntity) = withContext(Dispatchers.IO) {
+        dao.upsertAdminMessage(message)
+    }
+
+    suspend fun markAdminMessageReadLocal(id: String) = withContext(Dispatchers.IO) {
+        dao.markAdminMessageRead(id)
+    }
+
+    suspend fun deleteAdminMessageLocal(id: String) = withContext(Dispatchers.IO) {
+        dao.deleteAdminMessage(id)
+    }
 }

@@ -108,7 +108,15 @@
         "supportWhatsApp": { "type": "string" },
         "supportTelegram": { "type": "string" },
         "featureQuranEnabled": { "type": "boolean" },
+        "featureMushafImagesEnabled": { "type": "boolean" },
         "featureAudioEnabled": { "type": "boolean" },
+        "featureMemorizationEnabled": { "type": "boolean" },
+        "featureListeningAssessmentEnabled": { "type": "boolean" },
+        "featureKhatmahEnabled": { "type": "boolean" },
+        "featureFastingEnabled": { "type": "boolean" },
+        "featureDailyWirdEnabled": { "type": "boolean" },
+        "featureNotificationsEnabled": { "type": "boolean" },
+        "featureAdsEnabled": { "type": "boolean" },
         "featureMosquesEnabled": { "type": "boolean" },
         "featureQiblaEnabled": { "type": "boolean" },
         "featureCalendarEnabled": { "type": "boolean" },
@@ -177,7 +185,7 @@
         "actorUid": { "type": "string" },
         "actorEmail": { "type": "string" },
         "action": { "type": "string" },
-        "category": { "type": "string", "enum": ["AUTH", "USER_MGMT", "CMS", "SETTINGS", "SECURITY", "SYSTEM"] },
+        "category": { "type": "string", "enum": ["AUTH", "USER_MGMT", "CMS", "SETTINGS", "SECURITY", "SYSTEM", "ADS", "MESSAGING"] },
         "severity": { "type": "string", "enum": ["INFO", "WARNING", "CRITICAL"] },
         "details": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
@@ -203,6 +211,55 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["dateKey", "updatedAt"]
+    },
+    "AdCard": {
+      "title": "AdCard",
+      "description": "Super Admin controlled in-app promotional/announcement card (zero 3P ad SDKs, restricted to HOME, ECOSYSTEM_HUB, AUDIO_LIBRARY).",
+      "type": "object",
+      "properties": {
+        "titleAr": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "descriptionAr": { "type": "string" },
+        "descriptionEn": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "destinationUrl": { "type": "string" },
+        "placement": { "type": "string", "enum": ["HOME", "ECOSYSTEM_HUB", "AUDIO_LIBRARY"] },
+        "enabled": { "type": "boolean" },
+        "startAtMillis": { "type": "number" },
+        "endAtMillis": { "type": "number" },
+        "displayOrder": { "type": "number" },
+        "impressionsCount": { "type": "number" },
+        "clicksCount": { "type": "number" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["titleAr", "placement", "enabled", "displayOrder", "createdBy", "updatedAt"]
+    },
+    "AdminMessage": {
+      "title": "AdminMessage",
+      "description": "Admin-to-user broadcast, group, or direct notification message with priority and read tracking.",
+      "type": "object",
+      "properties": {
+        "targetType": { "type": "string", "enum": ["ALL", "GROUP", "USER"] },
+        "targetGroup": { "type": "string" },
+        "targetUserUid": { "type": "string" },
+        "targetUserEmail": { "type": "string" },
+        "titleAr": { "type": "string" },
+        "titleEn": { "type": "string" },
+        "bodyAr": { "type": "string" },
+        "bodyEn": { "type": "string" },
+        "messageType": { "type": "string", "enum": ["SYSTEM", "MAINTENANCE", "FEATURE_UPDATE", "REMINDER", "EDUCATIONAL", "DIRECT"] },
+        "priority": { "type": "string", "enum": ["LOW", "NORMAL", "HIGH", "URGENT"] },
+        "imageUrl": { "type": "string" },
+        "scheduledAtMillis": { "type": "number" },
+        "active": { "type": "boolean" },
+        "readByUids": { "type": "array", "items": { "type": "string" } },
+        "createdBy": { "type": "string" },
+        "createdByEmail": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["targetType", "titleAr", "bodyAr", "messageType", "priority", "active", "createdBy", "createdAt"]
     }
   },
   "firestore": {
@@ -245,6 +302,14 @@
     "/analytics_daily/{dateKey}": {
       "schema": "DailyAnalytics",
       "description": "Real daily ecosystem telemetry metrics"
+    },
+    "/ad_cards/{adId}": {
+      "schema": "AdCard",
+      "description": "Super Admin controlled administrative advertisement cards (non-intrusive placements only)"
+    },
+    "/admin_messages/{messageId}": {
+      "schema": "AdminMessage",
+      "description": "Admin-to-user broadcast, group, and direct messages with read tracking"
     }
   }
 }

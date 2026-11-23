@@ -75,6 +75,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.audio.AudioPlaybackState
+import com.example.data.cloud.AdPlacement
 import com.example.data.local.catalog.AudioLibraryCatalog
 import com.example.domain.model.AudioRepeatMode
 import com.example.domain.model.AudioTrackItem
@@ -82,6 +83,7 @@ import com.example.domain.model.QuranReciter
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.MosqueHorizonSilhouette
+import com.example.ui.components.NoorAdCardBannerSection
 import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.OrnamentalSurahBadge
 import com.example.ui.i18n.L10n
@@ -110,6 +112,8 @@ fun AudioLibraryScreen(
     val playlistItems by viewModel.audioPlaylistItems.collectAsStateWithLifecycle()
     val downloadedIds by viewModel.downloadedAudioIds.collectAsStateWithLifecycle()
     val downloadingIds by viewModel.downloadingTrackIds.collectAsStateWithLifecycle()
+    val activeAdCards by viewModel.activeAdCards.collectAsStateWithLifecycle()
+    val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
 
     // 0: Yasser Al-Dosari, 1: All Reciters, 2: Adhan & Takbeer, 3: Supplications, 4: Favorites, 5: Recent, 6: Playlists
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -223,6 +227,17 @@ fun AudioLibraryScreen(
                             onClick = { viewModel.setAudioQualityLabel(q) }
                         )
                     }
+                }
+            }
+
+            if (globalConfig.featureAdsEnabled && activeAdCards.any { it.placement == AdPlacement.AUDIO_LIBRARY.key }) {
+                item(key = "audio_library_ad_cards") {
+                    NoorAdCardBannerSection(
+                        adCards = activeAdCards,
+                        placement = AdPlacement.AUDIO_LIBRARY,
+                        onImpression = { viewModel.recordAdImpression(it) },
+                        onClick = { viewModel.recordAdClick(it) }
+                    )
                 }
             }
 

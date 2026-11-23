@@ -50,7 +50,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.cloud.AdCardDoc
+import com.example.data.cloud.AdPlacement
 import com.example.ui.components.LiquidGlassCard
+import com.example.ui.components.NoorAdCardBannerSection
 import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.NoorSectionHeader
 import com.example.ui.i18n.L10n
@@ -90,7 +93,10 @@ fun EcosystemHubScreen(
     onOpenTafseer: () -> Unit,
     onOpenDuaa: () -> Unit,
     onOpenRadio: () -> Unit,
-    onOpenOfflineAdmin: () -> Unit
+    onOpenOfflineAdmin: () -> Unit,
+    activeAdCards: List<AdCardDoc> = emptyList(),
+    onAdImpression: (String) -> Unit = {},
+    onAdClick: (String) -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -229,6 +235,17 @@ fun EcosystemHubScreen(
                             )
                         }
                     }
+                }
+            }
+
+            if (activeAdCards.any { it.placement == AdPlacement.ECOSYSTEM_HUB.key }) {
+                item(key = "ecosystem_hub_ad_cards") {
+                    NoorAdCardBannerSection(
+                        adCards = activeAdCards,
+                        placement = AdPlacement.ECOSYSTEM_HUB,
+                        onImpression = onAdImpression,
+                        onClick = onAdClick
+                    )
                 }
             }
 

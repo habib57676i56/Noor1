@@ -25,6 +25,8 @@ import com.example.audio.LiveRecitationState
 import com.example.audio.QuranAudioPlayer
 import com.example.audio.QuranAudioService
 import com.example.audio.QuranLiveRecitationListener
+import com.example.data.cloud.AdCardDoc
+import com.example.data.cloud.AdminMessageDoc
 import com.example.data.cloud.AdminRole
 import com.example.data.cloud.AppAnnouncementDoc
 import com.example.data.cloud.CmsContentCategory
@@ -34,6 +36,7 @@ import com.example.data.cloud.GlobalAppConfigDoc
 import com.example.data.cloud.NoorCloudRepository
 import com.example.data.cloud.SupportTicketDoc
 import com.example.data.cloud.UserAccountDoc
+import com.example.data.repository.EcosystemRepository
 import com.example.data.local.catalog.AdhkarCatalog
 import com.example.data.local.catalog.AudioLibraryCatalog
 import com.example.data.local.catalog.DailyAyahItem
@@ -51,6 +54,7 @@ import com.example.data.local.db.QuranBookmarkEntity
 import com.example.data.local.db.QuranVerseCacheEntity
 import com.example.data.local.db.TasbihSessionEntity
 import com.example.data.local.prefs.UserPreferences
+import com.example.data.quran.MushafPageImageManager
 import com.example.data.remote.MosqueSearchResult
 import com.example.data.repository.NoorRepository
 import com.example.data.repository.SurahLoadResult
@@ -143,11 +147,18 @@ data class StatsSummary(
 class NoorViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repo: NoorRepository = (application as NoorApplication).repository
+    private val ecosystemRepo: EcosystemRepository = (application as NoorApplication).ecosystemRepository
     private val cloudRepo: NoorCloudRepository = (application as NoorApplication).cloudRepository
     private val quranAudioPlayer: QuranAudioPlayer = (application as NoorApplication).quranAudioPlayer
     private val adhanAudioPlayer: AdhanAudioPlayer = (application as NoorApplication).adhanAudioPlayer
+    val mushafPageImageManager: MushafPageImageManager = (application as NoorApplication).mushafPageImageManager
     private val liveRecitationListener = QuranLiveRecitationListener(application)
     private val dhikrTtsHelper = DhikrTtsHelper(application)
+    private val notifPrefs = application.getSharedPreferences("noor_notif_prefs", android.content.Context.MODE_PRIVATE)
+    private val _nonEssentialNotificationsEnabled = MutableStateFlow(
+        notifPrefs.getBoolean("non_essential_notifications", true)
+    )
+    val nonEssentialNotificationsEnabled: StateFlow<Boolean> = _nonEssentialNotificationsEnabled.asStateFlow()
 
     val liveRecitationState: StateFlow<LiveRecitationState> = liveRecitationListener.state
     val previewingAdhanVoiceId: StateFlow<String?> = adhanAudioPlayer.playingVoiceId
@@ -209,6 +220,109 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             else -> AdminRole.USER
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, AdminRole.USER)
+
+    private val cloudEnabledAds = currentUser
+        .flatMapLatest { user -> if (user != null) cloudRepo.observeEnabledAdCards() else flowOf(emptyList()) }
+
+    val activeAdCards: StateFlow<List<AdCardDoc>> = combine(
+        cloudEnabledAds,
+        ecosystemRepo.enabledAdCards,
+        globalAppConfig
+    ) { cloudAds, localAds, config ->
+        if (!config.featureAdsEnabled) return@combine emptyList()
+        val now = System.currentTimeMillis()
+        val merged = LinkedHashMap<String, AdCardDoc>()
+        localAds.forEach { e ->
+            merged[e.id] = AdCardDoc(
+                id = e.id,
+                titleAr = e.titleAr,
+                titleEn = e.titleEn,
+                descriptionAr = e.descriptionAr,
+                descriptionEn = e.descriptionEn,
+                imageUrl = e.imageUriOrUrl,
+                destinationUrl = e.destinationUrl,
+                placement = e.placement,
+                enabled = e.enabled,
+                startAtMillis = e.startAtMillis,
+                endAtMillis = e.endAtMillis,
+                displayOrder = e.displayOrder,
+                impressionsCount = e.impressionsCount,
+                clicksCount = e.clicksCount,
+                createdBy = e.createdBy
+            )
+        }
+        cloudAds.forEach { c ->
+            val existing = merged[c.id]
+            merged[c.id] = if (existing != null && c.imageUrl.isBlank() && existing.imageUrl.isNotBlank()) {
+                c.copy(imageUrl = existing.imageUrl)
+            } else {
+                c
+            }
+        }
+        merged.values
+            .filter { it.isCurrentlyActive(now) }
+            .sortedWith(compareBy<AdCardDoc> { it.displayOrder }.thenBy { it.titleAr })
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val cloudBroadcastMessages = currentUser
+        .flatMapLatest { user -> if (user != null) cloudRepo.observeBroadcastAndGroupMessages() else flowOf(emptyList()) }
+
+    private val cloudDirectMessages = currentUser
+        .flatMapLatest { user -> if (user != null) cloudRepo.observeDirectMessagesForUser(user.uid) else flowOf(emptyList()) }
+
+    val userAdminMessages: StateFlow<List<AdminMessageDoc>> = combine(
+        cloudBroadcastMessages,
+        cloudDirectMessages,
+        ecosystemRepo.adminMessages,
+        currentUser,
+        _nonEssentialNotificationsEnabled
+    ) { broadcasts, directs, localMsgs, user, allowNonEssential ->
+        val now = System.currentTimeMillis()
+        val merged = LinkedHashMap<String, AdminMessageDoc>()
+        localMsgs.forEach { e ->
+            val targetMatches = e.targetType == "ALL" ||
+                e.targetType == "GROUP" ||
+                (user != null && (e.targetUserUid == user.uid || e.targetUserEmail.equals(user.email, ignoreCase = true))) ||
+                user == null
+            if (targetMatches && e.delivered) {
+                merged[e.id] = AdminMessageDoc(
+                    id = e.id,
+                    targetType = e.targetType,
+                    targetGroup = e.targetGroup,
+                    targetUserUid = e.targetUserUid,
+                    targetUserEmail = e.targetUserEmail,
+                    titleAr = e.titleAr,
+                    titleEn = e.titleEn,
+                    bodyAr = e.bodyAr,
+                    bodyEn = e.bodyEn,
+                    messageType = e.messageType,
+                    priority = e.priority,
+                    imageUrl = e.imageUriOrUrl,
+                    scheduledAtMillis = e.scheduledAtMillis,
+                    active = e.delivered,
+                    readByUids = if (e.readByCurrentUser) listOf(user?.uid ?: "local_user") else emptyList(),
+                    createdBy = e.sentByUid,
+                    createdByEmail = e.sentByEmail
+                )
+            }
+        }
+        (broadcasts + directs).forEach { c ->
+            val existing = merged[c.id]
+            val mergedReads = (c.readByUids + (existing?.readByUids ?: emptyList())).distinct()
+            merged[c.id] = c.copy(readByUids = mergedReads)
+        }
+        merged.values.filter { msg ->
+            val due = msg.scheduledAtMillis <= 0L || msg.scheduledAtMillis <= now
+            val essential = msg.priority in listOf("HIGH", "URGENT") ||
+                msg.messageType in listOf("SYSTEM", "MAINTENANCE", "DIRECT")
+            due && (allowNonEssential || essential)
+        }.toList()
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val unreadAdminMessagesCount: StateFlow<Int> = combine(userAdminMessages, currentUser) { msgs, user ->
+        val myId = user?.uid ?: "local_user"
+        msgs.count { !it.readByUids.contains(myId) && !it.readByUids.contains("local_user") }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
     val morningAdhkarItems: StateFlow<List<DhikrItem>> = publishedCmsContent
         .map { cms ->
@@ -1363,6 +1477,38 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearCrossSurahJumpTarget() {
         liveRecitationListener.clearCrossSurahJumpTarget()
+    }
+
+    fun setNonEssentialNotificationsEnabled(enabled: Boolean) {
+        _nonEssentialNotificationsEnabled.value = enabled
+        notifPrefs.edit().putBoolean("non_essential_notifications", enabled).apply()
+    }
+
+    fun recordAdImpression(adId: String) = viewModelScope.launch {
+        if (adId.isBlank()) return@launch
+        try {
+            ecosystemRepo.recordAdImpressionLocal(adId)
+            cloudRepo.recordAdImpression(adId)
+        } catch (_: Exception) {
+        }
+    }
+
+    fun recordAdClick(adId: String) = viewModelScope.launch {
+        if (adId.isBlank()) return@launch
+        try {
+            ecosystemRepo.recordAdClickLocal(adId)
+            cloudRepo.recordAdClick(adId)
+        } catch (_: Exception) {
+        }
+    }
+
+    fun markAdminMessageRead(messageId: String) = viewModelScope.launch {
+        if (messageId.isBlank()) return@launch
+        try {
+            ecosystemRepo.markAdminMessageReadLocal(messageId)
+            cloudRepo.markAdminMessageReadCloud(messageId)
+        } catch (_: Exception) {
+        }
     }
 
     override fun onCleared() {

@@ -26,11 +26,17 @@ import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Report
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SupportAgent
+import androidx.compose.material.icons.rounded.Campaign
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.VerifiedUser
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -58,7 +64,11 @@ import com.example.viewmodel.AdminViewModel
  * and interactive Compose Canvas visualizations.
  */
 @Composable
-fun AdminDashboardTab(adminViewModel: AdminViewModel) {
+fun AdminDashboardTab(
+    adminViewModel: AdminViewModel,
+    onOpenAdsManager: () -> Unit = {},
+    onOpenMessaging: () -> Unit = {}
+) {
     val lang = LocalAppLanguage.current
     val kpis by adminViewModel.dashboardKpis.collectAsStateWithLifecycle()
     val analytics by adminViewModel.dailyAnalytics.collectAsStateWithLifecycle()
@@ -147,6 +157,71 @@ fun AdminDashboardTab(adminViewModel: AdminViewModel) {
                     accent = if (kpis.openSupportTickets > 0 || kpis.pendingUserReports > 0) AdminPalette.AccentRose else AdminPalette.AccentEmerald,
                     modifier = Modifier.weight(1f)
                 )
+            }
+        }
+
+        // Row 4: Khatmah, Fasting & Hifz Memorization Ecosystem KPIs
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                AdminKpiTile(
+                    label = L10n.pick(lang, "الختمات والصيام", "Khatmah & Fasting"),
+                    value = "${kpis.khatmPlansCount} / ${kpis.fastingDaysCount}",
+                    sublabel = L10n.pick(lang, "ختمات مكتملة: ${kpis.completedKhatmCount}", "Completed Khatm: ${kpis.completedKhatmCount}"),
+                    icon = Icons.Rounded.NightsStay,
+                    accent = AdminPalette.AccentEmerald,
+                    modifier = Modifier.weight(1f)
+                )
+                AdminKpiTile(
+                    label = L10n.pick(lang, "التسميع والحفظ", "Hifz & Assessment"),
+                    value = "${kpis.hifzSessionsCount}",
+                    sublabel = L10n.pick(lang, "آيات بحاجة لمراجعة: ${kpis.weakVersesCount}", "Weak verses: ${kpis.weakVersesCount}"),
+                    icon = Icons.Rounded.RecordVoiceOver,
+                    accent = AdminPalette.AccentAmber,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // Row 5: Administrative Ads & Messaging KPIs + Quick Launchers
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                AdminKpiTile(
+                    label = L10n.pick(lang, "بطاقات الإعلانات النشطة", "Active Ad Cards"),
+                    value = "${kpis.activeAdsCount}",
+                    sublabel = L10n.pick(lang, "ظهور: ${kpis.totalAdImpressions} · نقرات: ${kpis.totalAdClicks}", "Views: ${kpis.totalAdImpressions} · Clicks: ${kpis.totalAdClicks}"),
+                    icon = Icons.Rounded.Campaign,
+                    accent = AdminPalette.AccentCyan,
+                    modifier = Modifier.weight(1f)
+                )
+                AdminKpiTile(
+                    label = L10n.pick(lang, "رسائل الإدارة والأخطاء", "Messages & Errors"),
+                    value = "${kpis.totalAdminMessagesSent} / ${kpis.systemErrorCount}",
+                    sublabel = L10n.pick(lang, "رسائل مرسلة · أخطاء مسجلة", "Sent messages · Logged errors"),
+                    icon = Icons.Rounded.Forum,
+                    accent = if (kpis.systemErrorCount > 0) AdminPalette.AccentRose else AdminPalette.AccentIndigo,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                Button(
+                    onClick = onOpenAdsManager,
+                    modifier = Modifier.weight(1f).testTag("dashboard_open_ads_btn")
+                ) {
+                    Icon(Icons.Rounded.Campaign, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(L10n.pick(lang, "بطاقات الإعلانات", "Ad Cards"), maxLines = 1)
+                }
+                OutlinedButton(
+                    onClick = onOpenMessaging,
+                    modifier = Modifier.weight(1f).testTag("dashboard_open_messaging_btn")
+                ) {
+                    Icon(Icons.Rounded.Forum, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(L10n.pick(lang, "إرسال رسالة", "Message Users"), maxLines = 1)
+                }
             }
         }
 

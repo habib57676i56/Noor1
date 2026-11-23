@@ -90,6 +90,7 @@ import com.example.ui.theme.LocalNoorColors
 import com.example.ui.theme.SemanticError
 import com.example.ui.theme.SemanticSuccess
 import com.example.ui.theme.SemanticWarning
+import com.example.data.cloud.GlobalAppConfigDoc
 import com.example.viewmodel.EcosystemViewModel
 
 private enum class HifzTestMode(val key: String, val labelAr: String, val labelEn: String) {
@@ -107,7 +108,8 @@ private enum class HifzTestMode(val key: String, val labelAr: String, val labelE
 @Composable
 fun HifzAiScreen(
     viewModel: EcosystemViewModel,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    globalConfig: GlobalAppConfigDoc = GlobalAppConfigDoc()
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -196,6 +198,40 @@ fun HifzAiScreen(
             subtitle = L10n.pick(lang, "تسجيل صوتي حقيقي · تعرف عربي · مقارنة كلمة بكلمة دون تخطئة عشوائية", "Real Audio Recording · Arabic STT · Word-Level Alignment"),
             onBack = onBack
         )
+
+        if (!globalConfig.featureMemorizationEnabled) {
+            LiquidGlassCard(
+                modifier = Modifier.padding(16.dp),
+                goldBorder = true
+            ) {
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "قسم الحفظ والمراجعة متوقف مؤقتاً من إعدادات المشرف الأعلى.",
+                        "Quran Memorization is temporarily paused by Super Admin settings."
+                    ),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            return
+        }
+
+        if (!globalConfig.featureListeningAssessmentEnabled) {
+            LiquidGlassCard(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                contentPadding = PaddingValues(12.dp)
+            ) {
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "تنبيه: التقييم الصوتي المباشر متوقف مؤقتاً من إعدادات الإدارة — يمكنك الاستمرار في الحفظ والمراجعة.",
+                        "Note: Live listening assessment is temporarily paused by Admin settings — memorization plans remain available."
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
 
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(tabs.size) { idx ->
@@ -591,7 +627,7 @@ fun HifzAiScreen(
                     report?.let { r -> item { RecitationAssessmentReportCard(report = r) } }
 
                     item { NoorSectionHeader(title = L10n.pick(lang, "الآيات الأكثر حاجة للمراجعة (${weakVerses.size})", "Weak Verses (${weakVerses.size})")) }
-                    items(weakVerses, key = { it.id }) { w ->
+                    items(weakVerses, key = { "weak_${it.id}" }) { w ->
                         val s = SurahCatalog.findSurah(w.surahNumber)
                         LiquidGlassCard {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -620,7 +656,7 @@ fun HifzAiScreen(
                             }
                         }
                     }
-                    items(recordings, key = { it.id }) { rec ->
+                    items(recordings, key = { "rec_${it.id}" }) { rec ->
                         val s = SurahCatalog.findSurah(rec.surahNumber)
                         val isPlaying = playbackState.isPlaying && playbackState.playingFilePath == rec.filePath
                         LiquidGlassCard(goldBorder = rec.teacherReviewStatus == "APPROVED") {
@@ -666,7 +702,7 @@ fun HifzAiScreen(
                             Text(L10n.pick(lang, "إنشاء جدول حفظ ومراجعة شخصي", "Create Memorization Schedule"))
                         }
                     }
-                    items(plans, key = { it.id }) { p ->
+                    items(plans, key = { "plan_${it.id}" }) { p ->
                         val surah = SurahCatalog.findSurah(p.targetSurahNumber)
                         val progress = ((p.currentAyah - p.fromAyah + 1).toFloat() / (p.toAyah - p.fromAyah + 1).coerceAtLeast(1)).coerceIn(0f, 1f)
                         LiquidGlassCard {
@@ -696,7 +732,7 @@ fun HifzAiScreen(
                         val avgAcc = if (logs.isEmpty()) 0 else logs.map { it.accuracyPercent }.average().toInt()
                         NoorSectionHeader(title = "سجل جلسات التسميع (المتوسط $avgAcc%)")
                     }
-                    items(logs.take(15), key = { it.id }) { log ->
+                    items(logs.take(15), key = { "log_${it.id}" }) { log ->
                         val s = SurahCatalog.findSurah(log.surahNumber)
                         LiquidGlassCard {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

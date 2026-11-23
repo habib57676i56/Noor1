@@ -54,9 +54,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         // NOOR v5 entities: Recitation recordings, Imported AI docs, Admin settings
         StudentRecitationRecordingEntity::class,
         ImportedAiDocumentEntity::class,
-        AdminConfigEntryEntity::class
+        AdminConfigEntryEntity::class,
+        // NOOR v6 entities: Administrative Ad Cards & Admin-to-User Messaging
+        AdminAdCardEntity::class,
+        AdminMessageEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class NoorDatabase : RoomDatabase() {
@@ -678,6 +681,62 @@ abstract class NoorDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Non-destructive migration from NOOR 5.0 (v5) to NOOR 6.0 (v6).
+         * Adds admin_ad_cards and admin_messages tables while preserving all existing user data.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS admin_ad_cards (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        titleAr TEXT NOT NULL,
+                        titleEn TEXT NOT NULL,
+                        descriptionAr TEXT NOT NULL,
+                        descriptionEn TEXT NOT NULL,
+                        imageUriOrUrl TEXT NOT NULL,
+                        destinationUrl TEXT NOT NULL,
+                        placement TEXT NOT NULL,
+                        enabled INTEGER NOT NULL,
+                        startAtMillis INTEGER NOT NULL,
+                        endAtMillis INTEGER NOT NULL,
+                        displayOrder INTEGER NOT NULL,
+                        impressionsCount INTEGER NOT NULL,
+                        clicksCount INTEGER NOT NULL,
+                        createdBy TEXT NOT NULL,
+                        updatedAtMillis INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS admin_messages (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        targetType TEXT NOT NULL,
+                        targetGroup TEXT NOT NULL,
+                        targetUserUid TEXT NOT NULL,
+                        targetUserEmail TEXT NOT NULL,
+                        titleAr TEXT NOT NULL,
+                        titleEn TEXT NOT NULL,
+                        bodyAr TEXT NOT NULL,
+                        bodyEn TEXT NOT NULL,
+                        messageType TEXT NOT NULL,
+                        priority TEXT NOT NULL,
+                        imageUriOrUrl TEXT NOT NULL,
+                        scheduledAtMillis INTEGER NOT NULL,
+                        sentByUid TEXT NOT NULL,
+                        sentByEmail TEXT NOT NULL,
+                        delivered INTEGER NOT NULL,
+                        readByCurrentUser INTEGER NOT NULL,
+                        readAtMillis INTEGER NOT NULL,
+                        createdAtMillis INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): NoorDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -685,7 +744,13 @@ abstract class NoorDatabase : RoomDatabase() {
                     NoorDatabase::class.java,
                     "noor_islamic_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6
+                    )
                     .build()
                     .also { INSTANCE = it }
             }

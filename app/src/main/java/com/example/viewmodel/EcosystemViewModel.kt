@@ -405,11 +405,16 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun startHifzLiveMic(resetTranscript: Boolean = false) {
-        if (recordingState.value.isRecordingOrPaused) {
+        val wasRecording = recordingState.value.isRecordingOrPaused
+        if (wasRecording) {
             recitationRecorder.stopRecording()
         }
         hifzMicListener.setPreferOffline(adminSettings.value.sttPreferOffline)
-        hifzMicListener.startListening(resetTranscript = resetTranscript)
+        // Give Android audio HAL 250ms to release MediaRecorder before acquiring SpeechRecognizer mic
+        hifzMicListener.startListening(
+            resetTranscript = resetTranscript,
+            initialDelayMs = if (wasRecording) 250L else 0L
+        )
     }
 
     fun pauseHifzLiveMic() = hifzMicListener.pauseListening()
@@ -917,45 +922,131 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ======================== FASTING & KHATM ACTIONS ========================
 
-    fun toggleFastingDay(dateKey: String, fastType: String, notes: String = "") = viewModelScope.launch {
-        val existing = fastingLogs.value.firstOrNull { it.dateKey == dateKey }
-        if (existing != null && existing.fastType == fastType) {
+    fun completeFastingDay(dateKey: String, fastType: String, notes: String = "") = viewModelScope.launch {
+        try {
+            val cleanDate = dateKey.trim().ifBlank { repo.todayKey() }
+            val existing = fastingLogs.value.firstOrNull { it.dateKey == cleanDate }
+            repo.saveFastingLog(
+                FastingLogEntity(
+                    dateKey = cleanDate,
+                    fastType = fastType,
+                    completed = true,
+                    notes = notes
+                )
+            )
+            if (existing != null && existing.fastType == fastType) {
+                postStatus("تم تأكيد وتحديث صيام يوم $cleanDate بنجاح ✓")
+            } else {
+                postStatus("تقبل الله صيامك — تم حفظ إتمام الصيام ليوم $cleanDate ✓")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            repo.logError("FASTING_COMPLETE", e.message ?: "Failed to save fasting record", "ERROR")
+            postStatus("تعذّر حفظ سجل الصيام حالياً، حاول مرة أخرى")
+        }
+    }
+
+    fun removeFastingDay(dateKey: String) = viewModelScope.launch {
+        try {
             repo.deleteFastingLog(dateKey)
-            postStatus("تم إلغاء تسجيل الصيام ليوم $dateKey")
-        } else {
-            repo.saveFastingLog(FastingLogEntity(dateKey = dateKey, fastType = fastType, completed = true, notes = notes))
-            postStatus("تقبل الله صيامك — تم التسجيل")
+            postStatus("تم حذف سجل الصيام ليوم $dateKey")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            repo.logError("FASTING_DELETE", e.message ?: "Failed to delete fasting record", "WARNING")
+            postStatus("تعذّر حذف سجل الصيام")
+        }
+    }
+
+    fun toggleFastingDay(dateKey: String, fastType: String, notes: String = "") = viewModelScope.launch {
+        try {
+            val existing = fastingLogs.value.firstOrNull { it.dateKey == dateKey }
+            if (existing != null && existing.fastType == fastType) {
+                repo.deleteFastingLog(dateKey)
+                postStatus("تم إلغاء تسجيل الصيام ليوم $dateKey")
+            } else {
+                repo.saveFastingLog(FastingLogEntity(dateKey = dateKey, fastType = fastType, completed = true, notes = notes))
+                postStatus("تقبل الله صيامك — تم التسجيل ✓")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            repo.logError("FASTING_TOGGLE", e.message ?: "Failed to toggle fasting", "ERROR")
+            postStatus("تعذّر تحديث الصيام حالياً")
         }
     }
 
     fun createKhatmPlan(title: String, targetDateKey: String, dailyPages: Int) = viewModelScope.launch {
-        if (title.isBlank()) return@launch
-        repo.saveKhatmPlan(
-            KhatmPlanEntity(
-                title = title.trim(),
-                startDateKey = repo.todayKey(),
-                targetDateKey = targetDateKey.trim().ifBlank { repo.todayKey() },
-                currentPage = 1,
-                currentJuz = 1,
-                dailyTargetPages = dailyPages.coerceIn(1, 100),
-                totalPages = 604
+        if (title.isBlank()) {
+            postStatus("يرجى إدخال اسم لخطة الختمة")
+            return@launch
+        }
+        try {
+            repo.saveKhatmPlan(
+                KhatmPlanEntity(
+                    title = title.trim(),
+                    startDateKey = repo.todayKey(),
+                    targetDateKey = targetDateKey.trim().ifBlank { repo.todayKey() },
+                    currentPage = 1,
+                    currentJuz = 1,
+                    dailyTargetPages = dailyPages.coerceIn(1, 100),
+                    totalPages = 604
+                )
             )
-        )
-        postStatus("تم إنشاء خطة الختمة بنجاح")
+            postStatus("تم إنشاء خطة الختمة بنجاح ✓")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            repo.logError("KHATM_CREATE", e.message ?: "Failed to create Khatm plan", "ERROR")
+            postStatus("تعذّر إنشاء خطة الختمة، يرجى المحاولة مرة أخرى")
+        }
     }
 
-    fun advanceKhatm(plan: KhatmPlanEntity, pages: Int) = viewModelScope.launch {
-        repo.advanceKhatmPlan(plan, pages.coerceAtLeast(1))
-        postStatus("ما شاء الله! تم تحديث صفحات الختمة")
+    fun advanceKhatm(plan: KhatmPlanEntity, pages: Int, allowExtraSameDay: Boolean = false) = viewModelScope.launch {
+        try {
+            val advanced = repo.advanceKhatmPlan(plan, pages.coerceAtLeast(1), allowExtraSameDay = allowExtraSameDay)
+            if (advanced) {
+                val nextPage = (plan.currentPage + pages.coerceAtLeast(1)).coerceIn(1, plan.totalPages.coerceIn(1, 604))
+                if (nextPage >= plan.totalPages) {
+                    postStatus("مبارك! أتممت الختمة كاملة بحمد الله ✓")
+                } else {
+                    postStatus("ما شاء الله! تم إتمام ورد اليوم والوصول إلى الصفحة $nextPage ✓")
+                }
+            } else {
+                postStatus("تم تسجيل ورد اليوم لهذه الختمة مسبقاً — اضغط «ورد إضافي» إذا أردت الزيادة")
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            repo.logError("KHATM_ADVANCE", e.message ?: "Failed to complete daily wird", "ERROR")
+            postStatus("تعذّر تحديث الختمة حالياً، يرجى المحاولة مرة أخرى")
+        }
     }
 
     fun syncKhatmWithPage(plan: KhatmPlanEntity, page: Int) = viewModelScope.launch {
-        repo.syncKhatmPlanToPage(plan, page)
-        postStatus("تمت مزامنة الختمة مع الصفحة $page")
+        try {
+            val safePage = page.coerceIn(1, plan.totalPages.coerceIn(1, 604))
+            repo.syncKhatmPlanToPage(plan, safePage)
+            postStatus("تمت مزامنة الختمة مع الصفحة $safePage ✓")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            repo.logError("KHATM_SYNC", e.message ?: "Failed to sync khatm page", "WARNING")
+            postStatus("تعذّر مزامنة الصفحة حالياً")
+        }
     }
 
     fun deleteKhatmPlan(id: Long) = viewModelScope.launch {
-        repo.deleteKhatmPlan(id)
+        try {
+            repo.deleteKhatmPlan(id)
+            postStatus("تم حذف خطة الختمة")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            repo.logError("KHATM_DELETE", e.message ?: "Failed to delete khatm plan", "WARNING")
+            postStatus("تعذّر حذف خطة الختمة")
+        }
     }
 
     // ======================== QUIZ ACTIONS ========================
