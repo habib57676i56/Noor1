@@ -144,6 +144,7 @@ object NoorRoutes {
     const val ECOSYSTEM_HUB = "ecosystem_hub"
     const val HALAQAT = "halaqat"
     const val HIFZ_AI = "hifz_ai"
+    const val HIFZ_AI_TARGET = "hifz_ai/{surahNumber}/{ayahNumber}"
     const val LOCAL_AI = "local_ai"
     const val LIBRARY = "library"
     const val HADITH_LIB = "hadith_lib"
@@ -160,6 +161,7 @@ object NoorRoutes {
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
+    fun hifzAiTarget(surahNumber: Int, ayahNumber: Int) = "hifz_ai/$surahNumber/$ayahNumber"
 }
 
 private data class NavTabItem(
@@ -437,6 +439,9 @@ fun NoorAppShell(
                                             popUpTo(NoorRoutes.QURAN_READER) { inclusive = true }
                                             launchSingleTop = true
                                         }
+                                    },
+                                    onOpenInMemorization = { targetSurah, targetAyah ->
+                                        navController.navigate(NoorRoutes.hifzAiTarget(targetSurah, targetAyah))
                                     }
                                 )
                             }
@@ -605,6 +610,24 @@ fun NoorAppShell(
                                     viewModel = ecosystemViewModel,
                                     onBack = { navController.popBackStack() },
                                     globalConfig = globalConfig
+                                )
+                            }
+                            composable(
+                                route = NoorRoutes.HIFZ_AI_TARGET,
+                                arguments = listOf(
+                                    navArgument("surahNumber") { type = NavType.IntType },
+                                    navArgument("ayahNumber") { type = NavType.IntType }
+                                )
+                            ) { entry ->
+                                val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
+                                val initSurah = entry.arguments?.getInt("surahNumber") ?: 1
+                                val initAyah = entry.arguments?.getInt("ayahNumber") ?: 1
+                                HifzAiScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() },
+                                    globalConfig = globalConfig,
+                                    initialSurah = initSurah,
+                                    initialAyah = initAyah
                                 )
                             }
                             composable(NoorRoutes.LOCAL_AI) {

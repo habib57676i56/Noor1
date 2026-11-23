@@ -53,8 +53,16 @@ import com.example.data.local.db.DailyActivityEntity
 import com.example.data.local.db.QuranBookmarkEntity
 import com.example.data.local.db.QuranVerseCacheEntity
 import com.example.data.local.db.TasbihSessionEntity
+import com.example.data.local.catalog.MadinahMushafPageCatalog
+import com.example.data.local.db.HifzPlanEntity
 import com.example.data.local.prefs.UserPreferences
+import com.example.data.quran.AyahWordTimings
+import com.example.data.quran.MushafCoordinateRepository
+import com.example.data.quran.MushafHighlightColor
+import com.example.data.quran.MushafHighlightStyle
 import com.example.data.quran.MushafPageImageManager
+import com.example.data.quran.QuranLinguisticRepository
+import com.example.data.quran.QuranWordTimingRepository
 import com.example.data.remote.MosqueSearchResult
 import com.example.data.repository.NoorRepository
 import com.example.data.repository.SurahLoadResult
@@ -152,9 +160,26 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     private val quranAudioPlayer: QuranAudioPlayer = (application as NoorApplication).quranAudioPlayer
     private val adhanAudioPlayer: AdhanAudioPlayer = (application as NoorApplication).adhanAudioPlayer
     val mushafPageImageManager: MushafPageImageManager = (application as NoorApplication).mushafPageImageManager
+    val mushafCoordinateRepository: MushafCoordinateRepository = (application as NoorApplication).mushafCoordinateRepository
+    val quranWordTimingRepository: QuranWordTimingRepository = (application as NoorApplication).quranWordTimingRepository
+    val quranLinguisticRepository: QuranLinguisticRepository = (application as NoorApplication).quranLinguisticRepository
     private val liveRecitationListener = QuranLiveRecitationListener(application)
     private val dhikrTtsHelper = DhikrTtsHelper(application)
     private val notifPrefs = application.getSharedPreferences("noor_notif_prefs", android.content.Context.MODE_PRIVATE)
+    private val mushafPrefs = application.getSharedPreferences("noor_mushaf_prefs", android.content.Context.MODE_PRIVATE)
+
+    private val _mushafHighlightStyle = MutableStateFlow(
+        MushafHighlightStyle(
+            colorPreset = MushafHighlightColor.fromKey(mushafPrefs.getString("highlight_color", "gold")),
+            alpha = mushafPrefs.getFloat("highlight_alpha", 0.28f).coerceIn(0.15f, 0.50f),
+            pulseAnimated = mushafPrefs.getBoolean("highlight_pulse", true)
+        )
+    )
+    val mushafHighlightStyle: StateFlow<MushafHighlightStyle> = _mushafHighlightStyle.asStateFlow()
+
+    // Verified Quran.com v4 millisecond word segments for active (reciter, surah) — strictly NO fake timers!
+    private val _activeSurahWordTimings = MutableStateFlow<Pair<String, Map<Int, AyahWordTimings>>?>(null)
+
     private val _nonEssentialNotificationsEnabled = MutableStateFlow(
         notifPrefs.getBoolean("non_essential_notifications", true)
     )
@@ -591,6 +616,25 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 QuranPlayerWidgetProvider.requestUpdate(app)
             }
+        }
+
+        // Load verified Quran.com v4 word-level timing segments whenever active recited Surah or Reciter changes
+        viewModelScope.launch {
+            combine(
+                audioState.map { it.playingSurah },
+                preferences.map { it.quranReciter }
+            ) { surah, reciter -> surah to reciter }
+                .collect { (surah, reciter) ->
+                    if (surah == null || !quranWordTimingRepository.supportsVerifiedWordTimings(reciter)) {
+                        _activeSurahWordTimings.value = null
+                    } else {
+                        val cacheKey = "${reciter.id}_$surah"
+                        if (_activeSurahWordTimings.value?.first != cacheKey) {
+                            val timings = quranWordTimingRepository.getSurahWordTimings(reciter, surah)
+                            _activeSurahWordTimings.value = if (timings.isNotEmpty()) cacheKey to timings else null
+                        }
+                    }
+                }
         }
 
         // Sync user profile automatically when Google Sign-In state becomes active
@@ -1099,11 +1143,204 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 audioUrl = url,
                 category = com.example.domain.model.AudioCategory.QURAN_RECITERS,
                 surahNumber = surahNumber,
-                ayahNumber = v.numberInSurah
+                ayahNumber = v.numberInSurah,
+                pageNumber = v.pageNumber,
+                reciterId = reciter.id
             )
         }
         val startIndex = queue.indexOfFirst { it.ayahNumber == startAyah }.coerceAtLeast(0)
         quranAudioPlayer.playTrackQueue(queue, startIndex, preferences.value.audioPlaybackSpeed)
+    }
+
+    /**
+     * Real-time verified word position (`1..N`) inside the currently playing Ayah.
+     * Strictly derived from verified millisecond timing segments — returns `null` when unavailable.
+     */
+    val activeWordPosition: StateFlow<Int?> = combine(
+        audioState,
+        _activeSurahWordTimings,
+        preferences.map { it.quranReciter }
+    ) { st, cached, reciter ->
+        if (!st.isPlaying || st.playingSurah == null || st.playingAyah == null) return@combine null
+        val expectedKey = "${reciter.id}_${st.playingSurah}"
+        if (cached == null || cached.first != expectedKey) return@combine null
+        cached.second[st.playingAyah]?.findWordPositionAt(st.currentPositionMs)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val hasVerifiedWordTimingsForCurrentPlayback: StateFlow<Boolean> = combine(
+        audioState,
+        _activeSurahWordTimings,
+        preferences.map { it.quranReciter }
+    ) { st, cached, reciter ->
+        val s = st.playingSurah ?: return@combine false
+        val a = st.playingAyah ?: return@combine false
+        val expectedKey = "${reciter.id}_$s"
+        cached != null && cached.first == expectedKey && cached.second[a]?.segments?.isNotEmpty() == true
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    fun updateMushafHighlightStyle(style: MushafHighlightStyle) {
+        val clamped = style.copy(alpha = style.alpha.coerceIn(0.15f, 0.50f))
+        _mushafHighlightStyle.value = clamped
+        mushafPrefs.edit()
+            .putString("highlight_color", clamped.colorPreset.key)
+            .putFloat("highlight_alpha", clamped.alpha)
+            .putBoolean("highlight_pulse", clamped.pulseAnimated)
+            .apply()
+    }
+
+    /**
+     * Loads verified Quran verses for ALL Surahs appearing on a specific Madinah Mushaf page (`1..604`).
+     * Supports multi-Surah pages such as Page 604 (Surahs 112, 113, 114).
+     */
+    suspend fun loadVersesForMushafPage(pageNumber: Int): List<QuranVerse> = withContext(Dispatchers.IO) {
+        val meta = MadinahMushafPageCatalog.pageMeta(pageNumber)
+        val reciter = preferences.value.quranReciter
+        val pageVerses = mutableListOf<QuranVerse>()
+        for (surah in meta.surahsOnPage) {
+            when (val res = repo.loadSurahVerses(surah.number, reciter)) {
+                is SurahLoadResult.Success -> {
+                    val onPage = res.verses.filter { it.pageNumber == pageNumber }
+                    if (onPage.isNotEmpty()) {
+                        pageVerses += onPage
+                    } else if (meta.surahsOnPage.size == 1) {
+                        // Fallback if page metadata on cached verses is missing
+                        pageVerses += res.verses
+                    }
+                }
+                is SurahLoadResult.Error -> Unit
+            }
+        }
+        pageVerses.sortedWith(compareBy({ it.surahNumber }, { it.numberInSurah }))
+    }
+
+    /**
+     * Interactive Mushaf: "Read from this Ayah" (continuous playback across page & Surah boundaries)
+     * or "Repeat Ayah Range" (seamless endless looping between `startAyah..endAyah`).
+     */
+    fun playFromMushafAyah(
+        surahNumber: Int,
+        startAyah: Int,
+        endAyah: Int? = null,
+        repeatRange: Boolean = false
+    ) = viewModelScope.launch {
+        val reciter = preferences.value.quranReciter
+        val tracks = mutableListOf<AudioTrackItem>()
+
+        suspend fun appendSurahTracks(sNum: Int) {
+            val sMeta = SurahCatalog.findSurah(sNum)
+            val verses = when (val res = repo.loadSurahVerses(sNum, reciter)) {
+                is SurahLoadResult.Success -> res.verses
+                is SurahLoadResult.Error -> (1..sMeta.verseCount).map { aNum ->
+                    QuranVerse(
+                        surahNumber = sNum,
+                        numberInSurah = aNum,
+                        globalNumber = aNum,
+                        textUthmani = "",
+                        tafsirAr = "",
+                        audioUrl = SurahCatalog.audioUrlForAyah(sNum, aNum, reciter),
+                        pageNumber = sMeta.startPage
+                    )
+                }
+            }
+            verses.forEach { v ->
+                tracks += AudioTrackItem(
+                    id = "ayah_${reciter.id}_${sNum}_${v.numberInSurah}",
+                    titleAr = "سورة ${sMeta.nameAr} · آية ${v.numberInSurah}",
+                    titleEn = "${sMeta.nameEn} · Ayah ${v.numberInSurah}",
+                    subtitleAr = reciter.nameAr,
+                    subtitleEn = reciter.nameEn,
+                    audioUrl = SurahCatalog.audioUrlForAyah(sNum, v.numberInSurah, reciter),
+                    category = com.example.domain.model.AudioCategory.QURAN_RECITERS,
+                    surahNumber = sNum,
+                    ayahNumber = v.numberInSurah,
+                    pageNumber = v.pageNumber.takeIf { it in 1..604 } ?: sMeta.startPage,
+                    reciterId = reciter.id
+                )
+            }
+        }
+
+        appendSurahTracks(surahNumber)
+        // For continuous reading (not range loop), append subsequent short Surahs on same/next pages so recitation flows seamlessly!
+        if (!repeatRange && surahNumber < 114) {
+            val nextSurahEnd = if (surahNumber >= 100) minOf(114, surahNumber + 3) else surahNumber + 1
+            for (nextS in (surahNumber + 1)..nextSurahEnd) {
+                appendSurahTracks(nextS)
+            }
+        }
+
+        if (tracks.isEmpty()) return@launch
+        val startIdx = tracks.indexOfFirst { it.surahNumber == surahNumber && it.ayahNumber == startAyah }.coerceAtLeast(0)
+
+        if (repeatRange && endAyah != null) {
+            val clampedEndAyah = endAyah.coerceAtLeast(startAyah)
+            val endIdx = tracks.indexOfLast { it.surahNumber == surahNumber && it.ayahNumber == clampedEndAyah }
+                .takeIf { it >= startIdx } ?: startIdx
+            val sMeta = SurahCatalog.findSurah(surahNumber)
+            val isAr = preferences.value.language == AppLanguage.ARABIC
+            val label = if (isAr) {
+                "تكرار ${sMeta.nameAr} ($startAyah–$clampedEndAyah)"
+            } else {
+                "Loop ${sMeta.nameEn} ($startAyah–$clampedEndAyah)"
+            }
+            quranAudioPlayer.playAyahRange(
+                queue = tracks,
+                rangeStartIndex = startIdx,
+                rangeEndIndex = endIdx,
+                rangeLabel = label,
+                initialSpeed = preferences.value.audioPlaybackSpeed
+            )
+        } else {
+            quranAudioPlayer.playTrackQueue(
+                queue = tracks,
+                startIndex = startIdx,
+                initialSpeed = preferences.value.audioPlaybackSpeed
+            )
+        }
+    }
+
+    /**
+     * Plays a single selected Ayah once from the Interactive Mushaf contextual menu.
+     */
+    fun playSingleMushafAyah(surahNumber: Int, ayahNumber: Int, pageNumber: Int? = null) {
+        val reciter = preferences.value.quranReciter
+        val surah = SurahCatalog.findSurah(surahNumber)
+        val url = SurahCatalog.audioUrlForAyah(surahNumber, ayahNumber, reciter)
+        quranAudioPlayer.playAyah(
+            surahNumber = surahNumber,
+            ayahNumber = ayahNumber,
+            audioUrl = url,
+            titleAr = "سورة ${surah.nameAr} · آية $ayahNumber",
+            titleEn = "${surah.nameEn} · Ayah $ayahNumber",
+            reciterNameAr = reciter.nameAr,
+            reciterNameEn = reciter.nameEn,
+            repeatRemaining = 1,
+            pageNumber = pageNumber ?: surah.startPage
+        )
+    }
+
+    /**
+     * Adds an Ayah (or short memorization segment starting at that Ayah) directly to NOOR's Hifz plans.
+     */
+    fun addAyahToMemorizationPlan(surahNumber: Int, ayahNumber: Int) = viewModelScope.launch {
+        val surah = SurahCatalog.findSurah(surahNumber)
+        val clampedStart = ayahNumber.coerceIn(1, surah.verseCount)
+        val clampedEnd = (clampedStart + 4).coerceAtMost(surah.verseCount)
+        val isAr = preferences.value.language == AppLanguage.ARABIC
+        ecosystemRepo.saveHifzPlan(
+            HifzPlanEntity(
+                title = "حفظ سورة ${surah.nameAr} (آية $clampedStart - $clampedEnd)",
+                targetSurahNumber = surahNumber,
+                fromAyah = clampedStart,
+                toAyah = clampedEnd,
+                currentAyah = clampedStart,
+                dailyAyahTarget = (clampedEnd - clampedStart + 1).coerceIn(1, 10)
+            )
+        )
+        _statusBanner.value = if (isAr) {
+            "تمت إضافة سورة ${surah.nameAr} (من الآية $clampedStart) إلى خطط الحفظ"
+        } else {
+            "Added ${surah.nameEn} (from Ayah $clampedStart) to Memorization Plans"
+        }
     }
 
     fun jumpToQuranAudioAyah(

@@ -109,7 +109,9 @@ private enum class HifzTestMode(val key: String, val labelAr: String, val labelE
 fun HifzAiScreen(
     viewModel: EcosystemViewModel,
     onBack: () -> Unit,
-    globalConfig: GlobalAppConfigDoc = GlobalAppConfigDoc()
+    globalConfig: GlobalAppConfigDoc = GlobalAppConfigDoc(),
+    initialSurah: Int = 1,
+    initialAyah: Int = 1
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -124,10 +126,14 @@ fun HifzAiScreen(
     val weakVerses by viewModel.hifzWeakVerses.collectAsStateWithLifecycle()
     val recordings by viewModel.recitationRecordings.collectAsStateWithLifecycle()
 
-    val quickSurahs = remember { listOf(1, 93, 94, 97, 103, 108, 109, 110, 111, 112, 113, 114) }
-    var selectedSurah by remember { mutableIntStateOf(1) }
+    val clampedInitialSurah = initialSurah.coerceIn(1, 114)
+    val quickSurahs = remember(clampedInitialSurah) {
+        (listOf(clampedInitialSurah) + listOf(1, 93, 94, 97, 103, 108, 109, 110, 111, 112, 113, 114)).distinct()
+    }
+    var selectedSurah by remember(clampedInitialSurah) { mutableIntStateOf(clampedInitialSurah) }
     var selectedTab by remember { mutableIntStateOf(0) }
-    var activeAyahIdx by remember { mutableIntStateOf(0) }
+    var activeAyahIdx by remember(clampedInitialSurah, initialAyah) { mutableIntStateOf((initialAyah - 1).coerceAtLeast(0)) }
+    var pendingInitialAyah by remember(clampedInitialSurah, initialAyah) { mutableStateOf<Int?>(initialAyah.coerceAtLeast(1)) }
     var hideVerseText by remember { mutableStateOf(true) }
     var manualReciteInput by remember { mutableStateOf("") }
     var showPlanDialog by remember { mutableStateOf(false) }
@@ -173,7 +179,21 @@ fun HifzAiScreen(
 
     LaunchedEffect(selectedSurah) {
         viewModel.loadHifzSurah(selectedSurah)
-        activeAyahIdx = 0
+        if (selectedSurah != clampedInitialSurah) {
+            pendingInitialAyah = null
+            activeAyahIdx = 0
+        }
+    }
+
+    LaunchedEffect(verses, pendingInitialAyah) {
+        val targetAyah = pendingInitialAyah ?: return@LaunchedEffect
+        if (verses.isNotEmpty() && verses.first().surahNumber == selectedSurah) {
+            val idx = verses.indexOfFirst { it.numberInSurah == targetAyah }
+            if (idx >= 0) {
+                activeAyahIdx = idx
+            }
+            pendingInitialAyah = null
+        }
     }
 
     val activeVerse = verses.getOrNull(activeAyahIdx.coerceIn(0, (verses.size - 1).coerceAtLeast(0)))

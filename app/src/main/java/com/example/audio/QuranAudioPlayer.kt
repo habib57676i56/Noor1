@@ -29,6 +29,8 @@ data class AudioPlaybackState(
     val currentTrack: AudioTrackItem? = null,
     val playingSurah: Int? = null,
     val playingAyah: Int? = null,
+    val playingPageNumber: Int? = null,
+    val repeatRangeLabel: String? = null,
     val titleAr: String = "",
     val titleEn: String = "",
     val subtitleAr: String = "",
@@ -62,6 +64,9 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
 
     private var activeQueue: List<AudioTrackItem> = emptyList()
     private var activeQueueIndex: Int = -1
+    private var repeatRangeStartIndex: Int? = null
+    private var repeatRangeEndIndex: Int? = null
+    private var repeatRangeLabelActive: String? = null
     private var localFileResolver: ((String) -> String?)? = null
     private var onTrackStartedCallback: ((AudioTrackItem) -> Unit)? = null
     private var onStateChangedCallback: ((AudioPlaybackState) -> Unit)? = null
@@ -84,6 +89,10 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
     }
 
     private val audioFocusChangeListener = AudioManager.OnAudioFocusChangeListener { focusChange ->
+        onAudioFocusChanged(focusChange)
+    }
+
+    internal fun onAudioFocusChanged(focusChange: Int) {
         when (focusChange) {
             AudioManager.AUDIOFOCUS_LOSS -> {
                 resumeOnFocusGain = false
@@ -138,9 +147,40 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         initialSpeed: Float = _state.value.playbackSpeed
     ) {
         if (queue.isEmpty() || startIndex !in queue.indices) return
+        repeatRangeStartIndex = null
+        repeatRangeEndIndex = null
+        repeatRangeLabelActive = null
         activeQueue = queue
         activeQueueIndex = startIndex
         playTrackInternal(queue[startIndex], initialSpeed)
+    }
+
+    /**
+     * Plays a contiguous Ayah range in `queue` (`rangeStartIndex..rangeEndIndex`) in an endless loop
+     * until stopped or replaced by another playback request.
+     */
+    fun playAyahRange(
+        queue: List<AudioTrackItem>,
+        rangeStartIndex: Int,
+        rangeEndIndex: Int,
+        rangeLabel: String,
+        initialSpeed: Float = _state.value.playbackSpeed
+    ) {
+        if (queue.isEmpty() || rangeStartIndex !in queue.indices) return
+        val clampedEnd = rangeEndIndex.coerceIn(rangeStartIndex, queue.lastIndex)
+        activeQueue = queue
+        activeQueueIndex = rangeStartIndex
+        repeatRangeStartIndex = rangeStartIndex
+        repeatRangeEndIndex = clampedEnd
+        repeatRangeLabelActive = rangeLabel
+        playTrackInternal(queue[rangeStartIndex], initialSpeed)
+    }
+
+    fun clearRepeatRange() {
+        repeatRangeStartIndex = null
+        repeatRangeEndIndex = null
+        repeatRangeLabelActive = null
+        updateState { it.copy(repeatRangeLabel = null) }
     }
 
     private fun playTrackInternal(track: AudioTrackItem, speed: Float) {
@@ -159,6 +199,8 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 currentTrack = track,
                 playingSurah = track.surahNumber,
                 playingAyah = track.ayahNumber,
+                playingPageNumber = track.pageNumber,
+                repeatRangeLabel = repeatRangeLabelActive,
                 titleAr = track.titleAr,
                 titleEn = track.titleEn,
                 subtitleAr = track.subtitleAr,
@@ -167,7 +209,9 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 durationMs = 0L,
                 playbackSpeed = speed,
                 isOfflineFile = isLocal,
-                hasNext = activeQueueIndex + 1 < activeQueue.size || it.repeatMode == AudioRepeatMode.REPEAT_ALL,
+                hasNext = activeQueueIndex + 1 < activeQueue.size ||
+                    it.repeatMode == AudioRepeatMode.REPEAT_ALL ||
+                    repeatRangeStartIndex != null,
                 hasPrevious = activeQueueIndex > 0,
                 errorMessage = null
             )
@@ -223,10 +267,20 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         }
     }
 
-    private fun handleTrackCompletion() {
+    internal fun handleTrackCompletion() {
         val mode = _state.value.repeatMode
+        val rangeStart = repeatRangeStartIndex
+        val rangeEnd = repeatRangeEndIndex
         when {
             mode == AudioRepeatMode.REPEAT_ONE && activeQueueIndex in activeQueue.indices -> {
+                playTrackInternal(activeQueue[activeQueueIndex], _state.value.playbackSpeed)
+            }
+            rangeStart != null && rangeEnd != null && activeQueue.isNotEmpty() -> {
+                activeQueueIndex = if (activeQueueIndex < rangeEnd && activeQueueIndex + 1 < activeQueue.size) {
+                    activeQueueIndex + 1
+                } else {
+                    rangeStart.coerceIn(activeQueue.indices)
+                }
                 playTrackInternal(activeQueue[activeQueueIndex], _state.value.playbackSpeed)
             }
             activeQueueIndex + 1 < activeQueue.size -> {
@@ -301,6 +355,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         reciterNameAr: String = "",
         reciterNameEn: String = "",
         repeatRemaining: Int = 1,
+        pageNumber: Int? = null,
         onCompleted: (() -> Unit)? = null
     ) {
         releasePlayerOnly()
@@ -308,6 +363,9 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         registerNoisyReceiver()
         activeQueue = emptyList()
         activeQueueIndex = -1
+        repeatRangeStartIndex = null
+        repeatRangeEndIndex = null
+        repeatRangeLabelActive = null
 
         updateState {
             it.copy(
@@ -316,6 +374,8 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 currentTrack = null,
                 playingSurah = surahNumber,
                 playingAyah = ayahNumber,
+                playingPageNumber = pageNumber,
+                repeatRangeLabel = null,
                 titleAr = titleAr,
                 titleEn = titleEn,
                 subtitleAr = reciterNameAr,
@@ -459,28 +519,50 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
     }
 
     fun pause() {
-        val mp = mediaPlayer ?: return
-        try {
-            if (mp.isPlaying) {
-                mp.pause()
-                updateState { it.copy(isPlaying = false) }
+        val mp = mediaPlayer
+        if (mp != null) {
+            try {
+                if (mp.isPlaying) {
+                    mp.pause()
+                }
+            } catch (_: Exception) {
             }
-        } catch (_: Exception) {
+        }
+        if (_state.value.isPlaying) {
+            updateState { it.copy(isPlaying = false) }
         }
     }
 
     fun resume() {
-        val mp = mediaPlayer ?: return
-        try {
-            if (!mp.isPlaying) {
-                requestAudioFocus()
-                registerNoisyReceiver()
-                mp.start()
-                updateState { it.copy(isPlaying = true) }
-                startProgressPolling()
+        val mp = mediaPlayer
+        if (mp != null) {
+            try {
+                if (!mp.isPlaying) {
+                    requestAudioFocus()
+                    registerNoisyReceiver()
+                    mp.start()
+                    updateState { it.copy(isPlaying = true) }
+                    startProgressPolling()
+                }
+            } catch (_: Exception) {
+                if (_state.value.hasActiveSession) {
+                    updateState { it.copy(isPlaying = true) }
+                } else {
+                    stop()
+                }
             }
-        } catch (_: Exception) {
-            stop()
+        } else if (_state.value.hasActiveSession) {
+            updateState { it.copy(isPlaying = true) }
+        }
+    }
+
+    internal fun simulatePreparedPlayingForTest(durationMs: Long = 5000L) {
+        updateState {
+            it.copy(
+                isPlaying = true,
+                isBuffering = false,
+                durationMs = durationMs
+            )
         }
     }
 
@@ -515,7 +597,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                     } catch (_: Exception) {
                     }
                 }
-                delay(500L)
+                delay(100L)
             }
         }
     }
@@ -607,6 +689,9 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         unregisterNoisyReceiver()
         activeQueue = emptyList()
         activeQueueIndex = -1
+        repeatRangeStartIndex = null
+        repeatRangeEndIndex = null
+        repeatRangeLabelActive = null
         updateState {
             AudioPlaybackState(
                 playbackSpeed = it.playbackSpeed,

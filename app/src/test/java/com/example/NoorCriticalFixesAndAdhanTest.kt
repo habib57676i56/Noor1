@@ -84,7 +84,7 @@ import java.util.zip.ZipOutputStream
  *    duplicate-playback guard, per-prayer toggles/overrides, alarm scheduler)
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [33])
 class NoorCriticalFixesAndAdhanTest {
 
     // -------------------------------------------------------------------------

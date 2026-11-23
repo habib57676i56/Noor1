@@ -125,7 +125,8 @@ fun QuranReaderScreen(
     surahNumber: Int,
     viewModel: NoorViewModel,
     onBack: () -> Unit,
-    onNavigateToSurah: (Int) -> Unit = {}
+    onNavigateToSurah: (Int) -> Unit = {},
+    onOpenInMemorization: (surahNumber: Int, ayahNumber: Int) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
@@ -136,6 +137,9 @@ fun QuranReaderScreen(
     val audioState by viewModel.audioState.collectAsStateWithLifecycle()
     val liveRecitation by viewModel.liveRecitationState.collectAsStateWithLifecycle()
     val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
+    val highlightStyle by viewModel.mushafHighlightStyle.collectAsStateWithLifecycle()
+    val activeWordPosition by viewModel.activeWordPosition.collectAsStateWithLifecycle()
+    val hasVerifiedWordTimings by viewModel.hasVerifiedWordTimingsForCurrentPlayback.collectAsStateWithLifecycle()
 
     val surahMeta = remember(surahNumber) { SurahCatalog.findSurah(surahNumber) }
     val listState = rememberLazyListState()
@@ -395,20 +399,27 @@ fun QuranReaderScreen(
             }
         )
 
-        // Sticky Sheikh Audio Follow-Along Bar (real verse-by-verse sync, no mic required!)
-        if (activeAudioAyah != null) {
+        // Sticky Sheikh Audio Follow-Along Bar (real verse-by-verse sync across same or flowed Surah!)
+        val bannerSurahNum = audioState.playingSurah ?: surahNumber
+        val bannerAyahNum = if (audioState.hasActiveSession) audioState.playingAyah else null
+        if (bannerAyahNum != null && (bannerSurahNum == surahNumber || (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode))) {
+            val bannerSurahMeta = remember(bannerSurahNum) { SurahCatalog.findSurah(bannerSurahNum) }
             val readyVerses = (readerState as? SurahReaderState.Ready)?.verses.orEmpty()
             SheikhAudioFollowBanner(
-                surahNameAr = surahMeta.nameAr,
-                surahNameEn = surahMeta.nameEn,
-                totalAyahs = surahMeta.verseCount,
-                activeAyah = activeAudioAyah,
+                surahNameAr = bannerSurahMeta.nameAr,
+                surahNameEn = bannerSurahMeta.nameEn,
+                totalAyahs = bannerSurahMeta.verseCount,
+                activeAyah = bannerAyahNum,
                 audioState = audioState,
                 onTogglePauseResume = { viewModel.toggleAudioPauseResume() },
                 onPreviousAyah = { viewModel.playPreviousAudio() },
                 onNextAyah = { viewModel.playNextAudio() },
                 onScrubToAyah = { targetAyah ->
-                    viewModel.jumpToQuranAudioAyah(surahNumber, targetAyah, readyVerses)
+                    if (bannerSurahNum == surahNumber && readyVerses.isNotEmpty()) {
+                        viewModel.jumpToQuranAudioAyah(surahNumber, targetAyah, readyVerses)
+                    } else {
+                        viewModel.playFromMushafAyah(bannerSurahNum, targetAyah)
+                    }
                 },
                 onCycleRepeat = { viewModel.cycleAudioRepeatMode() },
                 onCycleSpeed = {
@@ -744,7 +755,16 @@ fun QuranReaderScreen(
                             val activeSyncedVerseObj = activeSyncedAyah?.let { ay ->
                                 state.verses.firstOrNull { it.numberInSurah == ay }
                             }
-                            val syncedPage = activeSyncedVerseObj?.pageNumber
+                            val activeRecitedPair: Pair<Int, Int>? = when {
+                                audioState.hasActiveSession && audioState.playingSurah != null && audioState.playingAyah != null ->
+                                    audioState.playingSurah!! to audioState.playingAyah!!
+                                (liveRecitation.isActive || liveRecitation.status == LiveRecitationStatus.PAUSED) &&
+                                    liveRecitation.trackedSurah != null && liveRecitation.trackedAyah != null ->
+                                    liveRecitation.trackedSurah!! to liveRecitation.trackedAyah!!
+                                else -> null
+                            }
+                            val syncedPage = audioState.playingPageNumber
+                                ?: activeSyncedVerseObj?.pageNumber
                                 ?: liveRecitation.trackedPage
                             val initialPageForSurah = state.verses
                                 .firstOrNull { it.numberInSurah == lastVisibleAyah }
@@ -752,14 +772,25 @@ fun QuranReaderScreen(
                                 ?: surahMeta.startPage
                             val isDarkReader = prefs.quranReadingTheme == QuranReadingTheme.NIGHT ||
                                 (prefs.quranReadingTheme == QuranReadingTheme.AUTO && noorColors.isDark)
+                            val bookmarkedPairs = remember(bookmarks) {
+                                bookmarks.map { it.surahNumber to it.ayahNumber }.toSet()
+                            }
 
                             MadinahMushafReaderView(
                                 imageManager = viewModel.mushafPageImageManager,
+                                coordinateRepository = viewModel.mushafCoordinateRepository,
+                                linguisticRepository = viewModel.quranLinguisticRepository,
                                 initialPage = initialPageForSurah,
                                 activeSyncedPage = syncedPage,
                                 activeSyncedVerse = activeSyncedVerseObj,
+                                activeRecitedAyah = activeRecitedPair,
+                                activeWordPosition = activeWordPosition,
+                                hasVerifiedWordTiming = hasVerifiedWordTimings,
                                 isAudioPlaying = audioState.isPlaying,
                                 isNightTheme = isDarkReader,
+                                highlightStyle = highlightStyle,
+                                bookmarkedKeys = bookmarkedPairs,
+                                loadPageVerses = { pageNum -> viewModel.loadVersesForMushafPage(pageNum) },
                                 onPageChanged = { pageNum, primarySurah ->
                                     val firstAyahOnPage = state.verses
                                         .firstOrNull { it.pageNumber == pageNum }
@@ -771,14 +802,37 @@ fun QuranReaderScreen(
                                     if (audioState.hasActiveSession) {
                                         viewModel.toggleAudioPauseResume()
                                     } else if (state.verses.isNotEmpty()) {
-                                        viewModel.playSurahVerseByVerse(
+                                        viewModel.playFromMushafAyah(
                                             surahNumber = surahNumber,
-                                            verses = state.verses,
-                                            reciter = prefs.quranReciter,
                                             startAyah = lastVisibleAyah.coerceAtLeast(1)
                                         )
                                     }
                                 },
+                                onUpdateHighlightStyle = { viewModel.updateMushafHighlightStyle(it) },
+                                onReadFromAyah = { sNum, aNum ->
+                                    viewModel.playFromMushafAyah(surahNumber = sNum, startAyah = aNum)
+                                },
+                                onPlaySingleAyah = { sNum, aNum, pageNum ->
+                                    viewModel.playSingleMushafAyah(sNum, aNum, pageNum)
+                                },
+                                onRepeatAyahRange = { sNum, fromA, toA ->
+                                    viewModel.playFromMushafAyah(
+                                        surahNumber = sNum,
+                                        startAyah = fromA,
+                                        endAyah = toA,
+                                        repeatRange = true
+                                    )
+                                },
+                                onToggleBookmarkAyah = { sNum, aNum, text ->
+                                    viewModel.toggleBookmark(sNum, aNum, text)
+                                },
+                                onAddToMemorization = { sNum, aNum ->
+                                    viewModel.addAyahToMemorizationPlan(sNum, aNum)
+                                },
+                                onOpenInMemorization = { sNum, aNum ->
+                                    onOpenInMemorization(sNum, aNum)
+                                },
+                                onStatusBanner = { msg -> viewModel.showBannerMessage(msg) },
                                 onSwitchToTextMushaf = { useMushafPageImages = false }
                             )
                         }

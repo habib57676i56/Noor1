@@ -351,6 +351,7 @@ data class AudioTrackItem(
     val category: AudioCategory,
     val surahNumber: Int? = null,
     val ayahNumber: Int? = null,
+    val pageNumber: Int? = null,
     val reciterId: String? = null,
     val sourceAttribution: String = "MP3Quran / EveryAyah Open Archive",
     val allowOfflineCache: Boolean = true

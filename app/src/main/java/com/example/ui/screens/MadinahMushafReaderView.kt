@@ -1,5 +1,9 @@
 package com.example.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,9 +35,11 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.MenuBook
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -52,9 +58,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -65,19 +73,32 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.catalog.MadinahMushafPageCatalog
+import com.example.data.local.catalog.SurahCatalog
+import com.example.data.quran.AyahLinguisticAnalysis
+import com.example.data.quran.AyahPageRegion
+import com.example.data.quran.MushafCoordinateRepository
+import com.example.data.quran.MushafCoordinateTransform
 import com.example.data.quran.MushafDownloadProgress
+import com.example.data.quran.MushafHighlightStyle
 import com.example.data.quran.MushafPageImageManager
+import com.example.data.quran.MushafPageLayout
 import com.example.data.quran.MushafPageLoadResult
+import com.example.data.quran.QuranLinguisticRepository
 import com.example.domain.model.QuranVerse
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.i18n.L10n
@@ -110,32 +131,50 @@ private val MushafNightColorFilter = ColorFilter.colorMatrix(
 )
 
 /**
- * Authentic 604-Page Madinah Mushaf Page-Image Reader.
+ * Interactive 604-Page Madinah Mushaf Page-Image Reader.
  *
- * Displays exact verified King Fahd Complex Madinah Mushaf page images with:
- * - Authentic page borders, Surah/Juz/Page headers, and printed proportions.
- * - Full 604-page RTL HorizontalPager navigation + direct Jump to Page / Juz.
- * - Live audio follow-along synchronization (auto-navigates to the verse's page as Sheikh recites).
- * - Pinch-to-zoom, Night Mode reading filter, Offline Pack Downloader & local ZIP importer.
- * - Graceful Uthmani text fallback if a page is not cached offline yet and the device is offline.
+ * Preserves authentic untouched printed Madinah Mushaf page images while layering:
+ * - Accurate Ayah-level & word-level coordinate hit-testing (RTL, multi-Surah, Pages 1-2, Sajdah, zoom/pan aware).
+ * - Long-press Ayah selection with haptic feedback and a non-overlapping RTL contextual action menu.
+ * - Real-time transparent overlay highlighting for active recited Ayahs and verified word timings.
+ * - Structured I'rab (إعراب الآية), Sarf (الصرف), and Tafsir bottom sheet.
+ * - Continuous "Read from this Ayah" playback, Repeat Ayah Range, Copy, Share, Bookmark, and Hifz integration.
  */
 @Composable
 fun MadinahMushafReaderView(
     imageManager: MushafPageImageManager,
+    coordinateRepository: MushafCoordinateRepository,
+    linguisticRepository: QuranLinguisticRepository,
     initialPage: Int,
     activeSyncedPage: Int?,
     activeSyncedVerse: QuranVerse?,
+    activeRecitedAyah: Pair<Int, Int>?,
+    activeWordPosition: Int?,
+    hasVerifiedWordTiming: Boolean,
     isAudioPlaying: Boolean,
     isNightTheme: Boolean,
+    highlightStyle: MushafHighlightStyle,
+    bookmarkedKeys: Set<Pair<Int, Int>>,
+    loadPageVerses: suspend (Int) -> List<QuranVerse>,
     onPageChanged: (pageNumber: Int, primarySurah: Int) -> Unit,
     onToggleAudio: () -> Unit,
+    onUpdateHighlightStyle: (MushafHighlightStyle) -> Unit,
+    onReadFromAyah: (surahNumber: Int, ayahNumber: Int) -> Unit,
+    onPlaySingleAyah: (surahNumber: Int, ayahNumber: Int, pageNumber: Int) -> Unit,
+    onRepeatAyahRange: (surahNumber: Int, fromAyah: Int, toAyah: Int) -> Unit,
+    onToggleBookmarkAyah: (surahNumber: Int, ayahNumber: Int, textUthmani: String) -> Unit,
+    onAddToMemorization: (surahNumber: Int, ayahNumber: Int) -> Unit,
+    onOpenInMemorization: (surahNumber: Int, ayahNumber: Int) -> Unit,
+    onStatusBanner: (String) -> Unit,
     onSwitchToTextMushaf: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
     val scope = rememberCoroutineScope()
     val downloadProgress by imageManager.progress.collectAsStateWithLifecycle()
+    val coordPackStatus by coordinateRepository.packStatus.collectAsStateWithLifecycle()
 
     val safeInitialIndex = (initialPage.coerceIn(1, MadinahMushafPageCatalog.TOTAL_PAGES) - 1)
     val pagerState = rememberPagerState(
@@ -145,15 +184,77 @@ fun MadinahMushafReaderView(
 
     var nightInvertEnabled by remember(isNightTheme) { mutableStateOf(isNightTheme) }
     var showOfflineManagerDialog by remember { mutableStateOf(false) }
+    var showHighlightSettingsDialog by remember { mutableStateOf(false) }
     var showJumpDialog by remember { mutableStateOf(false) }
     var zoomScale by remember { mutableFloatStateOf(1f) }
     var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+    var coordReloadNonce by remember { mutableIntStateOf(0) }
+
+    // Interactive Ayah Selection & Contextual Action Menu State (single active selection at a time)
+    var selectedAyah by remember { mutableStateOf<AyahPageRegion?>(null) }
+    var showContextualMenu by remember { mutableStateOf(false) }
+    var tappedInfoAyah by remember { mutableStateOf<AyahPageRegion?>(null) }
+    var currentPageVerses by remember { mutableStateOf<List<QuranVerse>>(emptyList()) }
+    var currentPageLayout by remember { mutableStateOf<MushafPageLayout?>(null) }
+
+    // Linguistic Analysis Sheet (I'rab / Sarf / Tafsir) State
+    var activeLinguisticAnalysis by remember { mutableStateOf<AyahLinguisticAnalysis?>(null) }
+    var activeLinguisticTab by remember { mutableStateOf(LinguisticSheetTab.IRAB) }
+
+    // Repeat Ayah Range Dialog State
+    var repeatRangeTarget by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     val zipImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         if (uri != null) {
             scope.launch { imageManager.importOfflineZipPack(uri) }
+        }
+    }
+
+    val glyphDbImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val ok = coordinateRepository.importGlyphDatabaseFromUri(uri)
+                if (ok) {
+                    coordReloadNonce++
+                    onStatusBanner(L10n.pick(lang, "تم تفعيل قاعدة إحداثيات المصحف الدقيقة بنجاح", "Exact glyph coordinates DB activated"))
+                } else {
+                    onStatusBanner(L10n.pick(lang, "الملف غير صالح كقاعدة إحداثيات للمصحف", "Invalid glyph coordinates file"))
+                }
+            }
+        }
+    }
+
+    val linguisticPackImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val count = linguisticRepository.importOfflineLinguisticPack(uri)
+                if (count > 0) {
+                    onStatusBanner(
+                        L10n.pick(
+                            lang,
+                            "تم استيراد $count سجل إعراب وصرف موثّق للعمل دون إنترنت",
+                            "Imported $count offline linguistic records"
+                        )
+                    )
+                    // Refresh currently open linguistic sheet if any
+                    activeLinguisticAnalysis?.let { current ->
+                        activeLinguisticAnalysis = linguisticRepository.getAyahLinguisticAnalysis(
+                            surahNumber = current.surahNumber,
+                            ayahNumber = current.ayahNumber,
+                            exactImmutableUthmaniText = current.exactUthmaniAyahText,
+                            cachedTafsirAr = current.tafsirMuyassarAr
+                        )
+                    }
+                } else {
+                    onStatusBanner(L10n.pick(lang, "تعذّر قراءة حزمة الإعراب والصرف (JSON)", "Unable to parse linguistic JSON pack"))
+                }
+            }
         }
     }
 
@@ -166,15 +267,72 @@ fun MadinahMushafReaderView(
         }
     }
 
-    // Notify parent & prefetch neighbor pages whenever the visible page changes
     val currentPageNumber = pagerState.currentPage + 1
     val currentMeta = remember(currentPageNumber) { MadinahMushafPageCatalog.pageMeta(currentPageNumber) }
 
-    LaunchedEffect(currentPageNumber) {
+    // Clear selection, reset zoom, prefetch images, and preload all Surah verses on the visible page
+    LaunchedEffect(currentPageNumber, coordReloadNonce) {
         zoomScale = 1f
         zoomOffset = Offset.Zero
+        selectedAyah = null
+        showContextualMenu = false
+        tappedInfoAyah = null
         onPageChanged(currentPageNumber, currentMeta.primarySurahNumber)
         imageManager.prefetchNeighborPages(currentPageNumber)
+        val verses = loadPageVerses(currentPageNumber)
+        currentPageVerses = verses
+        currentPageLayout = coordinateRepository.getPageLayout(currentPageNumber, verses)
+    }
+
+    fun resolveVerseFor(surahNumber: Int, ayahNumber: Int): QuranVerse? =
+        currentPageVerses.firstOrNull { it.surahNumber == surahNumber && it.numberInSurah == ayahNumber }
+
+    fun openLinguisticSheet(ayah: AyahPageRegion, tab: LinguisticSheetTab) {
+        val verse = resolveVerseFor(ayah.surahNumber, ayah.ayahNumber)
+        val immutableText = verse?.textUthmani.orEmpty()
+        val tafsir = verse?.tafsirAr.orEmpty()
+        showContextualMenu = false
+        scope.launch {
+            activeLinguisticTab = tab
+            activeLinguisticAnalysis = linguisticRepository.getAyahLinguisticAnalysis(
+                surahNumber = ayah.surahNumber,
+                ayahNumber = ayah.ayahNumber,
+                exactImmutableUthmaniText = immutableText,
+                cachedTafsirAr = tafsir
+            )
+        }
+    }
+
+    fun copyAyahToClipboard(ayah: AyahPageRegion) {
+        val verse = resolveVerseFor(ayah.surahNumber, ayah.ayahNumber)
+        val surah = SurahCatalog.findSurah(ayah.surahNumber)
+        val text = if (!verse?.textUthmani.isNullOrBlank()) {
+            "﴿${verse!!.textUthmani}﴾ [${surah.nameAr}: ${ayah.ayahNumber}]"
+        } else {
+            "سورة ${surah.nameAr} — آية ${ayah.ayahNumber} (صفحة ${ayah.pageNumber})"
+        }
+        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        cm?.setPrimaryClip(ClipData.newPlainText("Quran Ayah", text))
+        onStatusBanner(L10n.pick(lang, "تم نسخ الآية بنجاح", "Ayah copied to clipboard"))
+        showContextualMenu = false
+    }
+
+    fun shareAyahIntent(ayah: AyahPageRegion) {
+        val verse = resolveVerseFor(ayah.surahNumber, ayah.ayahNumber)
+        val surah = SurahCatalog.findSurah(ayah.surahNumber)
+        val shareText = if (!verse?.textUthmani.isNullOrBlank()) {
+            "﴿${verse!!.textUthmani}﴾\n— سورة ${surah.nameAr}، آية ${ayah.ayahNumber} (ص ${ayah.pageNumber})\nعبر تطبيق نور"
+        } else {
+            "سورة ${surah.nameAr} — آية ${ayah.ayahNumber} (ص ${ayah.pageNumber})"
+        }
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_TEXT, shareText)
+        }
+        runCatching {
+            context.startActivity(Intent.createChooser(intent, L10n.pick(lang, "مشاركة الآية", "Share Ayah")))
+        }
+        showContextualMenu = false
     }
 
     Column(
@@ -183,7 +341,7 @@ fun MadinahMushafReaderView(
             .testTag("madinah_mushaf_image_reader"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // Top Mushaf Toolbar: Page/Juz/Surah Info + Offline Manager + Night Filter + Jump
+        // Top Mushaf Toolbar: Page/Juz/Surah Info + Highlight Settings + Jump + Night Filter + Offline Manager
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -210,15 +368,27 @@ fun MadinahMushafReaderView(
                 Text(
                     text = L10n.pick(
                         lang,
-                        "صفحة $currentPageNumber من ٦٠٤ · محفوظ دون إنترنت: ${downloadProgress.cachedPagesCount}/٦٠٤",
-                        "Page $currentPageNumber / 604 · Offline cached: ${downloadProgress.cachedPagesCount}/604"
+                        "صفحة $currentPageNumber من ٦٠٤ · اضغط مطوّلاً على أي آية للتفاعل",
+                        "Page $currentPageNumber / 604 · Long-press any Ayah for actions"
                     ),
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (nightInvertEnabled) Color(0xFFB5CEC4) else Color(0xFF5D5242)
+                    color = if (nightInvertEnabled) Color(0xFFB5CEC4) else Color(0xFF5D5242),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = { showHighlightSettingsDialog = true },
+                    modifier = Modifier.testTag("mushaf_highlight_settings_btn")
+                ) {
+                    Icon(
+                        Icons.Rounded.Palette,
+                        contentDescription = L10n.pick(lang, "إعدادات التظليل", "Highlight Settings"),
+                        tint = highlightStyle.colorPreset.ayahFillColor
+                    )
+                }
                 IconButton(
                     onClick = { showJumpDialog = true },
                     modifier = Modifier.testTag("mushaf_jump_page_btn")
@@ -252,7 +422,58 @@ fun MadinahMushafReaderView(
             }
         }
 
-        // Authentic Printed Madinah Mushaf 604-Page Swipeable Viewer
+        // Contextual Menu Placement ABOVE page when selected Ayah is in mid/lower page (never covers selected Ayah!)
+        val activeSelected = selectedAyah
+        val menuPlacement = remember(activeSelected) {
+            activeSelected?.let { MushafCoordinateTransform.computeContextualMenuPlacement(it) }
+        }
+        if (showContextualMenu && activeSelected != null && menuPlacement?.placeAboveAyah == true) {
+            val selectedVerse = resolveVerseFor(activeSelected.surahNumber, activeSelected.ayahNumber)
+            MushafAyahContextualMenu(
+                selectedAyah = activeSelected,
+                ayahTextUthmani = selectedVerse?.textUthmani.orEmpty(),
+                isBookmarked = bookmarkedKeys.contains(activeSelected.surahNumber to activeSelected.ayahNumber),
+                placeAboveAyah = true,
+                nightMode = nightInvertEnabled,
+                onReadFromHere = {
+                    showContextualMenu = false
+                    onReadFromAyah(activeSelected.surahNumber, activeSelected.ayahNumber)
+                },
+                onOpenIrab = { openLinguisticSheet(activeSelected, LinguisticSheetTab.IRAB) },
+                onOpenSarf = { openLinguisticSheet(activeSelected, LinguisticSheetTab.SARF) },
+                onPlaySingleAyah = {
+                    showContextualMenu = false
+                    onPlaySingleAyah(activeSelected.surahNumber, activeSelected.ayahNumber, activeSelected.pageNumber)
+                },
+                onRepeatRange = {
+                    showContextualMenu = false
+                    repeatRangeTarget = activeSelected.surahNumber to activeSelected.ayahNumber
+                },
+                onCopyAyah = { copyAyahToClipboard(activeSelected) },
+                onShareAyah = { shareAyahIntent(activeSelected) },
+                onToggleBookmark = {
+                    onToggleBookmarkAyah(
+                        activeSelected.surahNumber,
+                        activeSelected.ayahNumber,
+                        selectedVerse?.textUthmani.orEmpty()
+                    )
+                },
+                onAddToMemorization = {
+                    showContextualMenu = false
+                    onAddToMemorization(activeSelected.surahNumber, activeSelected.ayahNumber)
+                },
+                onOpenInMemorization = {
+                    showContextualMenu = false
+                    onOpenInMemorization(activeSelected.surahNumber, activeSelected.ayahNumber)
+                },
+                onDismiss = {
+                    showContextualMenu = false
+                    selectedAyah = null
+                }
+            )
+        }
+
+        // Authentic Printed Madinah Mushaf 604-Page Interactive Swipeable Viewer
         HorizontalPager(
             state = pagerState,
             userScrollEnabled = zoomScale <= 1.05f,
@@ -262,24 +483,149 @@ fun MadinahMushafReaderView(
         ) { pageIndex ->
             val pageNum = pageIndex + 1
             val meta = remember(pageNum) { MadinahMushafPageCatalog.pageMeta(pageNum) }
+            val isCurrentPage = pagerState.currentPage == pageIndex
+
             MadinahMushafSinglePageCard(
                 pageNumber = pageNum,
                 surahNameAr = meta.primarySurahNameAr,
                 juzNumber = meta.juzNumber,
                 isRightPage = meta.isRightPage,
                 imageManager = imageManager,
+                coordinateRepository = coordinateRepository,
+                coordReloadNonce = coordReloadNonce,
+                preloadedLayout = if (isCurrentPage) currentPageLayout else null,
+                loadPageVerses = loadPageVerses,
+                activeRecitedAyah = activeRecitedAyah,
+                activeWordPosition = activeWordPosition,
+                selectedAyah = if (isCurrentPage) selectedAyah else null,
+                highlightStyle = highlightStyle,
                 nightInvertEnabled = nightInvertEnabled,
-                zoomScale = if (pagerState.currentPage == pageIndex) zoomScale else 1f,
-                zoomOffset = if (pagerState.currentPage == pageIndex) zoomOffset else Offset.Zero,
+                zoomScale = if (isCurrentPage) zoomScale else 1f,
+                zoomOffset = if (isCurrentPage) zoomOffset else Offset.Zero,
                 onZoomChange = { newScale, newOffset ->
                     zoomScale = newScale
                     zoomOffset = newOffset
+                },
+                onAyahTapped = { hit ->
+                    if (showContextualMenu) {
+                        // Dismiss contextual menu cleanly on outside tap; switch selection if another Ayah tapped
+                        if (hit == null || hit.key == selectedAyah?.key) {
+                            showContextualMenu = false
+                            selectedAyah = null
+                        } else {
+                            selectedAyah = hit
+                            tappedInfoAyah = hit
+                        }
+                    } else {
+                        tappedInfoAyah = hit
+                        selectedAyah = hit
+                    }
+                },
+                onAyahLongPressed = { hit ->
+                    selectedAyah = hit
+                    tappedInfoAyah = hit
+                    showContextualMenu = true
                 },
                 onSwitchToTextMushaf = onSwitchToTextMushaf
             )
         }
 
-        // Bottom Page Turn Controls + Synchronized Verse Highlight Strip
+        // Contextual Menu Placement BELOW page when selected Ayah is near top of page (auto-flipped, never covers Ayah!)
+        if (showContextualMenu && activeSelected != null && menuPlacement?.placeAboveAyah == false) {
+            val selectedVerse = resolveVerseFor(activeSelected.surahNumber, activeSelected.ayahNumber)
+            MushafAyahContextualMenu(
+                selectedAyah = activeSelected,
+                ayahTextUthmani = selectedVerse?.textUthmani.orEmpty(),
+                isBookmarked = bookmarkedKeys.contains(activeSelected.surahNumber to activeSelected.ayahNumber),
+                placeAboveAyah = false,
+                nightMode = nightInvertEnabled,
+                onReadFromHere = {
+                    showContextualMenu = false
+                    onReadFromAyah(activeSelected.surahNumber, activeSelected.ayahNumber)
+                },
+                onOpenIrab = { openLinguisticSheet(activeSelected, LinguisticSheetTab.IRAB) },
+                onOpenSarf = { openLinguisticSheet(activeSelected, LinguisticSheetTab.SARF) },
+                onPlaySingleAyah = {
+                    showContextualMenu = false
+                    onPlaySingleAyah(activeSelected.surahNumber, activeSelected.ayahNumber, activeSelected.pageNumber)
+                },
+                onRepeatRange = {
+                    showContextualMenu = false
+                    repeatRangeTarget = activeSelected.surahNumber to activeSelected.ayahNumber
+                },
+                onCopyAyah = { copyAyahToClipboard(activeSelected) },
+                onShareAyah = { shareAyahIntent(activeSelected) },
+                onToggleBookmark = {
+                    onToggleBookmarkAyah(
+                        activeSelected.surahNumber,
+                        activeSelected.ayahNumber,
+                        selectedVerse?.textUthmani.orEmpty()
+                    )
+                },
+                onAddToMemorization = {
+                    showContextualMenu = false
+                    onAddToMemorization(activeSelected.surahNumber, activeSelected.ayahNumber)
+                },
+                onOpenInMemorization = {
+                    showContextualMenu = false
+                    onOpenInMemorization(activeSelected.surahNumber, activeSelected.ayahNumber)
+                },
+                onDismiss = {
+                    showContextualMenu = false
+                    selectedAyah = null
+                }
+            )
+        }
+
+        // Quick Tapped Ayah Identification Strip (appears on single tap; 1 tap opens full action menu)
+        if (!showContextualMenu && tappedInfoAyah != null) {
+            val tapped = tappedInfoAyah!!
+            val tappedSurah = remember(tapped.surahNumber) { SurahCatalog.findSurah(tapped.surahNumber) }
+            val tappedVerse = resolveVerseFor(tapped.surahNumber, tapped.ayahNumber)
+            LiquidGlassCard(
+                goldBorder = true,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                modifier = Modifier.testTag("mushaf_tapped_ayah_bar")
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "الآية المحددة: سورة ${tappedSurah.nameAr} · آية ${tapped.ayahNumber} (ص ${tapped.pageNumber})",
+                                "Selected: ${tappedSurah.nameEn} · Ayah ${tapped.ayahNumber} (p.${tapped.pageNumber})"
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = noorColors.goldAccent
+                        )
+                        if (!tappedVerse?.textUthmani.isNullOrBlank()) {
+                            Text(
+                                text = "${tappedVerse!!.textUthmani} ﴿${tapped.ayahNumber}﴾",
+                                fontFamily = AmiriFontFamily,
+                                fontSize = 16.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                    TextButton(
+                        onClick = { showContextualMenu = true },
+                        modifier = Modifier.testTag("mushaf_open_actions_btn")
+                    ) {
+                        Icon(Icons.Rounded.TouchApp, contentDescription = null, modifier = Modifier.size(16.dp), tint = GoldPrimary)
+                        Spacer(Modifier.width(4.dp))
+                        Text(L10n.pick(lang, "خيارات الآية", "Actions"))
+                    }
+                }
+            }
+        }
+
+        // Bottom Page Turn Controls
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -321,7 +667,11 @@ fun MadinahMushafReaderView(
         }
 
         // Active Synchronized Verse Strip (Sheikh Recitation / Live Follow Highlight on Page Image)
-        if (activeSyncedVerse != null) {
+        val displayedActiveVerse = activeSyncedVerse ?: activeRecitedAyah?.let { (s, a) -> resolveVerseFor(s, a) }
+        if (displayedActiveVerse != null || activeRecitedAyah != null) {
+            val activeSurahNum = displayedActiveVerse?.surahNumber ?: activeRecitedAyah!!.first
+            val activeAyahNum = displayedActiveVerse?.numberInSurah ?: activeRecitedAyah!!.second
+            val activeSurahMeta = remember(activeSurahNum) { SurahCatalog.findSurah(activeSurahNum) }
             LiquidGlassCard(
                 goldBorder = true,
                 contentPadding = PaddingValues(12.dp),
@@ -335,21 +685,25 @@ fun MadinahMushafReaderView(
                         Text(
                             text = L10n.pick(
                                 lang,
-                                "الآية الحالية المتزامنة: سورة ${currentMeta.primarySurahNameAr} — آية ${activeSyncedVerse.numberInSurah} (ص ${activeSyncedVerse.pageNumber})",
-                                "Active Synced Verse: Ayah ${activeSyncedVerse.numberInSurah} (p.${activeSyncedVerse.pageNumber})"
+                                "التلاوة المتزامنة: سورة ${activeSurahMeta.nameAr} — آية $activeAyahNum" +
+                                    if (hasVerifiedWordTiming && activeWordPosition != null) " · كلمة $activeWordPosition" else "",
+                                "Synced Recitation: ${activeSurahMeta.nameEn} — Ayah $activeAyahNum" +
+                                    if (hasVerifiedWordTiming && activeWordPosition != null) " · Word $activeWordPosition" else ""
                             ),
                             style = MaterialTheme.typography.labelSmall,
                             color = noorColors.goldAccent,
                             fontWeight = FontWeight.Bold
                         )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = "${activeSyncedVerse.textUthmani} ﴿${activeSyncedVerse.numberInSurah}﴾",
-                            fontFamily = AmiriFontFamily,
-                            fontSize = 18.sp,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        if (!displayedActiveVerse?.textUthmani.isNullOrBlank()) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = "${displayedActiveVerse!!.textUthmani} ﴿$activeAyahNum﴾",
+                                fontFamily = AmiriFontFamily,
+                                fontSize = 18.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                     IconButton(onClick = onToggleAudio) {
                         Icon(
@@ -361,6 +715,55 @@ fun MadinahMushafReaderView(
                 }
             }
         }
+    }
+
+    // Structured RTL Linguistic Analysis Sheet (I'rab, Sarf, Tafsir)
+    activeLinguisticAnalysis?.let { analysis ->
+        AyahLinguisticAnalysisSheet(
+            analysis = analysis,
+            initialTab = activeLinguisticTab,
+            onImportLinguisticPack = {
+                linguisticPackImportLauncher.launch(arrayOf("application/json", "text/plain", "*/*"))
+            },
+            onPlayAyah = {
+                onPlaySingleAyah(analysis.surahNumber, analysis.ayahNumber, currentPageNumber)
+            },
+            onDismiss = { activeLinguisticAnalysis = null }
+        )
+    }
+
+    // Repeat Ayah Range Dialog
+    repeatRangeTarget?.let { (sNum, fromAyah) ->
+        MushafRepeatRangeDialog(
+            surahNumber = sNum,
+            initialFromAyah = fromAyah,
+            onConfirmRange = { f, t ->
+                repeatRangeTarget = null
+                onRepeatAyahRange(sNum, f, t)
+            },
+            onDismiss = { repeatRangeTarget = null }
+        )
+    }
+
+    // Highlight Style & Exact Glyph DB Coordinate Manager Dialog
+    if (showHighlightSettingsDialog) {
+        MushafHighlightSettingsDialog(
+            style = highlightStyle,
+            coordStatus = coordPackStatus,
+            currentPagePrecisionAr = currentPageLayout?.precision?.labelAr ?: "جارٍ التحميل...",
+            currentPagePrecisionEn = currentPageLayout?.precision?.labelEn ?: "Loading...",
+            onUpdateStyle = onUpdateHighlightStyle,
+            onDownloadGlyphDb = {
+                scope.launch {
+                    val ok = coordinateRepository.downloadExactGlyphDatabase()
+                    if (ok) coordReloadNonce++
+                }
+            },
+            onImportGlyphDb = {
+                glyphDbImportLauncher.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+            },
+            onDismiss = { showHighlightSettingsDialog = false }
+        )
     }
 
     // Jump to Page / Juz Dialog
@@ -468,18 +871,77 @@ private fun MadinahMushafSinglePageCard(
     juzNumber: Int,
     isRightPage: Boolean,
     imageManager: MushafPageImageManager,
+    coordinateRepository: MushafCoordinateRepository,
+    coordReloadNonce: Int,
+    preloadedLayout: MushafPageLayout?,
+    loadPageVerses: suspend (Int) -> List<QuranVerse>,
+    activeRecitedAyah: Pair<Int, Int>?,
+    activeWordPosition: Int?,
+    selectedAyah: AyahPageRegion?,
+    highlightStyle: MushafHighlightStyle,
     nightInvertEnabled: Boolean,
     zoomScale: Float,
     zoomOffset: Offset,
     onZoomChange: (Float, Offset) -> Unit,
+    onAyahTapped: (AyahPageRegion?) -> Unit,
+    onAyahLongPressed: (AyahPageRegion) -> Unit,
     onSwitchToTextMushaf: () -> Unit
 ) {
     val lang = LocalAppLanguage.current
-    var reloadNonce by remember(pageNumber) { mutableStateOf(0) }
+    val haptics = LocalHapticFeedback.current
+    var reloadNonce by remember(pageNumber) { mutableIntStateOf(0) }
     var loadResult by remember(pageNumber, reloadNonce) { mutableStateOf<MushafPageLoadResult?>(null) }
+    var pageLayout by remember(pageNumber, coordReloadNonce) { mutableStateOf(preloadedLayout) }
+    var containerSize by remember { mutableStateOf(IntSize.Zero) }
+
+    LaunchedEffect(preloadedLayout) {
+        if (preloadedLayout != null && preloadedLayout.pageNumber == pageNumber) {
+            pageLayout = preloadedLayout
+        }
+    }
 
     LaunchedEffect(pageNumber, reloadNonce) {
         loadResult = imageManager.loadPageBitmap(pageNumber)
+    }
+
+    LaunchedEffect(pageNumber, coordReloadNonce) {
+        if (pageLayout == null || pageLayout?.pageNumber != pageNumber) {
+            val verses = loadPageVerses(pageNumber)
+            pageLayout = coordinateRepository.getPageLayout(pageNumber, verses)
+        }
+    }
+
+    // Keep latest state accessible inside pointerInput gesture coroutines without restarting gesture recognizers
+    val latestZoomScale by rememberUpdatedState(zoomScale)
+    val latestZoomOffset by rememberUpdatedState(zoomOffset)
+    val latestContainerSize by rememberUpdatedState(containerSize)
+    val latestLayout by rememberUpdatedState(pageLayout)
+    val latestLoadResult by rememberUpdatedState(loadResult)
+    val latestOnTap by rememberUpdatedState(onAyahTapped)
+    val latestOnLongPress by rememberUpdatedState(onAyahLongPressed)
+    val latestOnZoomChange by rememberUpdatedState(onZoomChange)
+
+    fun resolveHitAt(offset: Offset): AyahPageRegion? {
+        val layout = latestLayout ?: return null
+        val cSize = latestContainerSize
+        if (cSize.width <= 0 || cSize.height <= 0) return null
+        val ready = latestLoadResult as? MushafPageLoadResult.Ready
+        val imgW = (ready?.bitmap?.width ?: layout.imageWidth).toFloat()
+        val imgH = (ready?.bitmap?.height ?: layout.imageHeight).toFloat()
+
+        val normalized = MushafCoordinateTransform.screenPointToNormalizedPage(
+            tapX = offset.x,
+            tapY = offset.y,
+            containerWidth = cSize.width.toFloat(),
+            containerHeight = cSize.height.toFloat(),
+            imageWidth = imgW,
+            imageHeight = imgH,
+            zoomScale = latestZoomScale,
+            zoomOffsetX = latestZoomOffset.x,
+            zoomOffsetY = latestZoomOffset.y
+        ) ?: return null
+
+        return MushafCoordinateTransform.hitTestAyah(layout, normalized.first, normalized.second)
     }
 
     val frameBg = if (nightInvertEnabled) MushafNightPaper else MushafPaperBg
@@ -524,34 +986,52 @@ private fun MadinahMushafSinglePageCard(
             }
             HorizontalDivider(color = innerBorder.copy(alpha = 0.6f), modifier = Modifier.padding(vertical = 4.dp))
 
-            // Page Image Area (Authentic Madinah Mushaf proportion ~ 1 : 1.46)
+            // Interactive Page Image + Separate Transparent Highlight Overlay Layer
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(0.68f)
                     .clip(RoundedCornerShape(8.dp))
+                    .onSizeChanged { containerSize = it }
                     .pointerInput(pageNumber) {
                         detectTapGestures(
+                            onTap = { tapOffset ->
+                                val hit = resolveHitAt(tapOffset)
+                                latestOnTap(hit)
+                            },
                             onDoubleTap = {
-                                if (zoomScale > 1.1f) onZoomChange(1f, Offset.Zero)
-                                else onZoomChange(1.85f, Offset.Zero)
+                                if (latestZoomScale > 1.1f) {
+                                    latestOnZoomChange(1f, Offset.Zero)
+                                } else {
+                                    latestOnZoomChange(1.85f, Offset.Zero)
+                                }
+                            },
+                            onLongPress = { pressOffset ->
+                                val hit = resolveHitAt(pressOffset)
+                                if (hit != null) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    latestOnLongPress(hit)
+                                }
                             }
                         )
                     }
                     .pointerInput(pageNumber) {
                         detectTransformGestures { _, pan, zoom, _ ->
-                            val nextScale = (zoomScale * zoom).coerceIn(1f, 2.6f)
+                            val nextScale = (latestZoomScale * zoom).coerceIn(1f, 2.6f)
                             val nextOffset = if (nextScale > 1.05f) {
                                 Offset(
-                                    (zoomOffset.x + pan.x).coerceIn(-350f, 350f),
-                                    (zoomOffset.y + pan.y).coerceIn(-450f, 450f)
+                                    (latestZoomOffset.x + pan.x).coerceIn(-380f, 380f),
+                                    (latestZoomOffset.y + pan.y).coerceIn(-480f, 480f)
                                 )
                             } else {
                                 Offset.Zero
                             }
-                            onZoomChange(nextScale, nextOffset)
+                            if (nextScale != latestZoomScale || nextOffset != latestZoomOffset) {
+                                latestOnZoomChange(nextScale, nextOffset)
+                            }
                         }
-                    },
+                    }
+                    .testTag("mushaf_interactive_page_$pageNumber"),
                 contentAlignment = Alignment.Center
             ) {
                 when (val result = loadResult) {
@@ -569,20 +1049,37 @@ private fun MadinahMushafSinglePageCard(
 
                     is MushafPageLoadResult.Ready -> {
                         val imageBitmap = remember(result.bitmap) { result.bitmap.asImageBitmap() }
+                        val sharedTransform = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = zoomScale,
+                                scaleY = zoomScale,
+                                translationX = zoomOffset.x,
+                                translationY = zoomOffset.y
+                            )
+
+                        // Layer 1: Untouched raw Madinah Mushaf page bitmap
                         Image(
                             bitmap = imageBitmap,
                             contentDescription = "Madinah Mushaf Page $pageNumber — Surah $surahNameAr",
                             contentScale = ContentScale.Fit,
                             colorFilter = if (nightInvertEnabled) MushafNightColorFilter else null,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer(
-                                    scaleX = zoomScale,
-                                    scaleY = zoomScale,
-                                    translationX = zoomOffset.x,
-                                    translationY = zoomOffset.y
-                                )
+                            modifier = sharedTransform
                         )
+
+                        // Layer 2: Separate transparent Ayah & verified word highlight overlay
+                        MushafAyahHighlightOverlay(
+                            layout = pageLayout,
+                            imageWidth = result.bitmap.width,
+                            imageHeight = result.bitmap.height,
+                            activeRecitedAyah = activeRecitedAyah,
+                            activeWordPosition = activeWordPosition,
+                            selectedAyah = selectedAyah,
+                            highlightStyle = highlightStyle,
+                            nightMode = nightInvertEnabled,
+                            modifier = sharedTransform
+                        )
+
                         if (zoomScale > 1.05f) {
                             Box(
                                 modifier = Modifier

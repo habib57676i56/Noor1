@@ -52,7 +52,7 @@ import org.robolectric.annotation.Config
  * 6. Admin-to-User Messaging, Read Tracking & Non-Destructive Room MIGRATION_5_6
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [33])
 class NoorV6ComprehensiveVerificationTest {
 
     // -------------------------------------------------------------------------
