@@ -179,13 +179,18 @@ fun MushafAyahHighlightOverlay(
         )
         val cornerPx = (fitted.width * 0.008f).coerceIn(3f, 10f)
 
-        // 1. Real-Time Active Recited Ayah Highlight — clean soft transparent fill ONLY (no harsh box borders!)
+        // 1. Real-Time Active Recited Ayah Highlight — clean soft translucent fill ONLY over Ayah text
+        // (strictly clipped away from original printed Mushaf Ayah number circles!)
         if (activeRegion != null) {
             val fillColor = preset.ayahFillColor.copy(
-                alpha = (baseAlpha * effectivePulse * (if (nightMode) 1.12f else 0.92f)).coerceIn(0.12f, 0.44f)
+                alpha = (baseAlpha * effectivePulse * (if (nightMode) 1.12f else 0.90f)).coerceIn(0.12f, 0.42f)
             )
             for (seg in activeRegion.lineRegions) {
-                val rect = MushafCoordinateTransform.normalizedRectToFittedRect(seg.bounds, fitted)
+                val safeBounds = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
+                    segBounds = seg.bounds,
+                    endMarkerBounds = activeRegion.endMarkerBounds
+                ) ?: continue
+                val rect = MushafCoordinateTransform.normalizedRectToFittedRect(safeBounds, fitted)
                 if (rect.width <= 1f || rect.height <= 1f) continue
                 drawRoundRect(
                     color = fillColor,
@@ -195,38 +200,58 @@ fun MushafAyahHighlightOverlay(
                 )
             }
 
-            // 2. Verified Word-by-Word Audio Highlight (subtle soft highlight ONLY when verified timestamps exist)
+            // 2. Verified Word-by-Word Audio Highlight (ONLY when verified millisecond timestamps exist)
             if (activeWordRegion != null) {
-                val wRect = MushafCoordinateTransform.normalizedRectToFittedRect(activeWordRegion.bounds, fitted)
-                if (wRect.width > 1f && wRect.height > 1f) {
-                    drawRoundRect(
-                        color = preset.wordFillColor.copy(alpha = (baseAlpha + 0.14f).coerceAtMost(0.52f)),
-                        topLeft = Offset(wRect.left, wRect.top),
-                        size = Size(wRect.width, wRect.height),
-                        cornerRadius = CornerRadius(cornerPx, cornerPx)
-                    )
+                val safeWordBounds = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
+                    segBounds = activeWordRegion.bounds,
+                    endMarkerBounds = activeRegion.endMarkerBounds
+                )
+                if (safeWordBounds != null) {
+                    val wRect = MushafCoordinateTransform.normalizedRectToFittedRect(safeWordBounds, fitted)
+                    if (wRect.width > 1f && wRect.height > 1f) {
+                        drawRoundRect(
+                            color = preset.wordFillColor.copy(alpha = (baseAlpha + 0.14f).coerceAtMost(0.50f)),
+                            topLeft = Offset(wRect.left, wRect.top),
+                            size = Size(wRect.width, wRect.height),
+                            cornerRadius = CornerRadius(cornerPx, cornerPx)
+                        )
+                    }
                 }
             }
         }
 
-        // 3. Selected Ayah Highlight — clean translucent fill following exact Ayah lines (zero harsh rectangular frames!)
+        // 3. User-Selected Ayah Highlight — distinct cool teal tint + subtle bottom underline so
+        // user selection NEVER visually conflicts with the active recited Ayah highlight and NEVER
+        // covers the original printed decorative Mushaf Ayah number circle!
         if (selectedAyah != null) {
             val isSameAsActive = activeRegion != null &&
                 activeRegion.surahNumber == selectedAyah.surahNumber &&
                 activeRegion.ayahNumber == selectedAyah.ayahNumber
-            val selFill = if (isSameAsActive) {
-                Color(0xFF14B881).copy(alpha = 0.20f)
-            } else {
-                preset.ayahFillColor.copy(alpha = (baseAlpha + 0.06f).coerceAtMost(0.42f))
-            }
+            val selectionFill = Color(0xFF0D9488).copy(alpha = if (nightMode) 0.26f else 0.18f)
+            val selectionUnderline = Color(0xFF0F766E).copy(alpha = if (nightMode) 0.85f else 0.65f)
+            val underlineThickness = (fitted.height * 0.0022f).coerceIn(2f, 4f)
+
             for (seg in selectedAyah.lineRegions) {
-                val rect = MushafCoordinateTransform.normalizedRectToFittedRect(seg.bounds, fitted)
+                val safeBounds = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
+                    segBounds = seg.bounds,
+                    endMarkerBounds = selectedAyah.endMarkerBounds
+                ) ?: continue
+                val rect = MushafCoordinateTransform.normalizedRectToFittedRect(safeBounds, fitted)
                 if (rect.width <= 1f || rect.height <= 1f) continue
+                if (!isSameAsActive) {
+                    drawRoundRect(
+                        color = selectionFill,
+                        topLeft = Offset(rect.left, rect.top),
+                        size = Size(rect.width, rect.height),
+                        cornerRadius = CornerRadius(cornerPx, cornerPx)
+                    )
+                }
+                // Subtle underline beneath the selected Ayah text lines (no box borders!)
                 drawRoundRect(
-                    color = selFill,
-                    topLeft = Offset(rect.left, rect.top),
-                    size = Size(rect.width, rect.height),
-                    cornerRadius = CornerRadius(cornerPx, cornerPx)
+                    color = selectionUnderline,
+                    topLeft = Offset(rect.left + cornerPx * 0.5f, rect.top + rect.height - underlineThickness),
+                    size = Size((rect.width - cornerPx).coerceAtLeast(2f), underlineThickness),
+                    cornerRadius = CornerRadius(underlineThickness, underlineThickness)
                 )
             }
         }

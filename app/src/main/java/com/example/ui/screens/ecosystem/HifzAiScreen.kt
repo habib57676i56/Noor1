@@ -5,8 +5,11 @@ import android.app.Activity
 import android.speech.RecognizerIntent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,36 +21,42 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -65,15 +74,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.audio.LiveRecitationStatus
 import com.example.audio.RecitationRecordingStatus
+import com.example.data.cloud.GlobalAppConfigDoc
 import com.example.data.local.catalog.SurahCatalog
 import com.example.domain.quran.RecitationAssessmentReport
 import com.example.domain.quran.RecitationOverallLevel
 import com.example.domain.quran.WordEvaluationStatus
+import com.example.ui.components.ChooseReciterButton
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
@@ -83,6 +95,7 @@ import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.theme.AmiriFontFamily
 import com.example.ui.theme.EmeraldDeep
+import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.GoldBright
 import com.example.ui.theme.GoldPrimary
 import com.example.ui.theme.IvoryInk
@@ -90,7 +103,6 @@ import com.example.ui.theme.LocalNoorColors
 import com.example.ui.theme.SemanticError
 import com.example.ui.theme.SemanticSuccess
 import com.example.ui.theme.SemanticWarning
-import com.example.data.cloud.GlobalAppConfigDoc
 import com.example.viewmodel.EcosystemViewModel
 
 private enum class HifzTestMode(val key: String, val labelAr: String, val labelEn: String) {
@@ -111,7 +123,8 @@ fun HifzAiScreen(
     onBack: () -> Unit,
     globalConfig: GlobalAppConfigDoc = GlobalAppConfigDoc(),
     initialSurah: Int = 1,
-    initialAyah: Int = 1
+    initialAyah: Int = 1,
+    onOpenMushaf: (Int) -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -120,6 +133,8 @@ fun HifzAiScreen(
     val liveState by viewModel.hifzLiveState.collectAsStateWithLifecycle()
     val recState by viewModel.recordingState.collectAsStateWithLifecycle()
     val playbackState by viewModel.recordingPlaybackState.collectAsStateWithLifecycle()
+    val audioState by viewModel.quranAudioState.collectAsStateWithLifecycle()
+    val selectedReciter by viewModel.selectedReciter.collectAsStateWithLifecycle()
     val report by viewModel.recitationReport.collectAsStateWithLifecycle()
     val plans by viewModel.hifzPlans.collectAsStateWithLifecycle()
     val logs by viewModel.hifzRevisionLogs.collectAsStateWithLifecycle()
@@ -127,16 +142,18 @@ fun HifzAiScreen(
     val recordings by viewModel.recitationRecordings.collectAsStateWithLifecycle()
 
     val clampedInitialSurah = initialSurah.coerceIn(1, 114)
-    val quickSurahs = remember(clampedInitialSurah) {
-        (listOf(clampedInitialSurah) + listOf(1, 93, 94, 97, 103, 108, 109, 110, 111, 112, 113, 114)).distinct()
-    }
     var selectedSurah by remember(clampedInitialSurah) { mutableIntStateOf(clampedInitialSurah) }
     var selectedTab by remember { mutableIntStateOf(0) }
     var activeAyahIdx by remember(clampedInitialSurah, initialAyah) { mutableIntStateOf((initialAyah - 1).coerceAtLeast(0)) }
     var pendingInitialAyah by remember(clampedInitialSurah, initialAyah) { mutableStateOf<Int?>(initialAyah.coerceAtLeast(1)) }
     var hideVerseText by remember { mutableStateOf(true) }
+    var showTafsirCard by remember { mutableStateOf(false) }
+    var showManualInput by remember { mutableStateOf(false) }
     var manualReciteInput by remember { mutableStateOf("") }
     var showPlanDialog by remember { mutableStateOf(false) }
+    var showSurahPicker by remember { mutableStateOf(false) }
+    var showMoreToolsDialog by remember { mutableStateOf(false) }
+    var showTestModeDialog by remember { mutableStateOf(false) }
     var selectedTestMode by remember { mutableStateOf(HifzTestMode.HIDDEN_TEXT) }
     var pendingMicAction by remember { mutableStateOf("STT") } // "STT" or "RECORD"
 
@@ -153,7 +170,6 @@ fun HifzAiScreen(
         }
     }
 
-    // Android System RecognizerIntent Fallback Launcher (works even when OEM blocks background SpeechRecognizer)
     val systemSpeechFallbackLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -197,8 +213,8 @@ fun HifzAiScreen(
     }
 
     val activeVerse = verses.getOrNull(activeAyahIdx.coerceIn(0, (verses.size - 1).coerceAtLeast(0)))
+    val currentSurahMeta = remember(selectedSurah) { SurahCatalog.findSurah(selectedSurah) }
 
-    // Live compare when recognizer emits transcript
     LaunchedEffect(liveState.effectiveTranscript, activeVerse?.numberInSurah, liveState.isActive) {
         val spoken = liveState.effectiveTranscript
         if (spoken.isNotBlank() && activeVerse != null && liveState.isActive) {
@@ -207,15 +223,15 @@ fun HifzAiScreen(
     }
 
     val tabs = listOf(
-        L10n.pick(lang, "التسجيل والتسميع", "Record & Recite"),
-        L10n.pick(lang, "اختبارات الحفظ (8)", "8 Hifz Tests"),
-        L10n.pick(lang, "التسجيلات والخطط", "Archive & Plans")
+        L10n.pick(lang, "التسميع", "Recite"),
+        L10n.pick(lang, "الاختبار", "Test"),
+        L10n.pick(lang, "التقدم", "Progress")
     )
 
     Column(modifier = Modifier.fillMaxSize()) {
         NoorScreenHeader(
-            title = L10n.pick(lang, "نظام الحفظ والتسميع الذكي", "NOOR Quran Hifz System"),
-            subtitle = L10n.pick(lang, "تسجيل صوتي حقيقي · تعرف عربي · مقارنة كلمة بكلمة دون تخطئة عشوائية", "Real Audio Recording · Arabic STT · Word-Level Alignment"),
+            title = L10n.pick(lang, "الحفظ والتسميع", "Quran Memorization"),
+            subtitle = L10n.pick(lang, "واجهة هادئة للحفظ والتسميع والمراجعة", "Calm space for memorization, recitation & review"),
             onBack = onBack
         )
 
@@ -236,36 +252,99 @@ fun HifzAiScreen(
             return
         }
 
-        if (!globalConfig.featureListeningAssessmentEnabled) {
-            LiquidGlassCard(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                contentPadding = PaddingValues(12.dp)
+        // Compact Top Controls: Surah Picker + ONE unified "Choose Reciter" button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = { showSurahPicker = true },
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 48.dp)
+                    .testTag("hifz_surah_picker_btn"),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(1.dp, GoldPrimary.copy(alpha = 0.55f)),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
             ) {
-                Text(
-                    text = L10n.pick(
-                        lang,
-                        "تنبيه: التقييم الصوتي المباشر متوقف مؤقتاً من إعدادات الإدارة — يمكنك الاستمرار في الحفظ والمراجعة.",
-                        "Note: Live listening assessment is temporarily paused by Admin settings — memorization plans remain available."
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                Icon(
+                    imageVector = Icons.Rounded.MenuBook,
+                    contentDescription = L10n.pick(lang, "اختر السورة", "Choose Surah"),
+                    tint = noorColors.goldAccent,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = L10n.pick(lang, "السورة", "Surah"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1
+                    )
+                    Text(
+                        text = "${currentSurahMeta.number}. ${L10n.pick(lang, currentSurahMeta.nameAr, currentSurahMeta.nameEn)}",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = noorColors.goldAccent,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            ChooseReciterButton(
+                selectedReciter = selectedReciter,
+                onSelectReciter = { viewModel.selectReciter(it) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(Modifier.height(10.dp))
+
+        // Clean 3-Section Switcher + Organized "More" Tools Menu
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            tabs.forEachIndexed { idx, label ->
+                LiquidGlassChip(
+                    label = label,
+                    selected = selectedTab == idx,
+                    onClick = { selectedTab = idx },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("hifz_tab_$idx")
+                )
+            }
+            OutlinedButton(
+                onClick = { showMoreToolsDialog = true },
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .testTag("hifz_more_options_btn"),
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Tune,
+                    contentDescription = L10n.pick(lang, "المزيد من الأدوات", "More Tools"),
+                    tint = noorColors.goldAccent,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }
 
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(tabs.size) { idx ->
-                LiquidGlassChip(tabs[idx], selectedTab == idx, { selectedTab = idx }, Modifier.testTag("hifz_tab_$idx"))
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-
-        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(quickSurahs) { sNum ->
-                val meta = SurahCatalog.findSurah(sNum)
-                LiquidGlassChip("${meta.number}. ${meta.nameAr}", selectedSurah == sNum, { selectedSurah = sNum })
-            }
-        }
         Spacer(Modifier.height(10.dp))
 
         LazyColumn(
@@ -274,37 +353,46 @@ fun HifzAiScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             when (selectedTab) {
-                // 0: Real Audio Recording + Repaired Arabic STT + Word-Level Assessment
+                // 0: Clean Recitation & Memorization Primary View
                 0 -> {
                     item {
                         LiquidGlassCard(strong = true, goldBorder = true) {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(
-                                    text = L10n.pick(lang, "١) التسجيل الصوتي الحقيقي للتلاوة (M4A)", "1) Real Audio Recording (M4A)"),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = noorColors.goldAccent
-                                )
-                                IconButton(onClick = { hideVerseText = !hideVerseText }) {
-                                    Icon(
-                                        if (hideVerseText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
-                                        contentDescription = "Toggle Verse Visibility"
-                                    )
-                                }
-                            }
-
                             if (activeVerse != null) {
+                                // Header row: Ayah position + Show/Hide text toggle
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text(
+                                        text = L10n.pick(
+                                            lang,
+                                            "سورة ${currentSurahMeta.nameAr} · آية ${activeVerse.numberInSurah} / ${verses.size}",
+                                            "${currentSurahMeta.nameEn} · Ayah ${activeVerse.numberInSurah} / ${verses.size}"
+                                        ),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = noorColors.goldAccent
+                                    )
+                                    IconButton(
+                                        onClick = { hideVerseText = !hideVerseText },
+                                        modifier = Modifier.testTag("hifz_toggle_hide_text_btn")
+                                    ) {
+                                        Icon(
+                                            imageVector = if (hideVerseText) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                                            contentDescription = L10n.pick(lang, "إظهار أو إخفاء الآية", "Show or hide Ayah")
+                                        )
+                                    }
+                                }
+
                                 WarmIvoryParchmentCard {
                                     Text(
-                                        text = "سورة ${SurahCatalog.findSurah(selectedSurah).nameAr} · آية ${activeVerse.numberInSurah} من ${verses.size}",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = GoldPrimary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(Modifier.height(6.dp))
-                                    Text(
                                         text = if (hideVerseText) {
-                                            "••••••••••••••••••••••\n(النص مخفي لاختبار الحفظ — اضغط أيقونة العين للمراجعة)"
+                                            L10n.pick(
+                                                lang,
+                                                "••••••••••••••\n(النص مخفي لاختبار الحفظ — اضغط العين للإظهار)",
+                                                "••••••••••••••\n(Verse hidden — tap the eye icon to reveal)"
+                                            )
                                         } else {
                                             activeVerse.textUthmani
                                         },
@@ -317,34 +405,103 @@ fun HifzAiScreen(
                                     )
                                 }
 
-                                Spacer(Modifier.height(10.dp))
-                                // MediaRecorder Controls
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                // Optional Tafsir View (toggled from More Options)
+                                AnimatedVisibility(visible = showTafsirCard && activeVerse.tafsirAr.isNotBlank()) {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                        Text(
+                                            text = L10n.pick(lang, "التفسير الميسر", "Tafsir"),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = noorColors.goldAccent
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            text = activeVerse.tafsirAr,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+
+                                Spacer(Modifier.height(12.dp))
+
+                                // 3 Clean Primary Actions: Listen to Sheikh | Record | Live Recite
+                                val isPlayingThisVerse = audioState.isPlaying &&
+                                    audioState.playingSurah == activeVerse.surahNumber &&
+                                    audioState.playingAyah == activeVerse.numberInSurah
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // 1) Listen to Selected Sheikh
+                                    Button(
+                                        onClick = {
+                                            if (isPlayingThisVerse) {
+                                                viewModel.stopAudio()
+                                            } else {
+                                                viewModel.playReferenceAyah(
+                                                    surahNumber = activeVerse.surahNumber,
+                                                    ayahNumber = activeVerse.numberInSurah,
+                                                    explicitReciter = selectedReciter
+                                                )
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 48.dp)
+                                            .testTag("hifz_listen_sheikh_btn"),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = EmeraldPrimary,
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(14.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPlayingThisVerse) Icons.Rounded.Stop else Icons.Rounded.VolumeUp,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = if (isPlayingThisVerse) {
+                                                L10n.pick(lang, "إيقاف", "Stop")
+                                            } else {
+                                                L10n.pick(lang, "استماع", "Listen")
+                                            },
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    // 2) Record Voice (Real M4A)
                                     if (!recState.isRecordingOrPaused) {
-                                        Button(
+                                        OutlinedButton(
                                             onClick = {
                                                 pendingMicAction = "RECORD"
                                                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                             },
-                                            modifier = Modifier.weight(1f).testTag("hifz_record_start_btn"),
-                                            colors = ButtonDefaults.buttonColors(containerColor = SemanticError, contentColor = Color.White)
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 48.dp)
+                                                .testTag("hifz_record_start_btn"),
+                                            shape = RoundedCornerShape(14.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                                         ) {
-                                            Icon(Icons.Rounded.FiberManualRecord, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Icon(
+                                                imageVector = Icons.Rounded.FiberManualRecord,
+                                                contentDescription = null,
+                                                tint = SemanticError,
+                                                modifier = Modifier.size(16.dp)
+                                            )
                                             Spacer(Modifier.width(4.dp))
-                                            Text(L10n.pick(lang, "تسجيل صوتي", "Record Audio"))
+                                            Text(
+                                                text = L10n.pick(lang, "تسجيل", "Record"),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
                                     } else {
-                                        OutlinedButton(
-                                            onClick = {
-                                                if (recState.status == RecitationRecordingStatus.PAUSED) viewModel.resumeRecitationRecording()
-                                                else viewModel.pauseRecitationRecording()
-                                            },
-                                            modifier = Modifier.weight(1f).testTag("hifz_record_pause_btn")
-                                        ) {
-                                            Icon(if (recState.status == RecitationRecordingStatus.PAUSED) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, contentDescription = null)
-                                            Spacer(Modifier.width(4.dp))
-                                            Text(if (recState.status == RecitationRecordingStatus.PAUSED) "استئناف" else "إيقاف مؤقت")
-                                        }
                                         Button(
                                             onClick = {
                                                 viewModel.stopRecitationRecording(
@@ -354,120 +511,107 @@ fun HifzAiScreen(
                                                     testMode = selectedTestMode.key
                                                 )
                                             },
-                                            modifier = Modifier.testTag("hifz_record_stop_btn"),
-                                            colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 48.dp)
+                                                .testTag("hifz_record_stop_btn"),
+                                            colors = ButtonDefaults.buttonColors(containerColor = SemanticError, contentColor = Color.White),
+                                            shape = RoundedCornerShape(14.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                                         ) {
-                                            Icon(Icons.Rounded.Stop, contentDescription = null)
+                                            Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text("حفظ")
+                                            Text(L10n.pick(lang, "حفظ", "Save"), maxLines = 1)
                                         }
                                     }
-                                    OutlinedButton(onClick = { viewModel.playReferenceAyah(activeVerse.surahNumber, activeVerse.numberInSurah) }) {
-                                        Icon(Icons.Rounded.VolumeUp, contentDescription = "Reference Sheikh")
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(L10n.pick(lang, "القارئ", "Sheikh"))
-                                    }
-                                }
 
-                                if (recState.isRecordingOrPaused) {
-                                    Spacer(Modifier.height(6.dp))
-                                    val sec = recState.elapsedMs / 1000
-                                    Text(
-                                        text = L10n.pick(
-                                            lang,
-                                            "جارٍ التسجيل: %02d:%02d".format(sec / 60, sec % 60),
-                                            "Recording: %02d:%02d".format(sec / 60, sec % 60)
-                                        ),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = SemanticError,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    LinearProgressIndicator(
-                                        progress = { recState.amplitudeNormalized },
-                                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(4.dp)),
-                                        color = SemanticError
-                                    )
-                                }
-
-                                recState.lastSavedFilePath?.let { savedPath ->
-                                    Spacer(Modifier.height(6.dp))
-                                    val isPlayingThis = playbackState.isPlaying && playbackState.playingFilePath == savedPath
-                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-                                        Text(
-                                            text = "آخر تسجيل محفوظ (${recState.lastSavedDurationMs / 1000} ث · ${recState.lastSavedSizeBytes / 1024} KB)",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = SemanticSuccess
-                                        )
-                                        OutlinedButton(
-                                            onClick = {
-                                                if (isPlayingThis) viewModel.stopSavedRecording()
-                                                else viewModel.playSavedRecording(savedPath)
-                                            },
-                                            modifier = Modifier.testTag("hifz_play_last_recording_btn")
-                                        ) {
-                                            Icon(if (isPlayingThis) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, contentDescription = null)
-                                            Spacer(Modifier.width(4.dp))
-                                            Text(if (isPlayingThis) "إيقاف" else "استمع لتلاوتك")
-                                        }
-                                    }
-                                }
-                                recState.errorAr?.let { err ->
-                                    Text(L10n.pick(lang, err, recState.errorEn ?: err), style = MaterialTheme.typography.labelSmall, color = SemanticError)
-                                }
-
-                                Spacer(Modifier.height(10.dp))
-                                // Speech-to-Text Controls + System Fallback
-                                Text(
-                                    text = L10n.pick(lang, "٢) التعرف الصوتي العربي والتصحيح المباشر", "2) Arabic Speech Recognition & Evaluation"),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = noorColors.goldAccent
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    // 3) Live Recite & Evaluate (Arabic STT)
                                     if (!liveState.isActive && liveState.status != LiveRecitationStatus.PAUSED) {
                                         Button(
                                             onClick = {
                                                 pendingMicAction = "STT"
                                                 micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                             },
-                                            modifier = Modifier.weight(1f).testTag("hifz_start_mic_btn"),
-                                            colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 48.dp)
+                                                .testTag("hifz_start_mic_btn"),
+                                            colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep),
+                                            shape = RoundedCornerShape(14.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                                         ) {
-                                            Icon(Icons.Rounded.Mic, contentDescription = null)
+                                            Icon(Icons.Rounded.Mic, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text(L10n.pick(lang, "تسميع مباشر", "Live STT"))
+                                            Text(
+                                                text = L10n.pick(lang, "تسميع", "Recite"),
+                                                fontWeight = FontWeight.Bold,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
                                         }
                                     } else {
-                                        OutlinedButton(
-                                            onClick = {
-                                                if (liveState.status == LiveRecitationStatus.PAUSED) viewModel.resumeHifzLiveMic()
-                                                else viewModel.pauseHifzLiveMic()
-                                            },
-                                            modifier = Modifier.weight(1f)
+                                        Button(
+                                            onClick = { viewModel.stopHifzLiveMic(clearTranscript = false) },
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 48.dp)
+                                                .testTag("hifz_stop_mic_btn"),
+                                            colors = ButtonDefaults.buttonColors(containerColor = GoldBright, contentColor = EmeraldDeep),
+                                            shape = RoundedCornerShape(14.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 10.dp)
                                         ) {
-                                            Icon(if (liveState.status == LiveRecitationStatus.PAUSED) Icons.Rounded.PlayArrow else Icons.Rounded.Pause, contentDescription = null)
+                                            Icon(Icons.Rounded.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
                                             Spacer(Modifier.width(4.dp))
-                                            Text(if (liveState.status == LiveRecitationStatus.PAUSED) "استئناف" else "إيقاف مؤقت")
+                                            Text(L10n.pick(lang, "إنهاء", "Stop"), fontWeight = FontWeight.Bold, maxLines = 1)
                                         }
-                                        OutlinedButton(onClick = { viewModel.stopHifzLiveMic(clearTranscript = false) }) {
-                                            Icon(Icons.Rounded.Stop, contentDescription = "Stop STT")
-                                        }
-                                    }
-                                    OutlinedButton(
-                                        onClick = {
-                                            runCatching { systemSpeechFallbackLauncher.launch(viewModel.buildSystemSpeechIntent()) }
-                                        },
-                                        modifier = Modifier.testTag("hifz_system_stt_fallback_btn")
-                                    ) {
-                                        Icon(Icons.Rounded.RecordVoiceOver, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(L10n.pick(lang, "إملاء بديل", "System Voice"))
                                     }
                                 }
 
+                                // Live Recording Status (only shown while recording)
+                                if (recState.isRecordingOrPaused) {
+                                    Spacer(Modifier.height(8.dp))
+                                    val sec = recState.elapsedMs / 1000
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = L10n.pick(
+                                                lang,
+                                                "جارٍ التسجيل: %02d:%02d".format(sec / 60, sec % 60),
+                                                "Recording: %02d:%02d".format(sec / 60, sec % 60)
+                                            ),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = SemanticError,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        TextButton(
+                                            onClick = {
+                                                if (recState.status == RecitationRecordingStatus.PAUSED) viewModel.resumeRecitationRecording()
+                                                else viewModel.pauseRecitationRecording()
+                                            },
+                                            modifier = Modifier.testTag("hifz_record_pause_btn")
+                                        ) {
+                                            Icon(
+                                                if (recState.status == RecitationRecordingStatus.PAUSED) Icons.Rounded.PlayArrow else Icons.Rounded.Pause,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(if (recState.status == RecitationRecordingStatus.PAUSED) L10n.pick(lang, "استئناف", "Resume") else L10n.pick(lang, "إيقاف مؤقت", "Pause"))
+                                        }
+                                    }
+                                    LinearProgressIndicator(
+                                        progress = { recState.amplitudeNormalized },
+                                        modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(4.dp)),
+                                        color = SemanticError
+                                    )
+                                }
+
+                                // Live Speech-to-Text Status & Transcript (only shown when active or captured)
                                 if (liveState.isActive) {
-                                    Spacer(Modifier.height(4.dp))
+                                    Spacer(Modifier.height(8.dp))
                                     LinearProgressIndicator(
                                         progress = { liveState.rmsLevel.coerceIn(0.08f, 1f) },
                                         modifier = Modifier.fillMaxWidth().height(4.dp),
@@ -475,53 +619,117 @@ fun HifzAiScreen(
                                     )
                                 }
                                 if (liveState.statusNoteAr.isNotBlank()) {
+                                    Spacer(Modifier.height(4.dp))
                                     Text(L10n.pick(lang, liveState.statusNoteAr, liveState.statusNoteEn), style = MaterialTheme.typography.labelSmall, color = noorColors.goldAccent)
                                 }
                                 if (liveState.errorMessageAr.isNotBlank()) {
+                                    Spacer(Modifier.height(4.dp))
                                     Text(L10n.pick(lang, liveState.errorMessageAr, liveState.errorMessageEn), style = MaterialTheme.typography.labelSmall, color = SemanticError)
                                 }
-                                if (liveState.effectiveTranscript.isNotBlank()) {
+                                recState.errorAr?.let { err ->
                                     Spacer(Modifier.height(4.dp))
-                                    Text(
-                                        text = "النص الملتقط: ${liveState.effectiveTranscript}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
+                                    Text(L10n.pick(lang, err, recState.errorEn ?: err), style = MaterialTheme.typography.labelSmall, color = SemanticError)
                                 }
 
-                                Spacer(Modifier.height(8.dp))
-                                OutlinedTextField(
-                                    value = manualReciteInput,
-                                    onValueChange = { manualReciteInput = it },
-                                    label = { Text(L10n.pick(lang, "أو اكتب / عدّل النص المتلو للتقييم الدقيق", "Or type / edit recited text to evaluate")) },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(Modifier.height(6.dp))
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Button(
-                                        onClick = {
-                                            val input = manualReciteInput.ifBlank { liveState.effectiveTranscript }
-                                            viewModel.evaluateRecitedVerses(listOf(activeVerse), input, testMode = selectedTestMode.key)
-                                        },
-                                        modifier = Modifier.weight(1f).testTag("hifz_evaluate_btn"),
-                                        colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
+                                if (liveState.effectiveTranscript.isNotBlank()) {
+                                    Spacer(Modifier.height(8.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
-                                        Icon(Icons.Rounded.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(4.dp))
-                                        Text(L10n.pick(lang, "تقييم التلاوة كلمة بكلمة", "Word-by-Word Check"))
+                                        Text(
+                                            text = "${L10n.pick(lang, "النص الملتقط", "Recognized")}: ${liveState.effectiveTranscript}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        TextButton(
+                                            onClick = {
+                                                viewModel.evaluateRecitedVerses(
+                                                    listOf(activeVerse),
+                                                    liveState.effectiveTranscript,
+                                                    testMode = selectedTestMode.key
+                                                )
+                                            },
+                                            modifier = Modifier.testTag("hifz_evaluate_btn")
+                                        ) {
+                                            Text(L10n.pick(lang, "تقييم", "Check"))
+                                        }
                                     }
-                                    TextButton(onClick = {
-                                        manualReciteInput = ""
-                                        viewModel.clearHifzTranscript()
-                                    }) { Text("مسح") }
                                 }
 
+                                // Latest Saved Recording quick play bar (only when a recording was just saved)
+                                recState.lastSavedFilePath?.let { savedPath ->
+                                    Spacer(Modifier.height(8.dp))
+                                    val isPlayingThis = playbackState.isPlaying && playbackState.playingFilePath == savedPath
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = L10n.pick(
+                                                lang,
+                                                "آخر تسجيل (${recState.lastSavedDurationMs / 1000} ث)",
+                                                "Last recording (${recState.lastSavedDurationMs / 1000}s)"
+                                            ),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = SemanticSuccess
+                                        )
+                                        TextButton(
+                                            onClick = {
+                                                if (isPlayingThis) viewModel.stopSavedRecording()
+                                                else viewModel.playSavedRecording(savedPath)
+                                            },
+                                            modifier = Modifier.testTag("hifz_play_last_recording_btn")
+                                        ) {
+                                            Icon(if (isPlayingThis) Icons.Rounded.Stop else Icons.Rounded.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(4.dp))
+                                            Text(if (isPlayingThis) L10n.pick(lang, "إيقاف", "Stop") else L10n.pick(lang, "استمع لتلاوتك", "Play Recording"))
+                                        }
+                                    }
+                                }
+
+                                // Optional Manual Input Evaluation (toggled from More Options — keeps idle view uncluttered)
+                                AnimatedVisibility(visible = showManualInput) {
+                                    Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                                        OutlinedTextField(
+                                            value = manualReciteInput,
+                                            onValueChange = { manualReciteInput = it },
+                                            label = { Text(L10n.pick(lang, "اكتب أو عدّل النص المتلو للتقييم", "Type or edit recited text")) },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Spacer(Modifier.height(6.dp))
+                                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            Button(
+                                                onClick = {
+                                                    val input = manualReciteInput.ifBlank { liveState.effectiveTranscript }
+                                                    viewModel.evaluateRecitedVerses(listOf(activeVerse), input, testMode = selectedTestMode.key)
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
+                                            ) {
+                                                Icon(Icons.Rounded.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp))
+                                                Spacer(Modifier.width(4.dp))
+                                                Text(L10n.pick(lang, "تقييم كلمة بكلمة", "Word-by-Word Check"))
+                                            }
+                                            TextButton(onClick = {
+                                                manualReciteInput = ""
+                                                viewModel.clearHifzTranscript()
+                                            }) { Text(L10n.pick(lang, "مسح", "Clear")) }
+                                        }
+                                    }
+                                }
+
+                                Spacer(Modifier.height(6.dp))
+                                HorizontalDivider(color = noorColors.goldAccent.copy(alpha = 0.16f))
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     TextButton(onClick = { if (activeAyahIdx > 0) activeAyahIdx-- }, enabled = activeAyahIdx > 0) {
-                                        Text("← الآية السابقة")
+                                        Text(L10n.pick(lang, "← الآية السابقة", "← Previous"))
                                     }
                                     TextButton(onClick = { if (activeAyahIdx < verses.lastIndex) activeAyahIdx++ }, enabled = activeAyahIdx < verses.lastIndex) {
-                                        Text("الآية التالية →")
+                                        Text(L10n.pick(lang, "الآية التالية →", "Next →"))
                                     }
                                 }
                             }
@@ -533,27 +741,24 @@ fun HifzAiScreen(
                     }
                 }
 
-                // 1: Complete 8 Memorization Test Modes + Weak Verses
+                // 1: Memorization Test (Clean Single Test-Mode Picker + Drill Card + Weak Verses)
                 1 -> {
                     item {
-                        LiquidGlassCard(strong = true, goldBorder = true) {
+                        OutlinedButton(
+                            onClick = { showTestModeDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp)
+                                .testTag("hifz_test_mode_picker_btn"),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, GoldPrimary.copy(alpha = 0.6f))
+                        ) {
                             Text(
-                                text = L10n.pick(lang, "اختر نمط اختبار الحفظ (٨ أنماط حقيقية)", "Choose Memorization Test Mode (8 Modes)"),
-                                style = MaterialTheme.typography.titleSmall,
+                                text = "${L10n.pick(lang, "نمط الاختبار", "Test Mode")}: ${L10n.pick(lang, selectedTestMode.labelAr, selectedTestMode.labelEn)}",
                                 fontWeight = FontWeight.Bold,
-                                color = noorColors.goldAccent
+                                modifier = Modifier.weight(1f)
                             )
-                            Spacer(Modifier.height(8.dp))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                HifzTestMode.entries.forEach { mode ->
-                                    LiquidGlassChip(
-                                        label = L10n.pick(lang, mode.labelAr, mode.labelEn),
-                                        selected = selectedTestMode == mode,
-                                        onClick = { selectedTestMode = mode },
-                                        modifier = Modifier.testTag("hifz_mode_${mode.key.lowercase()}")
-                                    )
-                                }
-                            }
+                            Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = null, tint = noorColors.goldAccent)
                         }
                     }
 
@@ -586,9 +791,9 @@ fun HifzAiScreen(
                             val promptDisplay = when (selectedTestMode) {
                                 HifzTestMode.COMPLETE_MISSING -> "${words.take((words.size / 2).coerceAtLeast(2)).joinToString(" ")} ......."
                                 HifzTestMode.CONTINUE_FROM_VERSE -> "${promptVerse.textUthmani}\n← أكمل الآية التالية (${promptVerse.numberInSurah + 1})"
-                                HifzTestMode.FULL_SURAH -> "اتلُ سورة ${SurahCatalog.findSurah(selectedSurah).nameAr} كاملة (${verses.size} آيات)"
+                                HifzTestMode.FULL_SURAH -> "اتلُ سورة ${currentSurahMeta.nameAr} كاملة (${verses.size} آيات)"
                                 HifzTestMode.DAILY_TEST -> "اختبار الورد اليومي: الآيات 1 إلى ${targetVerses.last().numberInSurah}"
-                                else -> "اتلُ غيباً: سورة ${SurahCatalog.findSurah(selectedSurah).nameAr} — آية ${promptVerse.numberInSurah}"
+                                else -> "اتلُ غيباً: سورة ${currentSurahMeta.nameAr} — آية ${promptVerse.numberInSurah}"
                             }
 
                             LiquidGlassCard(strong = true) {
@@ -614,7 +819,7 @@ fun HifzAiScreen(
                                 OutlinedTextField(
                                     value = testAnswerText,
                                     onValueChange = { testAnswerText = it },
-                                    label = { Text("أدخل تلاوتك أو استخدم الإملاء الصوتي للتصحيح الفوري") },
+                                    label = { Text(L10n.pick(lang, "أدخل تلاوتك للتصحيح الفوري", "Enter recitation to evaluate")) },
                                     modifier = Modifier.fillMaxWidth()
                                 )
                                 Spacer(Modifier.height(8.dp))
@@ -626,9 +831,9 @@ fun HifzAiScreen(
                                         },
                                         modifier = Modifier.weight(1f),
                                         colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
-                                    ) { Text("تصحيح الاختبار") }
+                                    ) { Text(L10n.pick(lang, "تصحيح", "Grade")) }
                                     OutlinedButton(onClick = { showAnswer = !showAnswer }) {
-                                        Text(if (showAnswer) "إخفاء" else "إظهار")
+                                        Text(if (showAnswer) L10n.pick(lang, "إخفاء", "Hide") else L10n.pick(lang, "إظهار", "Reveal"))
                                     }
                                     OutlinedButton(onClick = {
                                         drillIndex = if (selectedTestMode == HifzTestMode.RANDOM_VERSE) {
@@ -638,7 +843,7 @@ fun HifzAiScreen(
                                         }
                                         showAnswer = false
                                         testAnswerText = ""
-                                    }) { Text("التالي") }
+                                    }) { Text(L10n.pick(lang, "التالي", "Next")) }
                                 }
                             }
                         }
@@ -646,33 +851,74 @@ fun HifzAiScreen(
 
                     report?.let { r -> item { RecitationAssessmentReportCard(report = r) } }
 
-                    item { NoorSectionHeader(title = L10n.pick(lang, "الآيات الأكثر حاجة للمراجعة (${weakVerses.size})", "Weak Verses (${weakVerses.size})")) }
-                    items(weakVerses, key = { "weak_${it.id}" }) { w ->
-                        val s = SurahCatalog.findSurah(w.surahNumber)
-                        LiquidGlassCard {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text("سورة ${s.nameAr} — آية ${w.ayahNumber}", fontWeight = FontWeight.Bold)
-                                    Text("مرات الخطأ: ${w.missCount} · ${w.lastMistakeNote}", style = MaterialTheme.typography.bodySmall)
-                                }
-                                IconButton(onClick = { viewModel.playReferenceAyah(w.surahNumber, w.ayahNumber) }) {
-                                    Icon(Icons.Rounded.VolumeUp, contentDescription = "Listen")
-                                }
-                                IconButton(onClick = { viewModel.markWeakVerseResolved(w.id, !w.resolved) }) {
-                                    Icon(Icons.Rounded.CheckCircle, contentDescription = "Resolve", tint = if (w.resolved) SemanticSuccess else MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (weakVerses.isNotEmpty()) {
+                        item { NoorSectionHeader(title = L10n.pick(lang, "الآيات الأكثر حاجة للمراجعة (${weakVerses.size})", "Weak Verses (${weakVerses.size})")) }
+                        items(weakVerses, key = { "weak_${it.id}" }) { w ->
+                            val s = SurahCatalog.findSurah(w.surahNumber)
+                            LiquidGlassCard {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text("سورة ${s.nameAr} — آية ${w.ayahNumber}", fontWeight = FontWeight.Bold)
+                                        Text("مرات الخطأ: ${w.missCount} · ${w.lastMistakeNote}", style = MaterialTheme.typography.bodySmall)
+                                    }
+                                    IconButton(onClick = {
+                                        viewModel.playReferenceAyah(w.surahNumber, w.ayahNumber, explicitReciter = selectedReciter)
+                                    }) {
+                                        Icon(Icons.Rounded.VolumeUp, contentDescription = "Listen")
+                                    }
+                                    IconButton(onClick = { viewModel.markWeakVerseResolved(w.id, !w.resolved) }) {
+                                        Icon(Icons.Rounded.CheckCircle, contentDescription = "Resolve", tint = if (w.resolved) SemanticSuccess else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                // 2: Saved Recitation Recordings Archive + Plans + Logs
+                // 2: Progress Tracking, Memorization Plans & Saved Recordings Archive
                 2 -> {
-                    item { NoorSectionHeader(title = L10n.pick(lang, "أرشيف تسجيلات التلاوة (${recordings.size})", "Saved Recitation Recordings (${recordings.size})")) }
+                    item {
+                        Button(
+                            onClick = { showPlanDialog = true },
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
+                        ) {
+                            Icon(Icons.Rounded.Add, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(L10n.pick(lang, "إنشاء جدول حفظ ومراجعة شخصي", "Create Memorization Plan"))
+                        }
+                    }
+                    items(plans, key = { "plan_${it.id}" }) { p ->
+                        val surah = SurahCatalog.findSurah(p.targetSurahNumber)
+                        val progress = ((p.currentAyah - p.fromAyah + 1).toFloat() / (p.toAyah - p.fromAyah + 1).coerceAtLeast(1)).coerceIn(0f, 1f)
+                        LiquidGlassCard {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(p.title, fontWeight = FontWeight.Bold)
+                                    Text("سورة ${surah.nameAr} (${p.fromAyah}–${p.toAyah}) · وصلت إلى آية ${p.currentAyah}", style = MaterialTheme.typography.bodySmall, color = noorColors.goldAccent)
+                                }
+                                IconButton(onClick = { viewModel.deleteHifzPlan(p.id) }) {
+                                    Icon(Icons.Rounded.Delete, contentDescription = "Delete Plan", tint = SemanticError)
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = GoldPrimary)
+                            Spacer(Modifier.height(8.dp))
+                            Button(
+                                onClick = { viewModel.advanceHifzPlan(p) },
+                                enabled = !p.isCompleted,
+                                colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
+                            ) {
+                                Text(if (p.isCompleted) "مكتمل بحمد الله ✓" else "تسجيل ورد اليوم (+${p.dailyAyahTarget} آيات)")
+                            }
+                        }
+                    }
+
+                    item { NoorSectionHeader(title = L10n.pick(lang, "أرشيف تسجيلات التلاوة (${recordings.size})", "Saved Recordings (${recordings.size})")) }
                     if (recordings.isEmpty()) {
                         item {
                             LiquidGlassCard {
-                                Text("لا توجد تسجيلات صوتية محفوظة بعد. استخدم زر «تسجيل صوتي» في التبويب الأول لحفظ تلاوتك ومراجعتها.")
+                                Text(L10n.pick(lang, "لا توجد تسجيلات صوتية محفوظة بعد. استخدم زر «تسجيل» لحفظ تلاوتك.", "No saved recordings yet. Use 'Record' to save your recitation."))
                             }
                         }
                     }
@@ -712,45 +958,8 @@ fun HifzAiScreen(
                     }
 
                     item {
-                        Button(
-                            onClick = { showPlanDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
-                        ) {
-                            Icon(Icons.Rounded.Add, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text(L10n.pick(lang, "إنشاء جدول حفظ ومراجعة شخصي", "Create Memorization Schedule"))
-                        }
-                    }
-                    items(plans, key = { "plan_${it.id}" }) { p ->
-                        val surah = SurahCatalog.findSurah(p.targetSurahNumber)
-                        val progress = ((p.currentAyah - p.fromAyah + 1).toFloat() / (p.toAyah - p.fromAyah + 1).coerceAtLeast(1)).coerceIn(0f, 1f)
-                        LiquidGlassCard {
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(p.title, fontWeight = FontWeight.Bold)
-                                    Text("سورة ${surah.nameAr} (${p.fromAyah}–${p.toAyah}) · وصلت إلى آية ${p.currentAyah}", style = MaterialTheme.typography.bodySmall, color = noorColors.goldAccent)
-                                }
-                                IconButton(onClick = { viewModel.deleteHifzPlan(p.id) }) {
-                                    Icon(Icons.Rounded.Delete, contentDescription = "Delete Plan", tint = SemanticError)
-                                }
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth(), color = GoldPrimary)
-                            Spacer(Modifier.height(8.dp))
-                            Button(
-                                onClick = { viewModel.advanceHifzPlan(p) },
-                                enabled = !p.isCompleted,
-                                colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
-                            ) {
-                                Text(if (p.isCompleted) "مكتمل بحمد الله ✓" else "تسجيل ورد اليوم (+${p.dailyAyahTarget} آيات)")
-                            }
-                        }
-                    }
-
-                    item {
                         val avgAcc = if (logs.isEmpty()) 0 else logs.map { it.accuracyPercent }.average().toInt()
-                        NoorSectionHeader(title = "سجل جلسات التسميع (المتوسط $avgAcc%)")
+                        NoorSectionHeader(title = L10n.pick(lang, "سجل جلسات التسميع (المتوسط $avgAcc%)", "Revision Log (Avg $avgAcc%)"))
                     }
                     items(logs.take(15), key = { "log_${it.id}" }) { log ->
                         val s = SurahCatalog.findSurah(log.surahNumber)
@@ -769,6 +978,172 @@ fun HifzAiScreen(
                 }
             }
         }
+    }
+
+    // Clean Surah Picker Dialog (replaces 12 cluttered horizontal chips!)
+    if (showSurahPicker) {
+        var query by remember { mutableStateOf("") }
+        val filtered = remember(query) {
+            val q = query.trim()
+            if (q.isBlank()) SurahCatalog.allSurahs
+            else SurahCatalog.allSurahs.filter {
+                it.nameAr.contains(q, ignoreCase = true) ||
+                    it.nameEn.contains(q, ignoreCase = true) ||
+                    it.number.toString() == q
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { showSurahPicker = false },
+            modifier = Modifier.testTag("hifz_surah_picker_dialog"),
+            title = { Text(L10n.pick(lang, "اختر السورة", "Choose Surah"), fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        label = { Text(L10n.pick(lang, "ابحث باسم السورة أو رقمها", "Search Surah name or number")) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(filtered, key = { it.number }) { s ->
+                            val isSel = s.number == selectedSurah
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable {
+                                        selectedSurah = s.number
+                                        showSurahPicker = false
+                                    },
+                                color = if (isSel) GoldPrimary.copy(alpha = 0.16f) else Color.Transparent
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("${s.number}. ${L10n.pick(lang, s.nameAr, s.nameEn)}", fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
+                                    if (isSel) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = noorColors.goldAccent, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSurahPicker = false }) { Text(L10n.pick(lang, "إغلاق", "Close")) } }
+        )
+    }
+
+    // Organized Secondary Tools Menu (Mushaf View, Tafsir, System Voice Dictation, Manual Input)
+    if (showMoreToolsDialog) {
+        AlertDialog(
+            onDismissRequest = { showMoreToolsDialog = false },
+            modifier = Modifier.testTag("hifz_more_options_dialog"),
+            title = { Text(L10n.pick(lang, "أدوات الحفظ الإضافية", "More Memorization Tools"), fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            showMoreToolsDialog = false
+                            onOpenMushaf(selectedSurah)
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("hifz_open_mushaf_btn")
+                    ) {
+                        Icon(Icons.Rounded.MenuBook, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(L10n.pick(lang, "فتح السورة في المصحف", "Open Surah in Mushaf"), modifier = Modifier.weight(1f))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showTafsirCard = !showTafsirCard
+                            selectedTab = 0
+                            showMoreToolsDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("hifz_toggle_tafsir_btn")
+                    ) {
+                        Icon(Icons.Rounded.AutoStories, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (showTafsirCard) L10n.pick(lang, "إخفاء التفسير", "Hide Tafsir")
+                            else L10n.pick(lang, "عرض تفسير الآية", "Show Verse Tafsir"),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showMoreToolsDialog = false
+                            runCatching { systemSpeechFallbackLauncher.launch(viewModel.buildSystemSpeechIntent()) }
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("hifz_system_stt_fallback_btn")
+                    ) {
+                        Icon(Icons.Rounded.RecordVoiceOver, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(L10n.pick(lang, "إملاء صوتي عبر النظام (بديل)", "System Voice Dictation"), modifier = Modifier.weight(1f))
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            showManualInput = !showManualInput
+                            selectedTab = 0
+                            showMoreToolsDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("hifz_toggle_manual_input_btn")
+                    ) {
+                        Icon(Icons.Rounded.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (showManualInput) L10n.pick(lang, "إخفاء التصحيح اليدوي", "Hide Manual Check")
+                            else L10n.pick(lang, "كتابة / تعديل النص للتصحيح", "Manual Text Evaluation"),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showMoreToolsDialog = false }) { Text(L10n.pick(lang, "إغلاق", "Close")) } }
+        )
+    }
+
+    // 8 Memorization Test Modes Selector Dialog
+    if (showTestModeDialog) {
+        AlertDialog(
+            onDismissRequest = { showTestModeDialog = false },
+            modifier = Modifier.testTag("hifz_test_mode_dialog"),
+            title = { Text(L10n.pick(lang, "اختر نمط اختبار الحفظ", "Choose Memorization Test Mode"), fontWeight = FontWeight.Bold) },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 340.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(HifzTestMode.entries, key = { it.key }) { mode ->
+                        val isSel = selectedTestMode == mode
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    selectedTestMode = mode
+                                    showTestModeDialog = false
+                                }
+                                .testTag("hifz_mode_${mode.key.lowercase()}"),
+                            color = if (isSel) GoldPrimary.copy(alpha = 0.16f) else Color.Transparent
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(L10n.pick(lang, mode.labelAr, mode.labelEn), fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal)
+                                if (isSel) Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = noorColors.goldAccent, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showTestModeDialog = false }) { Text(L10n.pick(lang, "إغلاق", "Close")) } }
+        )
     }
 
     if (showPlanDialog) {

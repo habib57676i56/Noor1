@@ -624,7 +624,10 @@ fun NoorAppShell(
                                 HifzAiScreen(
                                     viewModel = ecosystemViewModel,
                                     onBack = { navController.popBackStack() },
-                                    globalConfig = globalConfig
+                                    globalConfig = globalConfig,
+                                    onOpenMushaf = { targetSurah ->
+                                        navController.navigate(NoorRoutes.quranReader(targetSurah.coerceIn(1, 114)))
+                                    }
                                 )
                             }
                             composable(
@@ -642,7 +645,10 @@ fun NoorAppShell(
                                     onBack = { navController.popBackStack() },
                                     globalConfig = globalConfig,
                                     initialSurah = initSurah,
-                                    initialAyah = initAyah
+                                    initialAyah = initAyah,
+                                    onOpenMushaf = { targetSurah ->
+                                        navController.navigate(NoorRoutes.quranReader(targetSurah.coerceIn(1, 114)))
+                                    }
                                 )
                             }
                             composable(NoorRoutes.LOCAL_AI) {

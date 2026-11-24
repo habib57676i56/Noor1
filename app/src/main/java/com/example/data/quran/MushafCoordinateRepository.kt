@@ -329,7 +329,32 @@ class MushafCoordinateRepository(private val appContext: Context) {
                 val groupedByAyah = glyphs.groupBy { it.surah to it.ayah }
                 val ayahRegions = groupedByAyah.entries.map { (key, ayahGlyphs) ->
                     val (surah, ayah) = key
-                    val lineSegments = ayahGlyphs
+                    val sortedGlyphs = ayahGlyphs.sortedBy { it.pos }
+
+                    // In King Fahd `ayahinfo_1024.db`, the final glyph of an Ayah is the decorative
+                    // circular Ayah number rosette (`۝`) at the left edge of the Ayah's final line,
+                    // characterized by a compact rosette aspect ratio (width <= height * 1.30).
+                    // Exclude it from highlight lineRegions & words so highlights NEVER cover the circle!
+                    val lastGlyph = sortedGlyphs.lastOrNull()
+                    val isEndMarkerGlyph = sortedGlyphs.size >= 2 && lastGlyph != null && run {
+                        val gw = (lastGlyph.maxX - lastGlyph.minX).coerceAtLeast(1)
+                        val gh = (lastGlyph.maxY - lastGlyph.minY).coerceAtLeast(1)
+                        val maxLine = sortedGlyphs.maxOf { it.line }
+                        lastGlyph.line == maxLine && gw.toFloat() <= gh.toFloat() * 1.30f
+                    }
+                    val endMarkerRect = if (isEndMarkerGlyph && lastGlyph != null) {
+                        NormalizedRect(
+                            left = (lastGlyph.minX / imgW).coerceIn(0f, 1f),
+                            top = (lastGlyph.minY / imgH).coerceIn(0f, 1f),
+                            right = (lastGlyph.maxX / imgW).coerceIn(0f, 1f),
+                            bottom = (lastGlyph.maxY / imgH).coerceIn(0f, 1f)
+                        )
+                    } else {
+                        null
+                    }
+                    val contentGlyphs = if (isEndMarkerGlyph) sortedGlyphs.dropLast(1) else sortedGlyphs
+
+                    val lineSegments = contentGlyphs
                         .groupBy { it.line }
                         .entries
                         .sortedBy { it.key }
@@ -347,8 +372,7 @@ class MushafCoordinateRepository(private val appContext: Context) {
                             )
                         }
 
-                    val wordRegions = ayahGlyphs
-                        .sortedBy { it.pos }
+                    val wordRegions = contentGlyphs
                         .mapIndexed { idx, g ->
                             WordRegion(
                                 surahNumber = surah,
@@ -371,7 +395,8 @@ class MushafCoordinateRepository(private val appContext: Context) {
                         pageNumber = pageNumber,
                         lineRegions = lineSegments,
                         words = wordRegions,
-                        hasSajdah = SAJDAH_VERSES.contains(surah to ayah)
+                        hasSajdah = SAJDAH_VERSES.contains(surah to ayah),
+                        endMarkerBounds = endMarkerRect
                     )
                 }
 
@@ -558,6 +583,7 @@ class MushafCoordinateRepository(private val appContext: Context) {
             // Allocate proportional RTL horizontal spans per line
             val wordRegionsByAyah = linkedMapOf<Pair<Int, Int>, MutableList<WordRegion>>()
             val lineSegmentsByAyah = linkedMapOf<Pair<Int, Int>, MutableList<AyahLineRegion>>()
+            val endMarkerByAyah = linkedMapOf<Pair<Int, Int>, NormalizedRect>()
 
             val wordsByLine = lineWords.groupBy { it.lineNumber }
             for ((lineNum, wordsOnLine) in wordsByLine) {
@@ -584,10 +610,13 @@ class MushafCoordinateRepository(private val appContext: Context) {
                     cursorRight = wordLeft
 
                     val ayahKey = w.surahNumber to w.ayahNumber
-                    perAyahLineMinX[ayahKey] = minOf(perAyahLineMinX[ayahKey] ?: 1f, wordLeft)
-                    perAyahLineMaxX[ayahKey] = maxOf(perAyahLineMaxX[ayahKey] ?: 0f, wordRight)
-
-                    if (!w.isEndMarker) {
+                    if (w.isEndMarker) {
+                        // Preserve exact horizontal space of the decorative Ayah number circle on the
+                        // Mushaf page, but NEVER include it in the Ayah's text highlight bounds!
+                        endMarkerByAyah[ayahKey] = NormalizedRect(wordLeft, lineTop, wordRight, lineBottom)
+                    } else {
+                        perAyahLineMinX[ayahKey] = minOf(perAyahLineMinX[ayahKey] ?: 1f, wordLeft)
+                        perAyahLineMaxX[ayahKey] = maxOf(perAyahLineMaxX[ayahKey] ?: 0f, wordRight)
                         wordRegionsByAyah.getOrPut(ayahKey) { mutableListOf() }.add(
                             WordRegion(
                                 surahNumber = w.surahNumber,
@@ -622,7 +651,8 @@ class MushafCoordinateRepository(private val appContext: Context) {
                     pageNumber = pageNumber,
                     lineRegions = lineSegmentsByAyah[surah to ayah].orEmpty().sortedBy { it.lineNumber },
                     words = wordRegionsByAyah[surah to ayah].orEmpty().sortedBy { it.wordPosition },
-                    hasSajdah = SAJDAH_VERSES.contains(surah to ayah)
+                    hasSajdah = SAJDAH_VERSES.contains(surah to ayah),
+                    endMarkerBounds = endMarkerByAyah[surah to ayah]
                 )
             }
 

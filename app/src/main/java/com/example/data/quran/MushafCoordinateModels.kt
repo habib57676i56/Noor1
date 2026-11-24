@@ -89,7 +89,12 @@ data class AyahPageRegion(
     val pageNumber: Int,
     val lineRegions: List<AyahLineRegion>,
     val words: List<WordRegion> = emptyList(),
-    val hasSajdah: Boolean = false
+    val hasSajdah: Boolean = false,
+    /**
+     * Exact normalized bounds of the original Mushaf decorative Ayah number circle (`۝`).
+     * Stored separately so highlights NEVER cover, obscure, or distort the printed Mushaf marker.
+     */
+    val endMarkerBounds: NormalizedRect? = null
 ) {
     val key: String get() = "$surahNumber:$ayahNumber"
 
@@ -334,6 +339,13 @@ object MushafCoordinateTransform {
             }
         }
 
+        // Pass 1.5: Tapping directly on an Ayah's decorative end marker still selects that Ayah
+        // (while visual highlights stay strictly excluded from endMarkerBounds!)
+        val markerHit = layout.ayahs.firstOrNull { ayah ->
+            ayah.endMarkerBounds?.contains(nx, ny, padding = 0f) == true
+        }
+        if (markerHit != null) return markerHit
+
         // Pass 2: Tight proximity tolerance for inter-word / inter-line touch cushions (never crosses Surah headers)
         var bestAyah: AyahPageRegion? = null
         var bestDist = MAX_PROXIMITY_TOLERANCE
@@ -347,6 +359,26 @@ object MushafCoordinateTransform {
             }
         }
         return bestAyah
+    }
+
+    /**
+     * Defensively trims a line highlight rectangle away from `endMarkerBounds` (in RTL, the Ayah
+     * circle sits at the LEFT edge of the Ayah's final line) so highlights NEVER paint over the
+     * original printed decorative Mushaf Ayah number marker.
+     */
+    fun clipBoundsExcludingEndMarker(
+        segBounds: NormalizedRect,
+        endMarkerBounds: NormalizedRect?
+    ): NormalizedRect? {
+        if (endMarkerBounds == null) return segBounds
+        val verticalOverlap = minOf(segBounds.bottom, endMarkerBounds.bottom) - maxOf(segBounds.top, endMarkerBounds.top)
+        if (verticalOverlap <= 0.001f) return segBounds
+        val horizontalOverlap = minOf(segBounds.right, endMarkerBounds.right) - maxOf(segBounds.left, endMarkerBounds.left)
+        if (horizontalOverlap <= 0.0005f) return segBounds
+        // In Arabic RTL, Ayah words are to the RIGHT of the circular Ayah marker (`endMarkerBounds.right`).
+        val trimmedLeft = maxOf(segBounds.left, endMarkerBounds.right + 0.002f)
+        if (trimmedLeft >= segBounds.right - 0.002f) return null
+        return segBounds.copy(left = trimmedLeft)
     }
 
     /**

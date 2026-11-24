@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -45,6 +47,7 @@ import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.SwapVert
 import androidx.compose.material.icons.rounded.TextDecrease
 import androidx.compose.material.icons.rounded.TextIncrease
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.Visibility
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.AlertDialog
@@ -99,6 +102,7 @@ import com.example.domain.model.QuranDisplayMode
 import com.example.domain.model.QuranReadingTheme
 import com.example.domain.model.QuranReciter
 import com.example.domain.model.QuranVerse
+import com.example.ui.components.ChooseReciterButton
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
@@ -518,11 +522,12 @@ fun QuranReaderScreen(
             },
             verticalArrangement = Arrangement.spacedBy(if (isFullScreenActive) 0.dp else 12.dp)
         ) {
-            // Reading Mode + Theme + Reciter + Smart Controls Deck (hidden cleanly in Full-Screen Mushaf mode)
+            // Simplified Reading Mode + Primary Actions + Single "Choose Reciter" Button + Collapsible Options
             if (!isFullScreenActive) {
             item(key = "reader_controls_deck") {
+                var showMoreReaderOptions by rememberSaveable { mutableStateOf(false) }
                 LiquidGlassCard(contentPadding = PaddingValues(14.dp)) {
-                    // Display Modes: Study, Mushaf, Memorize
+                    // Row 1: Display Modes (Study, Mushaf, Memorize)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -544,42 +549,7 @@ fun QuranReaderScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Reading Theme Chips
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(QuranReadingTheme.entries) { theme ->
-                            val label = when (theme) {
-                                QuranReadingTheme.AUTO -> L10n.pick(lang, "تلقائي", "Auto")
-                                QuranReadingTheme.SEPIA -> L10n.pick(lang, "ورقي مريح", "Sepia")
-                                QuranReadingTheme.NIGHT -> L10n.pick(lang, "ليلي", "Night")
-                                QuranReadingTheme.LIGHT -> L10n.pick(lang, "نهاري", "Light")
-                            }
-                            LiquidGlassChip(
-                                label = label,
-                                selected = prefs.quranReadingTheme == theme,
-                                onClick = { viewModel.setQuranReadingTheme(theme) }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Reciter Picker (Yasser Al-Dosari featured first)
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        items(QuranReciter.entries) { rec ->
-                            LiquidGlassChip(
-                                label = L10n.pick(lang, rec.nameAr, rec.nameEn),
-                                selected = prefs.quranReciter == rec,
-                                onClick = { viewModel.setQuranReciter(rec) }
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Clearly Separated Primary Modes:
-                    // 1) Sheikh Listening (Continuous Uninterrupted Recitation + Live Highlight)
-                    // 2) My Recitation & Memorization (Real Mic Recording + Arabic STT + Word Evaluation)
-                    // 3) Auto-Scroll
+                    // Row 2: Two Clear Primary Actions (Listen to Sheikh | Recite & Memorize)
                     val isSheikhPlayingThisSurah = audioState.hasActiveSession && audioState.playingSurah == surahNumber
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -599,6 +569,7 @@ fun QuranReaderScreen(
                             },
                             modifier = Modifier
                                 .weight(1f)
+                                .heightIn(min = 48.dp)
                                 .testTag("play_and_follow_audio_btn"),
                             colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = Color.White),
                             shape = RoundedCornerShape(14.dp),
@@ -622,7 +593,6 @@ fun QuranReaderScreen(
                             )
                         }
 
-                        // Integrated In-Reader My Recitation & Memorization Mode
                         Button(
                             onClick = {
                                 if (ecosystemViewModel != null) {
@@ -637,6 +607,7 @@ fun QuranReaderScreen(
                             },
                             modifier = Modifier
                                 .weight(1f)
+                                .heightIn(min = 48.dp)
                                 .testTag("in_reader_recite_btn"),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (showRecitationPanel) GoldPrimary else EmeraldDeep,
@@ -658,121 +629,191 @@ fun QuranReaderScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                    }
 
-                        // Auto-Scroll Toggle Button
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Row 3: ONE Unified "Choose Reciter" Button + Collapsible "More Options" Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ChooseReciterButton(
+                            selectedReciter = prefs.quranReciter,
+                            onSelectReciter = { viewModel.setQuranReciter(it) },
+                            modifier = Modifier.weight(1f)
+                        )
                         OutlinedButton(
-                            onClick = {
-                                if (autoScrollMode == AutoScrollMode.RUNNING) {
-                                    autoScrollMode = AutoScrollMode.PAUSED
-                                    viewModel.saveLastRead(surahNumber, lastVisibleAyah)
-                                } else {
-                                    showAutoScrollControls = true
-                                    viewModel.stopLiveRecitationTracking()
-                                    autoScrollMode = AutoScrollMode.RUNNING
-                                }
-                            },
-                            modifier = Modifier.testTag("auto_scroll_toggle_button"),
+                            onClick = { showMoreReaderOptions = !showMoreReaderOptions },
+                            modifier = Modifier
+                                .heightIn(min = 48.dp)
+                                .testTag("reader_more_options_btn"),
                             shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.SwapVert,
-                                contentDescription = null,
-                                tint = if (autoScrollMode == AutoScrollMode.RUNNING) GoldBright else noorColors.goldAccent,
+                                imageVector = Icons.Rounded.Tune,
+                                contentDescription = L10n.pick(lang, "خيارات القراءة", "Reading Options"),
+                                tint = if (showMoreReaderOptions) GoldBright else noorColors.goldAccent,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = L10n.pick(lang, "تمرير", "Scroll"),
+                                text = L10n.pick(lang, "خيارات", "Options"),
                                 maxLines = 1
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // Collapsible Secondary Options (Theme, Auto-Scroll, Live Mic Follow, Mushaf Image/Text, Study/Repeat)
+                    AnimatedVisibility(visible = showMoreReaderOptions) {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = noorColors.goldAccent.copy(alpha = 0.2f))
+                            Spacer(modifier = Modifier.height(10.dp))
 
-                    // Live Microphone Auto-Follow (kept clearly distinct from Sheikh listening)
-                    val isListening = liveRecitation.isActive
-                    LiquidGlassChip(
-                        label = if (isListening) {
-                            L10n.pick(lang, "إيقاف التتبع الصوتي الحي بالميكروفون", "Stop Live Mic Auto-Follow")
-                        } else {
-                            L10n.pick(lang, "تتبع صوتي حي بالميكروفون أثناء قراءتك", "Live Mic Verse Follow (Your Voice)")
-                        },
-                        selected = isListening,
-                        onClick = {
-                            if (isListening || liveRecitation.status == LiveRecitationStatus.PAUSED) {
-                                viewModel.stopLiveRecitationTracking()
-                            } else {
-                                val hasMic = ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.RECORD_AUDIO
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasMic) {
-                                    if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
-                                    autoScrollMode = AutoScrollMode.STOPPED
-                                    viewModel.startLiveRecitationTracking()
-                                } else {
-                                    showMicPermissionDialog = true
+                            // Reading Theme Chips
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                items(QuranReadingTheme.entries) { theme ->
+                                    val label = when (theme) {
+                                        QuranReadingTheme.AUTO -> L10n.pick(lang, "تلقائي", "Auto")
+                                        QuranReadingTheme.SEPIA -> L10n.pick(lang, "ورقي مريح", "Sepia")
+                                        QuranReadingTheme.NIGHT -> L10n.pick(lang, "ليلي", "Night")
+                                        QuranReadingTheme.LIGHT -> L10n.pick(lang, "نهاري", "Light")
+                                    }
+                                    LiquidGlassChip(
+                                        label = label,
+                                        selected = prefs.quranReadingTheme == theme,
+                                        onClick = { viewModel.setQuranReadingTheme(theme) }
+                                    )
                                 }
                             }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("listen_and_follow_button")
-                    )
 
-                    // Mushaf Page Image vs Interactive Text sub-toggle + existing Study/Memorize toggles
-                    if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && globalConfig.featureMushafImagesEnabled) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            LiquidGlassChip(
-                                label = L10n.pick(lang, "مصحف المدينة المصوّر (٦٠٤ ص)", "Madinah Mushaf Images (604p)"),
-                                selected = effectiveMushafImageMode,
-                                onClick = { useMushafPageImages = true },
-                                modifier = Modifier.weight(1f).testTag("mushaf_image_mode_chip")
-                            )
-                            LiquidGlassChip(
-                                label = L10n.pick(lang, "نص عثماني تفاعلي", "Uthmani Text"),
-                                selected = !effectiveMushafImageMode,
-                                onClick = { useMushafPageImages = false },
-                                modifier = Modifier.weight(1f).testTag("mushaf_text_mode_chip")
-                            )
-                        }
-                    } else if (prefs.quranDisplayMode == QuranDisplayMode.STUDY || prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (prefs.quranDisplayMode == QuranDisplayMode.STUDY) {
-                                LiquidGlassChip(
-                                    label = L10n.pick(lang, "التفسير", "Tafsir"),
-                                    selected = showTafsir,
-                                    onClick = { showTafsir = !showTafsir }
-                                )
-                                LiquidGlassChip(
-                                    label = "EN",
-                                    selected = showEnglish,
-                                    onClick = { showEnglish = !showEnglish }
-                                )
-                            } else if (prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
-                                LiquidGlassChip(
-                                    label = L10n.pick(lang, "تكرار الآية ${repeatPerAyah}x", "Repeat ${repeatPerAyah}x"),
-                                    selected = repeatPerAyah > 1,
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Auto-Scroll + Live Mic Auto-Follow
+                            val isListening = liveRecitation.isActive
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
                                     onClick = {
-                                        repeatPerAyah = when (repeatPerAyah) {
-                                            1 -> 3
-                                            3 -> 5
-                                            else -> 1
+                                        if (autoScrollMode == AutoScrollMode.RUNNING) {
+                                            autoScrollMode = AutoScrollMode.PAUSED
+                                            viewModel.saveLastRead(surahNumber, lastVisibleAyah)
+                                        } else {
+                                            showAutoScrollControls = true
+                                            viewModel.stopLiveRecitationTracking()
+                                            autoScrollMode = AutoScrollMode.RUNNING
                                         }
-                                    }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 48.dp)
+                                        .testTag("auto_scroll_toggle_button"),
+                                    shape = RoundedCornerShape(14.dp),
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.SwapVert,
+                                        contentDescription = null,
+                                        tint = if (autoScrollMode == AutoScrollMode.RUNNING) GoldBright else noorColors.goldAccent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = L10n.pick(lang, "تمرير تلقائي", "Auto-Scroll"),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                LiquidGlassChip(
+                                    label = if (isListening) {
+                                        L10n.pick(lang, "إيقاف التتبع الصوتي", "Stop Mic Follow")
+                                    } else {
+                                        L10n.pick(lang, "تتبع صوتي حي", "Live Mic Follow")
+                                    },
+                                    selected = isListening,
+                                    onClick = {
+                                        if (isListening || liveRecitation.status == LiveRecitationStatus.PAUSED) {
+                                            viewModel.stopLiveRecitationTracking()
+                                        } else {
+                                            val hasMic = ContextCompat.checkSelfPermission(
+                                                context,
+                                                Manifest.permission.RECORD_AUDIO
+                                            ) == PackageManager.PERMISSION_GRANTED
+                                            if (hasMic) {
+                                                if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
+                                                autoScrollMode = AutoScrollMode.STOPPED
+                                                viewModel.startLiveRecitationTracking()
+                                            } else {
+                                                showMicPermissionDialog = true
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("listen_and_follow_button")
                                 )
+                            }
+
+                            // Mushaf Page Image vs Interactive Text sub-toggle + Study/Memorize sub-toggles
+                            if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && globalConfig.featureMushafImagesEnabled) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    LiquidGlassChip(
+                                        label = L10n.pick(lang, "مصحف المدينة المصوّر (٦٠٤ ص)", "Madinah Mushaf Images (604p)"),
+                                        selected = effectiveMushafImageMode,
+                                        onClick = { useMushafPageImages = true },
+                                        modifier = Modifier.weight(1f).testTag("mushaf_image_mode_chip")
+                                    )
+                                    LiquidGlassChip(
+                                        label = L10n.pick(lang, "نص عثماني تفاعلي", "Uthmani Text"),
+                                        selected = !effectiveMushafImageMode,
+                                        onClick = { useMushafPageImages = false },
+                                        modifier = Modifier.weight(1f).testTag("mushaf_text_mode_chip")
+                                    )
+                                }
+                            } else if (prefs.quranDisplayMode == QuranDisplayMode.STUDY || prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (prefs.quranDisplayMode == QuranDisplayMode.STUDY) {
+                                        LiquidGlassChip(
+                                            label = L10n.pick(lang, "التفسير", "Tafsir"),
+                                            selected = showTafsir,
+                                            onClick = { showTafsir = !showTafsir }
+                                        )
+                                        LiquidGlassChip(
+                                            label = "EN",
+                                            selected = showEnglish,
+                                            onClick = { showEnglish = !showEnglish }
+                                        )
+                                    } else if (prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
+                                        LiquidGlassChip(
+                                            label = L10n.pick(lang, "تكرار الآية ${repeatPerAyah}x", "Repeat ${repeatPerAyah}x"),
+                                            selected = repeatPerAyah > 1,
+                                            onClick = {
+                                                repeatPerAyah = when (repeatPerAyah) {
+                                                    1 -> 3
+                                                    3 -> 5
+                                                    else -> 1
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

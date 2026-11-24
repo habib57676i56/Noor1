@@ -144,6 +144,10 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     val hifzLiveState: StateFlow<LiveRecitationState> = hifzMicListener.state
     val recordingState: StateFlow<RecitationRecordingState> = recitationRecorder.recordingState
     val recordingPlaybackState: StateFlow<RecordingPlaybackState> = recitationRecorder.playbackState
+    val quranAudioState: StateFlow<AudioPlaybackState> = audioPlayer.state
+    val selectedReciter: StateFlow<QuranReciter> = mainRepo.prefs.preferencesFlow
+        .map { it.quranReciter }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), QuranReciter.YASSER_AL_DOSARI)
 
     private val _hifzVerses = MutableStateFlow<List<QuranVerse>>(emptyList())
     val hifzVerses: StateFlow<List<QuranVerse>> = _hifzVerses.asStateFlow()
@@ -390,7 +394,7 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun loadHifzSurah(surahNumber: Int) = viewModelScope.launch {
         val clamped = surahNumber.coerceIn(1, 114)
-        val reciter = QuranReciter.YASSER_AL_DOSARI
+        val reciter = selectedReciter.value
         val verses = SurahCatalog.getBundledSurahVerses(clamped, reciter)
             ?: when (val res = mainRepo.loadSurahVerses(clamped, reciter)) {
                 is SurahLoadResult.Success -> res.verses
@@ -402,6 +406,20 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
         }
         _hifzComparison.value = null
         _recitationReport.value = null
+    }
+
+    fun selectReciter(reciter: QuranReciter) = viewModelScope.launch {
+        val prev = audioPlayer.state.value
+        val wasPlayingSingleAyah = (prev.isPlaying || prev.isBuffering) && prev.playingSurah != null && prev.playingAyah != null
+        val prevSurah = prev.playingSurah
+        val prevAyah = prev.playingAyah
+        if (wasPlayingSingleAyah) {
+            audioPlayer.stop()
+        }
+        mainRepo.prefs.setQuranReciter(reciter)
+        if (wasPlayingSingleAyah && prevSurah != null && prevAyah != null) {
+            playReferenceAyah(prevSurah, prevAyah, explicitReciter = reciter)
+        }
     }
 
     fun startHifzLiveMic(resetTranscript: Boolean = false) {
@@ -493,6 +511,9 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun playSavedRecording(filePath: String) {
+        if (audioPlayer.state.value.isPlaying || audioPlayer.state.value.isBuffering) {
+            audioPlayer.pause()
+        }
         recitationRecorder.playRecording(filePath)
     }
 
@@ -669,9 +690,18 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
         repo.resolveWeakVerse(id, resolved)
     }
 
-    fun playReferenceAyah(surahNumber: Int, ayahNumber: Int) {
+    fun playReferenceAyah(
+        surahNumber: Int,
+        ayahNumber: Int,
+        explicitReciter: QuranReciter? = null
+    ) {
+        // Ensure zero audio overlap between user voice playback/mic and Sheikh playback
+        recitationRecorder.stopPlayback()
+        if (hifzLiveState.value.isActive) {
+            hifzMicListener.stopListening(clearTranscript = false)
+        }
         val surah = SurahCatalog.findSurah(surahNumber)
-        val reciter = QuranReciter.YASSER_AL_DOSARI
+        val reciter = explicitReciter ?: selectedReciter.value
         val url = SurahCatalog.audioUrlForAyah(surahNumber, ayahNumber, reciter)
         audioPlayer.playAyah(
             surahNumber = surahNumber,
@@ -685,6 +715,7 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun playRadioStation(station: QuranRadioStation) {
+        recitationRecorder.stopPlayback()
         val track = AudioTrackItem(
             id = station.id,
             titleAr = station.nameAr,

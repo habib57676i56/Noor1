@@ -24,6 +24,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.abs
 
 data class AudioPlaybackState(
     val isPlaying: Boolean = false,
@@ -96,8 +98,17 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
     private var onContinuousSurahCompletedCallback: (() -> Unit)? = null
     private var lastReportedContinuousAyah: Int? = null
 
-    // Internal counter for test verification (proves MediaPlayer is never recreated between Ayahs!)
+    private val activeSessionId = AtomicLong(0L)
+    private var pendingSeekTargetMs: Long? = null
+
+    // Internal counters/hooks for automated JVM/Robolectric verification
     internal var playerCreationCountForTest: Int = 0
+        private set
+    internal val currentSessionIdForTest: Long
+        get() = activeSessionId.get()
+    internal val hasNextPreparedPlayerForTest: Boolean
+        get() = nextPreparedPlayer != null
+    internal var nextPreparedPlaybackParamsAppliedForTest: Int = 0
         private set
 
     private var localFileResolver: ((String) -> String?)? = null
@@ -209,6 +220,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
             !_state.value.isBuffering &&
             _state.value.errorMessage == null
         ) {
+            val mySessionId = activeSessionId.get()
             continuousRangeStartAyah = repeatRangeStartAyah
             continuousRangeEndAyah = repeatRangeEndAyah
             repeatRangeLabelActive = repeatRangeLabel
@@ -216,12 +228,20 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
             onContinuousSurahCompletedCallback = onSurahCompleted
             val targetRange = manifest.findAyahRange(startAyah) ?: manifest.ayahs.first()
             try {
+                pendingSeekTargetMs = targetRange.startMs.takeIf { it > 0L }
+                existingMp.setOnSeekCompleteListener { seekedMp ->
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== seekedMp) return@setOnSeekCompleteListener
+                    pendingSeekTargetMs = null
+                    seekedMp.setOnSeekCompleteListener(null)
+                }
                 existingMp.seekTo(targetRange.startMs.toInt())
-                applySpeed(existingMp, initialSpeed)
                 if (!existingMp.isPlaying) {
                     requestAudioFocus()
                     registerNoisyReceiver()
                     existingMp.start()
+                }
+                if (abs(initialSpeed - 1.0f) >= 0.01f) {
+                    applySpeed(existingMp, initialSpeed)
                 }
                 syncContinuousPosition(targetRange.startMs, seekPlayerIfLooping = false)
                 updateState {
@@ -235,6 +255,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 startProgressPolling()
                 return
             } catch (_: Exception) {
+                pendingSeekTargetMs = null
                 // Fall through to fresh initialization if seek failed
             }
         }
@@ -291,6 +312,37 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         }
         onAyahChanged?.invoke(manifest.surahNumber, startRange.ayahNumber, initialPage)
 
+        val mySessionId = activeSessionId.incrementAndGet()
+        pendingSeekTargetMs = startRange.startMs.takeIf { it > 0L }
+
+        fun beginContinuousPlayback(player: MediaPlayer) {
+            if (mySessionId != activeSessionId.get() || mediaPlayer !== player) {
+                safelyDisposeOrphanPlayer(player)
+                return
+            }
+            pendingSeekTargetMs = null
+            player.start()
+            val desiredSpeed = _state.value.playbackSpeed
+            if (abs(desiredSpeed - 1.0f) >= 0.01f) {
+                applySpeed(player, desiredSpeed)
+            }
+            val totalDur = runCatching { player.duration.coerceAtLeast(0).toLong() }
+                .getOrDefault(0L)
+                .takeIf { it > 0L }
+                ?: (manifest.ayahs.lastOrNull()?.endMs ?: 0L)
+            updateState {
+                it.copy(
+                    isPlaying = true,
+                    isBuffering = false,
+                    playingSurah = manifest.surahNumber,
+                    playingAyah = startRange.ayahNumber,
+                    currentPositionMs = startRange.startMs,
+                    durationMs = totalDur
+                )
+            }
+            startProgressPolling()
+        }
+
         try {
             playerCreationCountForTest += 1
             val mp = MediaPlayer().apply {
@@ -302,28 +354,34 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 )
                 setDataSource(source)
                 setOnPreparedListener { player ->
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== player) {
+                        safelyDisposeOrphanPlayer(player)
+                        return@setOnPreparedListener
+                    }
                     if (startRange.startMs > 0L) {
-                        runCatching { player.seekTo(startRange.startMs.toInt()) }
+                        // Wait for seekTo to finish BEFORE calling start() so audio strictly begins
+                        // at the selected Ayah (e.g., Ayah 3) and never leaks a snippet of Ayah 1.
+                        player.setOnSeekCompleteListener { seekedPlayer ->
+                            seekedPlayer.setOnSeekCompleteListener(null)
+                            beginContinuousPlayback(seekedPlayer)
+                        }
+                        val seekOk = runCatching { player.seekTo(startRange.startMs.toInt()) }.isSuccess
+                        if (!seekOk) {
+                            player.setOnSeekCompleteListener(null)
+                            beginContinuousPlayback(player)
+                        }
+                    } else {
+                        beginContinuousPlayback(player)
                     }
-                    applySpeed(player, _state.value.playbackSpeed)
-                    player.start()
-                    val totalDur = player.duration.coerceAtLeast(0).toLong()
-                        .takeIf { it > 0L }
-                        ?: (manifest.ayahs.lastOrNull()?.endMs ?: 0L)
-                    updateState {
-                        it.copy(
-                            isPlaying = true,
-                            isBuffering = false,
-                            durationMs = totalDur
-                        )
-                    }
-                    startProgressPolling()
                 }
-                setOnCompletionListener {
+                setOnCompletionListener { completedPlayer ->
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== completedPlayer) return@setOnCompletionListener
                     handleContinuousSurahCompletion()
                 }
-                setOnErrorListener { _, _, _ ->
+                setOnErrorListener { failedPlayer, _, _ ->
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== failedPlayer) return@setOnErrorListener true
                     progressJob?.cancel()
+                    pendingSeekTargetMs = null
                     updateState {
                         it.copy(
                             isPlaying = false,
@@ -355,6 +413,16 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
     private fun syncContinuousPosition(positionMs: Long, seekPlayerIfLooping: Boolean) {
         val manifest = activeContinuousManifest ?: return
         val currentState = _state.value
+
+        // Guard against stale 0ms MediaPlayer position polls before an asynchronous seekTo() finishes
+        val pendingTarget = pendingSeekTargetMs
+        if (pendingTarget != null) {
+            if (positionMs + 500L < pendingTarget) {
+                return
+            } else {
+                pendingSeekTargetMs = null
+            }
+        }
 
         // 1. Check REPEAT_ONE in-stream seamless loop (zero re-buffering!)
         if (currentState.repeatMode == AudioRepeatMode.REPEAT_ONE) {
@@ -562,9 +630,16 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
      * **Engine B Gapless Pre-Preparation**: prepares the next Ayah's `MediaPlayer` in the
      * background while the current Ayah is playing and attaches it via `setNextMediaPlayer()`
      * so per-Ayah queues transition without audible gaps or re-buffering pauses.
+     *
+     * CRITICAL ANDROID RULE: NEVER call `setPlaybackParams()` on a `Prepared` (unstarted)
+     * `nextPreparedPlayer`! On API 23+, setting non-zero `playbackParams.speed` immediately
+     * invokes `start()`, causing TWO overlapping Sheikh voices AND causing
+     * `setNextMediaPlayer()` to fail with `E/MediaPlayerNative: next player is not prepared`.
+     * Speed is applied strictly AFTER handoff once the next player becomes the sole active player.
      */
-    private fun prePrepareNextTrackIfAvailable(currentPlayer: MediaPlayer) {
+    private fun prePrepareNextTrackIfAvailable(currentPlayer: MediaPlayer, sessionId: Long) {
         releaseNextPreparedPlayerOnly()
+        if (sessionId != activeSessionId.get() || mediaPlayer !== currentPlayer) return
         val nextIdx = computeNextQueueIndex() ?: return
         val nextTrack = activeQueue.getOrNull(nextIdx) ?: return
         val localPath = localFileResolver?.invoke(nextTrack.id)
@@ -581,20 +656,33 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 )
                 setDataSource(source)
                 setOnPreparedListener { readyNext ->
-                    if (mediaPlayer === currentPlayer && nextPreparedPlayer === readyNext) {
-                        nextPreparedReady = true
-                        applySpeed(readyNext, _state.value.playbackSpeed)
-                        runCatching { currentPlayer.setNextMediaPlayer(readyNext) }
-                    } else {
-                        runCatching {
-                            readyNext.reset()
-                            readyNext.release()
+                    val stillValid = sessionId == activeSessionId.get() &&
+                        mediaPlayer === currentPlayer &&
+                        nextPreparedPlayer === readyNext
+                    if (stillValid) {
+                        val alreadyStarted = runCatching { readyNext.isPlaying }.getOrDefault(false)
+                        if (alreadyStarted) {
+                            safelyDisposeOrphanPlayer(readyNext)
+                            nextPreparedPlayer = null
+                            nextPreparedQueueIndex = -1
+                            nextPreparedReady = false
+                            return@setOnPreparedListener
                         }
+                        nextPreparedReady = true
+                        // Do NOT call applySpeed(readyNext, ...) here — it would auto-start readyNext!
+                        val currentStillActive = runCatching { currentPlayer.isPlaying }.getOrDefault(false)
+                        if (currentStillActive) {
+                            runCatching { currentPlayer.setNextMediaPlayer(readyNext) }
+                        }
+                    } else {
+                        safelyDisposeOrphanPlayer(readyNext)
                     }
                 }
                 setOnErrorListener { failedMp, _, _ ->
-                    if (nextPreparedPlayer === failedMp) {
+                    if (sessionId == activeSessionId.get() && nextPreparedPlayer === failedMp) {
                         releaseNextPreparedPlayerOnly()
+                    } else {
+                        safelyDisposeOrphanPlayer(failedMp)
                     }
                     true
                 }
@@ -612,6 +700,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         releaseAllPlayers()
         requestAudioFocus()
         registerNoisyReceiver()
+        val mySessionId = activeSessionId.incrementAndGet()
 
         val localPath = localFileResolver?.invoke(track.id)
         val source = localPath ?: track.audioUrl
@@ -656,22 +745,31 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 )
                 setDataSource(source)
                 setOnPreparedListener { player ->
-                    applySpeed(player, _state.value.playbackSpeed)
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== player) {
+                        safelyDisposeOrphanPlayer(player)
+                        return@setOnPreparedListener
+                    }
                     player.start()
+                    val desiredSpeed = _state.value.playbackSpeed
+                    if (abs(desiredSpeed - 1.0f) >= 0.01f) {
+                        applySpeed(player, desiredSpeed)
+                    }
                     updateState {
                         it.copy(
                             isPlaying = true,
                             isBuffering = false,
-                            durationMs = player.duration.coerceAtLeast(0).toLong()
+                            durationMs = runCatching { player.duration.coerceAtLeast(0).toLong() }.getOrDefault(0L)
                         )
                     }
                     startProgressPolling()
-                    prePrepareNextTrackIfAvailable(player)
+                    prePrepareNextTrackIfAvailable(player, mySessionId)
                 }
-                setOnCompletionListener {
+                setOnCompletionListener { completedPlayer ->
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== completedPlayer) return@setOnCompletionListener
                     handleTrackCompletion()
                 }
-                setOnErrorListener { _, _, _ ->
+                setOnErrorListener { failedPlayer, _, _ ->
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== failedPlayer) return@setOnErrorListener true
                     progressJob?.cancel()
                     updateState {
                         it.copy(
@@ -697,6 +795,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
     }
 
     internal fun handleTrackCompletion() {
+        val currentSession = activeSessionId.get()
         val nextIdx = computeNextQueueIndex()
         val preloaded = nextPreparedPlayer
         val preloadedIdx = nextPreparedQueueIndex
@@ -712,13 +811,14 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 nextPreparedReady = false
                 activeQueueIndex = nextIdx
 
-                runCatching {
-                    oldPlayer?.reset()
-                    oldPlayer?.release()
-                }
+                safelyDisposeOrphanPlayer(oldPlayer)
 
-                preloaded.setOnCompletionListener { handleTrackCompletion() }
-                preloaded.setOnErrorListener { _, _, _ ->
+                preloaded.setOnCompletionListener { completed ->
+                    if (currentSession != activeSessionId.get() || mediaPlayer !== completed) return@setOnCompletionListener
+                    handleTrackCompletion()
+                }
+                preloaded.setOnErrorListener { failed, _, _ ->
+                    if (currentSession != activeSessionId.get() || mediaPlayer !== failed) return@setOnErrorListener true
                     progressJob?.cancel()
                     updateState {
                         it.copy(
@@ -729,9 +829,12 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                     }
                     true
                 }
-                applySpeed(preloaded, _state.value.playbackSpeed)
-                // Android automatically starts the chained setNextMediaPlayer, ensure playing if not yet started
+                // Android automatically starts the chained setNextMediaPlayer; ensure playing if not yet started
                 runCatching { if (!preloaded.isPlaying) preloaded.start() }
+                val desiredSpeed = _state.value.playbackSpeed
+                if (abs(desiredSpeed - 1.0f) >= 0.01f) {
+                    applySpeed(preloaded, desiredSpeed)
+                }
 
                 val localPath = localFileResolver?.invoke(nextTrack.id)
                 updateState {
@@ -761,7 +864,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 }
                 onTrackStartedCallback?.invoke(nextTrack)
                 startProgressPolling()
-                prePrepareNextTrackIfAvailable(preloaded)
+                prePrepareNextTrackIfAvailable(preloaded, currentSession)
                 return
             }
         }
@@ -880,6 +983,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         clearQueueState()
         requestAudioFocus()
         registerNoisyReceiver()
+        val mySessionId = activeSessionId.incrementAndGet()
 
         updateState {
             it.copy(
@@ -916,18 +1020,26 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 )
                 setDataSource(audioUrl)
                 setOnPreparedListener { player ->
-                    applySpeed(player, _state.value.playbackSpeed)
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== player) {
+                        safelyDisposeOrphanPlayer(player)
+                        return@setOnPreparedListener
+                    }
                     player.start()
+                    val desiredSpeed = _state.value.playbackSpeed
+                    if (abs(desiredSpeed - 1.0f) >= 0.01f) {
+                        applySpeed(player, desiredSpeed)
+                    }
                     updateState {
                         it.copy(
                             isPlaying = true,
                             isBuffering = false,
-                            durationMs = player.duration.coerceAtLeast(0).toLong()
+                            durationMs = runCatching { player.duration.coerceAtLeast(0).toLong() }.getOrDefault(0L)
                         )
                     }
                     startProgressPolling()
                 }
-                setOnCompletionListener {
+                setOnCompletionListener { completedPlayer ->
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== completedPlayer) return@setOnCompletionListener
                     if (_state.value.repeatMode == AudioRepeatMode.REPEAT_ONE || repeatRemaining > 1) {
                         val nextRem = if (_state.value.repeatMode == AudioRepeatMode.REPEAT_ONE) repeatRemaining else repeatRemaining - 1
                         playAyah(
@@ -948,7 +1060,8 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                         onCompleted?.invoke()
                     }
                 }
-                setOnErrorListener { _, _, _ ->
+                setOnErrorListener { failedPlayer, _, _ ->
+                    if (mySessionId != activeSessionId.get() || mediaPlayer !== failedPlayer) return@setOnErrorListener true
                     progressJob?.cancel()
                     updateState {
                         it.copy(
@@ -992,8 +1105,12 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
     fun setPlaybackSpeed(speed: Float) {
         val clamped = speed.coerceIn(0.75f, 1.5f)
         updateState { it.copy(playbackSpeed = clamped) }
-        mediaPlayer?.let { applySpeed(it, clamped) }
-        nextPreparedPlayer?.let { if (nextPreparedReady) applySpeed(it, clamped) }
+        // Only apply speed to the currently PLAYING active player. NEVER apply to nextPreparedPlayer
+        // (doing so auto-starts nextPreparedPlayer on Android API 23+ and creates two voices!).
+        val mp = mediaPlayer
+        if (mp != null && runCatching { mp.isPlaying }.getOrDefault(false)) {
+            applySpeed(mp, clamped)
+        }
     }
 
     private fun applySpeed(player: MediaPlayer, speed: Float) {
@@ -1026,7 +1143,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         // Re-evaluate pre-prepared next track in queue mode when repeat mode changes
         val currentMp = mediaPlayer
         if (activeContinuousManifest == null && currentMp != null && _state.value.isPlaying) {
-            prePrepareNextTrackIfAvailable(currentMp)
+            prePrepareNextTrackIfAvailable(currentMp, activeSessionId.get())
         }
         return next
     }
@@ -1075,6 +1192,10 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                     requestAudioFocus()
                     registerNoisyReceiver()
                     mp.start()
+                    val desiredSpeed = _state.value.playbackSpeed
+                    if (abs(desiredSpeed - 1.0f) >= 0.01f) {
+                        applySpeed(mp, desiredSpeed)
+                    }
                     updateState { it.copy(isPlaying = true) }
                     startProgressPolling()
                 }
@@ -1216,29 +1337,39 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         }
     }
 
-    private fun releaseNextPreparedPlayerOnly() {
+    private fun safelyDisposeOrphanPlayer(player: MediaPlayer?) {
+        if (player == null) return
         try {
-            nextPreparedPlayer?.reset()
-            nextPreparedPlayer?.release()
+            player.setOnPreparedListener(null)
+            player.setOnSeekCompleteListener(null)
+            player.setOnCompletionListener(null)
+            player.setOnErrorListener(null)
+            runCatching { player.setNextMediaPlayer(null) }
+            runCatching { if (player.isPlaying) player.stop() }
+            runCatching { player.reset() }
+            runCatching { player.release() }
         } catch (_: Exception) {
-        } finally {
-            nextPreparedPlayer = null
-            nextPreparedQueueIndex = -1
-            nextPreparedReady = false
         }
     }
 
+    private fun releaseNextPreparedPlayerOnly() {
+        runCatching { mediaPlayer?.setNextMediaPlayer(null) }
+        val next = nextPreparedPlayer
+        nextPreparedPlayer = null
+        nextPreparedQueueIndex = -1
+        nextPreparedReady = false
+        safelyDisposeOrphanPlayer(next)
+    }
+
     private fun releaseAllPlayers() {
+        // Invalidate all in-flight asynchronous MediaPlayer callbacks before releasing players
+        activeSessionId.incrementAndGet()
+        pendingSeekTargetMs = null
         progressJob?.cancel()
         releaseNextPreparedPlayerOnly()
-        try {
-            mediaPlayer?.stop()
-            mediaPlayer?.reset()
-            mediaPlayer?.release()
-        } catch (_: Exception) {
-        } finally {
-            mediaPlayer = null
-        }
+        val current = mediaPlayer
+        mediaPlayer = null
+        safelyDisposeOrphanPlayer(current)
     }
 
     private fun clearContinuousState() {

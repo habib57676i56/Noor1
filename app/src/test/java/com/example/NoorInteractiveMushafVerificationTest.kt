@@ -755,5 +755,201 @@ class NoorInteractiveMushafVerificationTest {
         assertEquals("Saved Surah must persist accurately", 18, saved.lastReadSurah)
         assertEquals("Saved Ayah must remain 10 and never reset to 1", 10, saved.lastReadAyah)
     }
+
+    // ============================================================================================
+    // 6. CRITICAL REGRESSION TESTS: SINGLE AUDIO SESSION, START FROM AYAH 3, MARKER PRESERVATION
+    // ============================================================================================
+
+    @Test
+    fun singleAudioEngine_startingFromAyah3_neverJumpsBackToAyah1AndFlows3To6Continuously() {
+        val manifestJson = """
+            {
+              "audio_file": {
+                "audio_url": "https://download.quranicaudio.com/qdc/mishari_al_afasy/murattal/1.mp3",
+                "timestamps": [
+                  { "verse_key": "1:1", "timestamp_from": 0, "timestamp_to": 3000, "segments": [] },
+                  { "verse_key": "1:2", "timestamp_from": 3000, "timestamp_to": 6000, "segments": [] },
+                  { "verse_key": "1:3", "timestamp_from": 6000, "timestamp_to": 9000, "segments": [] },
+                  { "verse_key": "1:4", "timestamp_from": 9000, "timestamp_to": 12000, "segments": [] },
+                  { "verse_key": "1:5", "timestamp_from": 12000, "timestamp_to": 15000, "segments": [] },
+                  { "verse_key": "1:6", "timestamp_from": 15000, "timestamp_to": 18000, "segments": [] }
+                ]
+              }
+            }
+        """.trimIndent()
+        val manifest = QuranWordTimingRepository.parseQuranComContinuousManifestJson(
+            reciterId = QuranReciter.ALAFASY.id,
+            quranComReciterId = 7,
+            surahNumber = 1,
+            rawJson = manifestJson
+        )!!
+
+        val observedAyahs = mutableListOf<Int>()
+        val player = QuranAudioPlayer(context)
+        player.playContinuousSurahManifest(
+            manifest = manifest,
+            surahTitleAr = "سورة الفاتحة",
+            surahTitleEn = "Al-Fatiha",
+            reciterNameAr = QuranReciter.ALAFASY.nameAr,
+            reciterNameEn = QuranReciter.ALAFASY.nameEn,
+            pageResolver = { _, _ -> 1 },
+            startAyah = 3,
+            onAyahChanged = { _, ayah, _ -> observedAyahs += ayah }
+        )
+
+        // Immediately starts at Ayah 3 (6000ms), NEVER Ayah 1
+        assertEquals(3, player.state.value.playingAyah)
+        assertEquals(6000L, player.state.value.currentPositionMs)
+
+        // Simulate stale pre-seek MediaPlayer position poll at 0ms -> MUST NOT jump back to Ayah 1!
+        player.simulateContinuousPositionForTest(0L)
+        assertEquals("Pre-seek 0ms poll must NEVER snap back to Ayah 1", 3, player.state.value.playingAyah)
+        player.simulateContinuousPositionForTest(500L)
+        assertEquals("Pre-seek low position must stay locked on Ayah 3", 3, player.state.value.playingAyah)
+
+        // Once seek settles at Ayah 3 (6100ms), progression flows smoothly 3 -> 4 -> 5 -> 6 with ONE player
+        player.simulateContinuousPositionForTest(6100L)
+        assertEquals(3, player.state.value.playingAyah)
+        player.simulateContinuousPositionForTest(9500L)
+        assertEquals(4, player.state.value.playingAyah)
+        player.simulateContinuousPositionForTest(12500L)
+        assertEquals(5, player.state.value.playingAyah)
+        player.simulateContinuousPositionForTest(15500L)
+        assertEquals(6, player.state.value.playingAyah)
+
+        assertEquals(listOf(3, 4, 5, 6), observedAyahs)
+        assertEquals("Single MediaPlayer must remain unbroken across Ayahs 3->4->5->6", 1, player.playerCreationCountForTest)
+        player.stop()
+    }
+
+    @Test
+    fun singleAudioEngine_reciterSwitchAndRapidPlay_enforcesSingleActiveSessionAndNeverPreStartsNextPlayer() {
+        val player = QuranAudioPlayer(context)
+        val queueAlafasy = listOf(
+            AudioTrackItem("a1", "الفاتحة 1", "Fatiha 1", "العفاسي", "Alafasy", "https://everyayah.com/data/Alafasy_128kbps/001001.mp3", AudioCategory.QURAN_RECITERS, 1, 1, pageNumber = 1, reciterId = QuranReciter.ALAFASY.id),
+            AudioTrackItem("a2", "الفاتحة 2", "Fatiha 2", "العفاسي", "Alafasy", "https://everyayah.com/data/Alafasy_128kbps/001002.mp3", AudioCategory.QURAN_RECITERS, 1, 2, pageNumber = 1, reciterId = QuranReciter.ALAFASY.id)
+        )
+        val queueDosari = listOf(
+            AudioTrackItem("d1", "الفاتحة 1", "Fatiha 1", "الدوسري", "Dosari", "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/001001.mp3", AudioCategory.QURAN_RECITERS, 1, 1, pageNumber = 1, reciterId = QuranReciter.YASSER_AL_DOSARI.id),
+            AudioTrackItem("d2", "الفاتحة 2", "Fatiha 2", "الدوسري", "Dosari", "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/001002.mp3", AudioCategory.QURAN_RECITERS, 1, 2, pageNumber = 1, reciterId = QuranReciter.YASSER_AL_DOSARI.id)
+        )
+
+        // Start Reciter 1
+        player.playTrackQueue(queueAlafasy, startIndex = 0)
+        val session1 = player.currentSessionIdForTest
+        assertEquals(QuranReciter.ALAFASY.id, player.state.value.currentTrack?.reciterId)
+
+        // Switch immediately to Reciter 2 -> must invalidate session1 and replace cleanly
+        player.playTrackQueue(queueDosari, startIndex = 0)
+        val session2 = player.currentSessionIdForTest
+        assertTrue("Switching reciter must advance monotonic session ID", session2 > session1)
+        assertEquals(QuranReciter.YASSER_AL_DOSARI.id, player.state.value.currentTrack?.reciterId)
+
+        // Changing playback speed must NEVER apply playbackParams to an unstarted nextPreparedPlayer
+        player.setPlaybackSpeed(1.25f)
+        assertEquals(0, player.nextPreparedPlaybackParamsAppliedForTest)
+
+        // Stop must clean up both primary and pre-prepared players completely
+        player.stop()
+        assertFalse(player.hasNextPreparedPlayerForTest)
+        assertFalse(player.state.value.hasActiveSession)
+        assertTrue("Stop must invalidate prior session ID", player.currentSessionIdForTest > session2)
+    }
+
+    @Test
+    fun mushafHighlighting_neverCoversOriginalDecorativeAyahNumberCirclesAcrossPagesAndSqliteDb() = runBlocking {
+        val repo = MushafCoordinateRepository(context)
+
+        // 1. Verify bundled Madinah layouts (Pages 1, 2, 604) exclude endMarkerBounds from lineRegions
+        for (page in listOf(1, 2, 604)) {
+            val layout = repo.getPageLayout(pageNumber = page)
+            assertTrue("Page $page must have Ayahs", layout.ayahs.isNotEmpty())
+            for (ayah in layout.ayahs) {
+                val marker = ayah.endMarkerBounds
+                assertNotNull("Ayah ${ayah.key} on page $page must track endMarkerBounds separately", marker)
+                for (seg in ayah.lineRegions) {
+                    val vOverlap = minOf(seg.bounds.bottom, marker!!.bottom) - maxOf(seg.bounds.top, marker.top)
+                    if (vOverlap > 0.001f) {
+                        assertTrue(
+                            "Highlight on ${ayah.key} line ${seg.lineNumber} (left=${seg.bounds.left}) must stop before decorative circle (right=${marker.right})",
+                            seg.bounds.left >= marker.right - 0.0005f
+                        )
+                    }
+                }
+                // Tapping directly on the decorative circle must still select its owning Ayah!
+                val tapOnMarker = MushafCoordinateTransform.hitTestAyah(layout, marker!!.centerX, marker.centerY)
+                assertEquals("Tapping Ayah ${ayah.key} circle must resolve to ${ayah.key}", ayah.key, tapOnMarker?.key)
+            }
+        }
+
+        // 2. Verify SQLite ayahinfo_1024.db (Tier 1) separates compact circular Ayah rosette marker
+        val tempDbFile = File(context.cacheDir, "test_marker_preservation_1024.db")
+        if (tempDbFile.exists()) tempDbFile.delete()
+        val db = SQLiteDatabase.openOrCreateDatabase(tempDbFile, null)
+        db.execSQL(
+            """
+            CREATE TABLE glyphs (
+                glyph_id INTEGER PRIMARY KEY,
+                page_number INTEGER,
+                line_number INTEGER,
+                sura_number INTEGER,
+                ayah_number INTEGER,
+                position INTEGER,
+                min_x INTEGER,
+                max_x INTEGER,
+                min_y INTEGER,
+                max_y INTEGER
+            )
+            """.trimIndent()
+        )
+        // Page 4, Line 1, Ayah 2:10: Word 1 (740..920), Word 2 (500..720), Circular Ayah Marker (415..480, w=65, h=85)
+        db.execSQL("INSERT INTO glyphs VALUES (1, 4, 1, 2, 10, 1, 740, 920, 120, 205)")
+        db.execSQL("INSERT INTO glyphs VALUES (2, 4, 1, 2, 10, 2, 500, 720, 120, 205)")
+        db.execSQL("INSERT INTO glyphs VALUES (3, 4, 1, 2, 10, 3, 415, 480, 120, 205)")
+        db.beginTransaction()
+        try {
+            val stmt = db.compileStatement("INSERT INTO glyphs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+            for (i in 4..4500) {
+                stmt.clearBindings()
+                stmt.bindLong(1, i.toLong())
+                stmt.bindLong(2, 12L)
+                stmt.bindLong(3, ((i % 15) + 1).toLong())
+                stmt.bindLong(4, 2L)
+                stmt.bindLong(5, (i % 50 + 1).toLong())
+                stmt.bindLong(6, (i % 10 + 1).toLong())
+                stmt.bindLong(7, 100L)
+                stmt.bindLong(8, 220L)
+                stmt.bindLong(9, 100L)
+                stmt.bindLong(10, 180L)
+                stmt.executeInsert()
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        db.close()
+
+        assertTrue(repo.importGlyphDatabaseFromUri(Uri.fromFile(tempDbFile)))
+        val layout4 = repo.getPageLayout(pageNumber = 4)
+        val ayah2_10 = layout4.findAyah(2, 10)!!
+        val marker2_10 = ayah2_10.endMarkerBounds
+        assertNotNull("Compact final glyph must be separated into endMarkerBounds", marker2_10)
+        assertEquals("Only the 2 Quran words should be in wordRegions (marker excluded)", 2, ayah2_10.words.size)
+        val seg = ayah2_10.lineRegions.single()
+        assertTrue(
+            "SQLite highlight left edge (${seg.bounds.left}) must stop cleanly to the right of marker (${marker2_10!!.right})",
+            seg.bounds.left >= marker2_10.right
+        )
+
+        // 3. Verify defensive clipper trims any overlapping highlight rect cleanly away from endMarkerBounds
+        val overlapping = com.example.data.quran.NormalizedRect(0.40f, 0.07f, 0.90f, 0.13f)
+        val clipped = MushafCoordinateTransform.clipBoundsExcludingEndMarker(overlapping, marker2_10)
+        assertNotNull(clipped)
+        assertTrue(
+            "Defensive clipper must push highlight left past marker right",
+            clipped!!.left > marker2_10.right
+        )
+    }
 }
+
 
