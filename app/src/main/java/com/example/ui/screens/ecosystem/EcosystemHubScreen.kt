@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.EventRepeat
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HistoryEdu
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.MenuBook
@@ -121,6 +122,7 @@ fun EcosystemHubScreen(
     onOpenGlobalUmmahPulse: () -> Unit = {},
     onOpenMutashabihat: () -> Unit = {},
     onOpenSeerahAtlas: () -> Unit = {},
+    onOpenQuranUniverse: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -251,6 +253,11 @@ fun EcosystemHubScreen(
     )
 
     val liveOnlineFeatures = listOf(
+        EcosystemModuleItem(
+            "مجرة القرآن والقراءات العشر", "Quran Root & Qira'at Universe",
+            "مجرة الجذور الحية (٦٢٣٦ آية) + القراءات المتواترة صوتاً + السند الذهبي", "Living Root Galaxy (6,236 Ayahs) + 10 Qira'at + Sanad",
+            Icons.Rounded.Hub, GoldBright, "hub_quran_universe", onOpenQuranUniverse
+        ),
         EcosystemModuleItem(
             "البث المباشر للحرمين ٢٤/٧", "Live Makkah & Madinah",
             "بث مباشر للكعبة والمسجد النبوي مع الطقس الحي", "24/7 Live Kaaba & Nabawi Streams + Weather",

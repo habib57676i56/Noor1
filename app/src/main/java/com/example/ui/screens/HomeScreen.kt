@@ -58,6 +58,7 @@ import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.CompareArrows
 import androidx.compose.material.icons.rounded.HistoryEdu
+import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.Mic
@@ -164,7 +165,8 @@ fun HomeScreen(
     onOpenCrescentObservatory: () -> Unit = {},
     onOpenGlobalUmmahPulse: () -> Unit = {},
     onOpenMutashabihat: () -> Unit = {},
-    onOpenSeerahAtlas: () -> Unit = {}
+    onOpenSeerahAtlas: () -> Unit = {},
+    onOpenQuranUniverse: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -592,6 +594,7 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            HomeEcoMiniTile(L10n.pick(lang, "مجرة القرآن", "Root Galaxy", "Ildiz galaktikasi"), Icons.Rounded.Hub, onOpenQuranUniverse, Modifier.weight(1f))
                             HomeEcoMiniTile(L10n.pick(lang, "متشابهات القرآن", "Mutashabihat", "Mutashobihot"), Icons.Rounded.CompareArrows, onOpenMutashabihat, Modifier.weight(1f))
                             HomeEcoMiniTile(L10n.pick(lang, "أطلس السيرة", "Seerah Atlas", "Siyrat atlasi"), Icons.Rounded.HistoryEdu, onOpenSeerahAtlas, Modifier.weight(1f))
                         }

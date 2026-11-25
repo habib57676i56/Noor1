@@ -383,6 +383,9 @@ object L10n {
         "Mutashabihat" to "Mutashobihot",
         "Seerah Atlas & Shama'il" to "Siyrat atlasi va Shamoil",
         "Interactive Hijrah GPS Map, Seerah & Sunnah Revival" to "Hijrat GPS xaritasi, siyrat va sunnatlarni tiriltirish",
-        "Seerah Atlas" to "Siyrat atlasi"
+        "Seerah Atlas" to "Siyrat atlasi",
+        "Quran Root & Qira'at Universe" to "Qur'on ildizlari va Qiroatlar",
+        "Living Root Galaxy (6,236 Ayahs) + 10 Qira'at + Sanad" to "Jonli ildiz galaktikasi (6236 oyat) + 10 Qiroat + Oltin Sanad",
+        "Root Galaxy" to "Ildiz galaktikasi"
     )
 }
