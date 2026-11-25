@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material3.Icon
@@ -36,19 +35,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.domain.model.AppLanguage
@@ -60,6 +58,7 @@ import com.example.ui.theme.GoldPrimary
 import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private data class CelestialHeroPalette(
@@ -127,10 +126,9 @@ private fun paletteForPrayer(prayer: PrayerName): CelestialHeroPalette = when (p
 }
 
 /**
- * Luxury Celestial Liquid Glass Next-Prayer Hero Card.
- * Replaces flat dark green with a living, luminous prayer-aware sapphire/turquoise/twilight sky,
- * gently shimmering crescent moon & stars (or golden sunbeams), glowing mosque silhouette,
- * metallic gold countdown typography, jewel Tahajjud shortcut pill, and glowing progress beam.
+ * Luxury Celestial Liquid Glass Next-Prayer Hero Card featuring a
+ * luminous Orbital Circular Progress Halo (watch-face dial with glowing orb tip),
+ * prayer-aware living sky, mosque silhouette, metallic gold countdown, and Tahajjud shortcut.
  */
 @Composable
 fun HeroPrayerGlassCard(
@@ -146,9 +144,7 @@ fun HeroPrayerGlassCard(
 ) {
     val palette = paletteForPrayer(nextInfo.nextPrayer)
     val heroShape = RoundedCornerShape(32.dp)
-    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
 
-    // Gentle living luminescence for celestial stars & aurora shimmer
     val infiniteTransition = rememberInfiniteTransition(label = "hero_celestial_shimmer")
     val shimmerPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
@@ -163,7 +159,7 @@ fun HeroPrayerGlassCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(228.dp)
+            .height(224.dp)
             .shadow(
                 elevation = 18.dp,
                 shape = heroShape,
@@ -212,20 +208,13 @@ fun HeroPrayerGlassCard(
             // 2. Subtle Islamic Rub el Hizb luminous geometric watermark
             drawRubElHizb(
                 cx = w * 0.50f,
-                cy = h * 0.44f,
+                cy = h * 0.48f,
                 radius = h * 0.44f,
-                color = GoldBright.copy(alpha = 0.08f + shimmerPhase * 0.03f),
+                color = GoldBright.copy(alpha = 0.07f + shimmerPhase * 0.03f),
                 strokeWidthPx = 1.dp.toPx()
             )
-            drawRubElHizb(
-                cx = w * 0.50f,
-                cy = h * 0.44f,
-                radius = h * 0.29f,
-                color = Color.White.copy(alpha = 0.06f),
-                strokeWidthPx = 0.8.dp.toPx()
-            )
 
-            // 3. Celestial sky details: glowing crescent & twinkling diamond stars OR soft golden sunbeams
+            // 3. Celestial sky details: twinkling stars OR soft golden sunbeams
             if (palette.isNightSky) {
                 drawCelestialCrescentAndStars(w, h, shimmerPhase)
             } else {
@@ -240,16 +229,16 @@ fun HeroPrayerGlassCard(
                 bottomColor = palette.mosqueTintBottom
             )
 
-            // 5. Crisp Liquid Glass diagonal crystal specular reflection across upper edge
+            // 5. Crisp Liquid Glass diagonal crystal specular reflection
             drawRect(
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.22f),
-                        Color.White.copy(alpha = 0.06f),
+                        Color.White.copy(alpha = 0.20f),
+                        Color.White.copy(alpha = 0.05f),
                         Color.Transparent
                     ),
-                    start = Offset(w * 0.15f, 0f),
-                    end = Offset(w * 0.62f, h * 0.52f)
+                    start = Offset(w * 0.14f, 0f),
+                    end = Offset(w * 0.60f, h * 0.48f)
                 )
             )
         }
@@ -276,10 +265,10 @@ fun HeroPrayerGlassCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp, vertical = 18.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top Row: Crystal Glass "Next Prayer" badge + Luminous Prayer Time pill
+            // Top Row: Crystal Glass "Next Prayer" badge + Sleek Tahajjud & Adhkar Shortcut Pill
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -301,7 +290,7 @@ fun HeroPrayerGlassCard(
                             ),
                             RoundedCornerShape(50)
                         )
-                        .padding(horizontal = 13.dp, vertical = 6.dp)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Icon(
                         imageVector = prayerIcon(nextInfo.nextPrayer),
@@ -318,58 +307,75 @@ fun HeroPrayerGlassCard(
                     )
                 }
 
+                // Compact Jewel Tahajjud & Adhkar Quick Shortcut Pill
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
                         .background(
                             Brush.horizontalGradient(
-                                listOf(Color(0x47F9E5AE), Color(0x24102F3E))
+                                listOf(Color(0x47F9E5AE), Color(0x280E3548))
                             )
                         )
                         .border(
                             1.dp,
                             Brush.linearGradient(
-                                listOf(GoldBright.copy(alpha = 0.85f), Color.White.copy(alpha = 0.35f))
+                                listOf(GoldBright.copy(alpha = 0.85f), Color.White.copy(alpha = 0.42f))
                             ),
                             RoundedCornerShape(50)
                         )
-                        .padding(horizontal = 13.dp, vertical = 6.dp)
+                        .clickable(onClick = onOpenTahajjudReminders)
+                        .padding(horizontal = 11.dp, vertical = 6.dp)
+                        .testTag("home_tahajjud_reminders_shortcut")
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.Schedule,
+                        imageVector = Icons.Rounded.NightsStay,
                         contentDescription = null,
                         tint = GoldBright,
                         modifier = Modifier.size(15.dp)
                     )
                     Spacer(modifier = Modifier.width(5.dp))
                     Text(
-                        text = L10n.formatTime12h(nextInfo.nextPrayerMillis, timezoneId, lang),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = Color.White,
-                        fontWeight = FontWeight.ExtraBold
+                        text = L10n.pick(lang, "التهجد", "Tahajjud", "Tahajjud"),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = String.format(Locale.US, "%02d:%02d", tahajjudHour, tahajjudMinute),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFFFFF6D6)
                     )
                 }
             }
 
-            // Middle Row: Prayer Name + Metallic Gold Countdown + Jewel Tahajjud Glass Shortcut
+            // Main Centerpiece Row: Prayer Typography + Glowing Celestial Orbital Progress Ring
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center
+                ) {
                     Text(
                         text = L10n.prayerName(nextInfo.nextPrayer, lang),
-                        style = MaterialTheme.typography.headlineLarge.copy(fontSize = 33.sp),
+                        style = MaterialTheme.typography.headlineLarge.copy(fontSize = 31.sp),
                         fontWeight = FontWeight.ExtraBold,
-                        color = Color.White
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = L10n.formatCountdown(nextInfo.remainingMillis, lang),
                         style = TextStyle(
-                            fontSize = 34.sp,
+                            fontSize = 30.sp,
                             fontWeight = FontWeight.ExtraBold,
                             fontFeatureSettings = "tnum",
                             brush = Brush.horizontalGradient(
@@ -379,201 +385,265 @@ fun HeroPrayerGlassCard(
                                     Color(0xFFE7BA5C)
                                 )
                             )
-                        )
+                        ),
+                        maxLines = 1
                     )
-                    if (iqamahDelayMinutes > 0) {
-                        val iqTime = L10n.formatTime12h(
-                            nextInfo.nextPrayerMillis + iqamahDelayMinutes * 60_000L,
-                            timezoneId,
-                            lang
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = L10n.pick(
-                                lang,
-                                "الإقامة: $iqTime (+$iqamahDelayMinutes د)",
-                                "Iqamah: $iqTime (+${iqamahDelayMinutes}m)",
-                                "Iqomat: $iqTime (+$iqamahDelayMinutes daq)"
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = palette.accentGlow
-                        )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Exact Prayer Time + Optional Iqamah Glass Pill
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color(0x33FFFFFF))
+                                .border(0.85.dp, GoldBright.copy(alpha = 0.55f), RoundedCornerShape(50))
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Schedule,
+                                contentDescription = null,
+                                tint = GoldBright,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = L10n.formatTime12h(nextInfo.nextPrayerMillis, timezoneId, lang),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+
+                        if (iqamahDelayMinutes > 0) {
+                            val iqTime = L10n.formatTime12h(
+                                nextInfo.nextPrayerMillis + iqamahDelayMinutes * 60_000L,
+                                timezoneId,
+                                lang
+                            )
+                            Text(
+                                text = L10n.pick(
+                                    lang,
+                                    "إقامة $iqTime",
+                                    "Iqamah $iqTime",
+                                    "Iqomat $iqTime"
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = palette.accentGlow,
+                                maxLines = 1
+                            )
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Jewel Liquid-Glass Tahajjud & Morning/Evening Reminders Capsule
-                val pillShape = RoundedCornerShape(22.dp)
-                Column(
-                    modifier = Modifier
-                        .clip(pillShape)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    Color(0x42FFFFFF),
-                                    Color(0x290E3548),
-                                    Color(0x47071A2B)
-                                )
-                            )
-                        )
-                        .border(
-                            1.15.dp,
-                            Brush.linearGradient(
-                                listOf(
-                                    Color.White.copy(alpha = 0.72f),
-                                    GoldBright.copy(alpha = 0.75f),
-                                    palette.accentGlow.copy(alpha = 0.35f)
-                                )
-                            ),
-                            pillShape
-                        )
-                        .clickable(onClick = onOpenTahajjudReminders)
-                        .padding(horizontal = 13.dp, vertical = 10.dp)
-                        .testTag("home_tahajjud_reminders_shortcut"),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.radialGradient(
-                                    listOf(GoldBright.copy(alpha = 0.38f), Color.Transparent)
-                                )
-                            )
-                            .border(0.8.dp, GoldBright.copy(alpha = 0.55f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.NightsStay,
-                            contentDescription = null,
-                            tint = GoldBright,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(5.dp))
-                    Text(
-                        text = L10n.pick(lang, "التهجد والأذكار", "Tahajjud Alerts", "Tahajjud"),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .background(Color(0x3DF9E5AE))
-                            .padding(horizontal = 8.dp, vertical = 2.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.AutoAwesome,
-                            contentDescription = null,
-                            tint = GoldBright,
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = String.format(Locale.US, "%02d:%02d", tahajjudHour, tahajjudMinute),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color(0xFFFFF6D6)
-                        )
-                    }
-                }
+                // Glowing Celestial Orbital Progress Circle (replaces linear progress bar)
+                CelestialOrbitalProgressRing(
+                    progress = nextInfo.progress,
+                    prayer = nextInfo.nextPrayer,
+                    accentColor = palette.accentGlow,
+                    shimmerPhase = shimmerPhase,
+                    lang = lang,
+                    modifier = Modifier.size(124.dp)
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Luminous Celestial Circular Progress Dial with frosted glass medallion core,
+ * 12 subtle celestial dial markers, glowing gold-to-emerald sweep arc, and orbiting pearl-star tip.
+ */
+@Composable
+private fun CelestialOrbitalProgressRing(
+    progress: Float,
+    prayer: PrayerName,
+    accentColor: Color,
+    shimmerPhase: Float,
+    lang: AppLanguage,
+    modifier: Modifier = Modifier
+) {
+    val clamped = progress.coerceIn(0.03f, 1f)
+    val percent = (clamped * 100f).roundToInt().coerceIn(1, 100)
+
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val w = size.width
+            val h = size.height
+            val cx = w / 2f
+            val cy = h / 2f
+            val strokePx = 7.5.dp.toPx()
+            val outerGlowRadius = size.minDimension / 2f - strokePx * 0.9f
+
+            // 1. Frosted liquid glass circular medallion interior
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        Color(0x47FFFFFF),
+                        Color(0x360C2E47),
+                        Color(0x52061529)
+                    ),
+                    center = Offset(cx - outerGlowRadius * 0.25f, cy - outerGlowRadius * 0.25f),
+                    radius = outerGlowRadius * 1.35f
+                ),
+                radius = outerGlowRadius - strokePx * 0.55f,
+                center = Offset(cx, cy)
+            )
+
+            // 2. Subtle inner Rub el Hizb star ornament inside the dial
+            drawRubElHizb(
+                cx = cx,
+                cy = cy,
+                radius = outerGlowRadius * 0.62f,
+                color = GoldBright.copy(alpha = 0.14f + shimmerPhase * 0.06f),
+                strokeWidthPx = 0.85.dp.toPx()
+            )
+
+            // 3. Twelve delicate golden celestial watch-face ticks around inner rim
+            val tickOuter = outerGlowRadius - strokePx * 0.72f
+            val tickInner = tickOuter - 4.dp.toPx()
+            for (i in 0 until 12) {
+                val angleRad = (i * 30.0 - 90.0) * PI / 180.0
+                val isCardinal = i % 3 == 0
+                val start = Offset(
+                    cx + ((if (isCardinal) tickInner - 1.5.dp.toPx() else tickInner) * cos(angleRad)).toFloat(),
+                    cy + ((if (isCardinal) tickInner - 1.5.dp.toPx() else tickInner) * sin(angleRad)).toFloat()
+                )
+                val end = Offset(
+                    cx + (tickOuter * cos(angleRad)).toFloat(),
+                    cy + (tickOuter * sin(angleRad)).toFloat()
+                )
+                drawLine(
+                    color = if (isCardinal) GoldBright.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.28f),
+                    start = start,
+                    end = end,
+                    strokeWidth = if (isCardinal) 1.5.dp.toPx() else 1.dp.toPx(),
+                    cap = StrokeCap.Round
+                )
             }
 
-            // Bottom: Seamless Glowing Liquid-Gold Progress Beam with Luminous Orb Tip (Zero M3 gap)
-            LiquidGoldProgressBeam(
-                progress = nextInfo.progress,
-                accentColor = palette.accentGlow,
-                isRtl = isRtl,
+            val arcTopLeft = Offset(cx - outerGlowRadius, cy - outerGlowRadius)
+            val arcSize = Size(outerGlowRadius * 2f, outerGlowRadius * 2f)
+
+            // 4. Translucent glass orbital ring track
+            drawArc(
+                color = Color.White.copy(alpha = 0.18f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round)
+            )
+
+            // 5. Soft radiant outer bloom behind active progress arc
+            val sweepAngle = 360f * clamped
+            drawArc(
+                color = GoldBright.copy(alpha = 0.24f + shimmerPhase * 0.10f),
+                startAngle = -90f,
+                sweepAngle = sweepAngle,
+                useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
+                style = Stroke(width = strokePx + 5.dp.toPx(), cap = StrokeCap.Round)
+            )
+
+            // 6. Luminous liquid-gold & celestial turquoise active progress arc
+            drawArc(
+                brush = Brush.sweepGradient(
+                    0.0f to accentColor,
+                    0.35f to GoldBright,
+                    0.75f to Color(0xFFFFF8DF),
+                    1.0f to accentColor,
+                    center = Offset(cx, cy)
+                ),
+                startAngle = -90f,
+                sweepAngle = sweepAngle,
+                useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
+                style = Stroke(width = strokePx, cap = StrokeCap.Round)
+            )
+
+            // 7. Orbiting luminous pearl-gold star orb at the exact tip of the arc
+            val tipRad = (-90.0 + sweepAngle) * PI / 180.0
+            val tipX = cx + (outerGlowRadius * cos(tipRad)).toFloat()
+            val tipY = cy + (outerGlowRadius * sin(tipRad)).toFloat()
+
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xE6FFF8DF), GoldBright.copy(alpha = 0.35f), Color.Transparent),
+                    center = Offset(tipX, tipY),
+                    radius = 10.dp.toPx()
+                ),
+                radius = 10.dp.toPx(),
+                center = Offset(tipX, tipY)
+            )
+            drawCircle(
+                color = Color.White,
+                radius = 4.dp.toPx(),
+                center = Offset(tipX, tipY)
+            )
+        }
+
+        // Inner Dial Content: Glowing Prayer Icon + Percentage + Label
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(12.dp)
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(GoldBright.copy(alpha = 0.18f))
+                    .border(0.7.dp, GoldBright.copy(alpha = 0.55f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = prayerIcon(prayer),
+                    contentDescription = null,
+                    tint = GoldBright,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = "$percent%",
+                style = TextStyle(
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFeatureSettings = "tnum",
+                    brush = Brush.horizontalGradient(
+                        listOf(Color.White, GoldBright)
+                    )
+                )
+            )
+            Text(
+                text = L10n.pick(lang, "تقدم الوقت", "Elapsed", "Vaqt"),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                color = Color.White.copy(alpha = 0.80f),
+                maxLines = 1
             )
         }
     }
 }
 
-@Composable
-private fun LiquidGoldProgressBeam(
-    progress: Float,
-    accentColor: Color,
-    isRtl: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val clamped = progress.coerceIn(0.03f, 1f)
-    Canvas(modifier = modifier) {
-        val barHeight = 7.dp.toPx()
-        val topY = (size.height - barHeight) / 2f
-        val radius = CornerRadius(barHeight / 2f, barHeight / 2f)
-
-        // Frosted glass track
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.20f),
-            topLeft = Offset(0f, topY),
-            size = Size(size.width, barHeight),
-            cornerRadius = radius
-        )
-        drawRoundRect(
-            color = Color.White.copy(alpha = 0.25f),
-            topLeft = Offset(0f, topY),
-            size = Size(size.width, barHeight),
-            cornerRadius = radius,
-            style = Stroke(width = 0.6.dp.toPx())
-        )
-
-        val fillWidth = (size.width * clamped).coerceAtLeast(barHeight)
-        val fillStartX = if (isRtl) size.width - fillWidth else 0f
-        val tipX = if (isRtl) fillStartX else fillStartX + fillWidth
-
-        // Glowing liquid-gold gradient beam
-        val beamColors = if (isRtl) {
-            listOf(Color(0xFFFFF8DF), GoldBright, accentColor)
-        } else {
-            listOf(accentColor, GoldBright, Color(0xFFFFF8DF))
-        }
-        drawRoundRect(
-            brush = Brush.horizontalGradient(
-                colors = beamColors,
-                startX = fillStartX,
-                endX = fillStartX + fillWidth
-            ),
-            topLeft = Offset(fillStartX, topY),
-            size = Size(fillWidth, barHeight),
-            cornerRadius = radius
-        )
-
-        // Soft glowing pearl orb at the progress tip
-        val centerY = size.height / 2f
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(Color(0xCCFFF8DF), Color.Transparent),
-                center = Offset(tipX, centerY),
-                radius = 9.dp.toPx()
-            ),
-            radius = 9.dp.toPx(),
-            center = Offset(tipX, centerY)
-        )
-        drawCircle(
-            color = Color.White,
-            radius = 3.5.dp.toPx(),
-            center = Offset(tipX, centerY)
-        )
-    }
-}
-
 private fun DrawScope.drawCelestialCrescentAndStars(w: Float, h: Float, shimmer: Float) {
-    // Soft golden moonlight halo in upper middle-left
     val moonX = w * 0.44f
-    val moonY = h * 0.26f
+    val moonY = h * 0.24f
     val moonR = 16.dp.toPx()
     drawCircle(
         brush = Brush.radialGradient(
-            colors = listOf(GoldBright.copy(alpha = 0.26f + shimmer * 0.10f), Color.Transparent),
+            colors = listOf(GoldBright.copy(alpha = 0.24f + shimmer * 0.10f), Color.Transparent),
             center = Offset(moonX, moonY),
             radius = moonR * 3.4f
         ),
@@ -581,7 +651,6 @@ private fun DrawScope.drawCelestialCrescentAndStars(w: Float, h: Float, shimmer:
         center = Offset(moonX, moonY)
     )
 
-    // Delicate 4-point twinkling celestial stars
     val stars = listOf(
         Triple(0.32f, 0.20f, 3.8f),
         Triple(0.56f, 0.16f, 4.6f),
@@ -645,14 +714,13 @@ private fun DrawScope.drawIlluminatedMosqueHorizon(
     bottomColor: Color
 ) {
     val base = h
-    val mosqueHeight = h * 0.42f
+    val mosqueHeight = h * 0.40f
     val brush = Brush.verticalGradient(
         colors = listOf(topColor, bottomColor),
         startY = base - mosqueHeight,
         endY = base
     )
 
-    // Central grand dome
     val cx = w * 0.50f
     val domeR = w * 0.115f
     val domePath = Path().apply {
@@ -673,7 +741,6 @@ private fun DrawScope.drawIlluminatedMosqueHorizon(
     }
     drawPath(domePath, brush = brush)
 
-    // Side domes
     listOf(0.32f, 0.68f).forEach { frac ->
         val sx = w * frac
         val sr = w * 0.068f
@@ -688,7 +755,6 @@ private fun DrawScope.drawIlluminatedMosqueHorizon(
         drawPath(sidePath, brush = brush)
     }
 
-    // Slender minarets
     listOf(0.20f, 0.80f).forEach { frac ->
         val mx = w * frac
         val mw = w * 0.018f
