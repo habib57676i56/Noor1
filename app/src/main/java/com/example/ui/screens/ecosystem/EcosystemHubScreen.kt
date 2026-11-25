@@ -29,6 +29,7 @@ import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.NightsStay
+import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.material.icons.rounded.Radio
@@ -86,6 +87,7 @@ fun EcosystemHubScreen(
     onOpenLibrary: () -> Unit,
     onOpenTajweed: () -> Unit,
     onOpenKids: () -> Unit,
+    onOpenVideos: () -> Unit = {},
     onOpenKhatm: () -> Unit,
     onOpenQuiz: () -> Unit,
     onOpenNotes: () -> Unit,
@@ -154,6 +156,11 @@ fun EcosystemHubScreen(
             "نور للأطفال", "NOOR Kids",
             "قصار السور والأدعية والقصص بإشراف الوالدين", "Short Surahs, Stories & Parent Controls",
             Icons.Rounded.ChildCare, Color(0xFF26B37E), "hub_kids", onOpenKids
+        ),
+        EcosystemModuleItem(
+            "فيديوهات نور", "NOOR Videos",
+            "دروس قرآنية وتجويد وكرتون إسلامي وقصص الأنبياء", "Quran Lessons, Tajweed & Islamic Cartoons",
+            Icons.Rounded.OndemandVideo, GoldPrimary, "hub_videos", onOpenVideos
         )
     )
 

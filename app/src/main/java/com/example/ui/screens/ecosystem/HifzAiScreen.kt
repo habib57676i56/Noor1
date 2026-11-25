@@ -81,6 +81,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.audio.LiveRecitationStatus
 import com.example.audio.RecitationRecordingStatus
 import com.example.data.cloud.GlobalAppConfigDoc
+import com.example.data.local.catalog.MadinahMushafPageCatalog
 import com.example.data.local.catalog.SurahCatalog
 import com.example.domain.quran.RecitationAssessmentReport
 import com.example.domain.quran.RecitationOverallLevel
@@ -130,6 +131,12 @@ fun HifzAiScreen(
     val noorColors = LocalNoorColors.current
 
     val verses by viewModel.hifzVerses.collectAsStateWithLifecycle()
+    val isPageMode by viewModel.hifzPageMode.collectAsStateWithLifecycle()
+    val selectedPage by viewModel.hifzSelectedPage.collectAsStateWithLifecycle()
+    val isVersesLoading by viewModel.hifzVersesLoading.collectAsStateWithLifecycle()
+    val versesLoadError by viewModel.hifzLoadError.collectAsStateWithLifecycle()
+    val progressiveState by viewModel.progressiveState.collectAsStateWithLifecycle()
+    val mistakeSoundEnabled by viewModel.mistakeSoundEnabled.collectAsStateWithLifecycle()
     val liveState by viewModel.hifzLiveState.collectAsStateWithLifecycle()
     val recState by viewModel.recordingState.collectAsStateWithLifecycle()
     val playbackState by viewModel.recordingPlaybackState.collectAsStateWithLifecycle()
@@ -144,6 +151,7 @@ fun HifzAiScreen(
     val clampedInitialSurah = initialSurah.coerceIn(1, 114)
     var selectedSurah by remember(clampedInitialSurah) { mutableIntStateOf(clampedInitialSurah) }
     var selectedTab by remember { mutableIntStateOf(0) }
+    var useProgressiveWriteMode by remember { mutableStateOf(true) }
     var activeAyahIdx by remember(clampedInitialSurah, initialAyah) { mutableIntStateOf((initialAyah - 1).coerceAtLeast(0)) }
     var pendingInitialAyah by remember(clampedInitialSurah, initialAyah) { mutableStateOf<Int?>(initialAyah.coerceAtLeast(1)) }
     var hideVerseText by remember { mutableStateOf(true) }
@@ -152,6 +160,7 @@ fun HifzAiScreen(
     var manualReciteInput by remember { mutableStateOf("") }
     var showPlanDialog by remember { mutableStateOf(false) }
     var showSurahPicker by remember { mutableStateOf(false) }
+    var showPagePicker by remember { mutableStateOf(false) }
     var showMoreToolsDialog by remember { mutableStateOf(false) }
     var showTestModeDialog by remember { mutableStateOf(false) }
     var selectedTestMode by remember { mutableStateOf(HifzTestMode.HIDDEN_TEXT) }
@@ -176,8 +185,11 @@ fun HifzAiScreen(
         if (result.resultCode == Activity.RESULT_OK) {
             val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty()
             if (spoken.isNotBlank()) {
-                viewModel.injectHifzSpeechResult(spoken)
                 manualReciteInput = spoken
+                if (useProgressiveWriteMode) {
+                    viewModel.submitProgressiveDictation(spoken)
+                }
+                viewModel.injectHifzSpeechResult(spoken)
                 val target = verses.getOrNull(activeAyahIdx)
                 if (target != null) {
                     viewModel.evaluateRecitedVerses(listOf(target), spoken, testMode = selectedTestMode.key)
@@ -193,18 +205,19 @@ fun HifzAiScreen(
         }
     }
 
-    LaunchedEffect(selectedSurah) {
-        viewModel.loadHifzSurah(selectedSurah)
-        if (selectedSurah != clampedInitialSurah) {
-            pendingInitialAyah = null
-            activeAyahIdx = 0
+    LaunchedEffect(clampedInitialSurah, initialAyah) {
+        if (initialAyah <= 1) {
+            val page = SurahCatalog.findSurah(clampedInitialSurah).startPage
+            viewModel.loadHifzMushafPage(page, startSurah = clampedInitialSurah, startAyah = 1)
+        } else {
+            viewModel.loadHifzSurah(clampedInitialSurah, startAyah = initialAyah)
         }
     }
 
     LaunchedEffect(verses, pendingInitialAyah) {
         val targetAyah = pendingInitialAyah ?: return@LaunchedEffect
-        if (verses.isNotEmpty() && verses.first().surahNumber == selectedSurah) {
-            val idx = verses.indexOfFirst { it.numberInSurah == targetAyah }
+        if (verses.isNotEmpty() && verses.any { it.surahNumber == selectedSurah }) {
+            val idx = verses.indexOfFirst { it.numberInSurah == targetAyah && it.surahNumber == selectedSurah }
             if (idx >= 0) {
                 activeAyahIdx = idx
             }
@@ -214,10 +227,11 @@ fun HifzAiScreen(
 
     val activeVerse = verses.getOrNull(activeAyahIdx.coerceIn(0, (verses.size - 1).coerceAtLeast(0)))
     val currentSurahMeta = remember(selectedSurah) { SurahCatalog.findSurah(selectedSurah) }
+    val currentPageMeta = remember(selectedPage) { MadinahMushafPageCatalog.pageMeta(selectedPage) }
 
     LaunchedEffect(liveState.effectiveTranscript, activeVerse?.numberInSurah, liveState.isActive) {
         val spoken = liveState.effectiveTranscript
-        if (spoken.isNotBlank() && activeVerse != null && liveState.isActive) {
+        if (spoken.isNotBlank() && activeVerse != null && liveState.isActive && !useProgressiveWriteMode) {
             viewModel.evaluateRecitedVerses(listOf(activeVerse), spoken, testMode = selectedTestMode.key)
         }
     }
@@ -252,7 +266,7 @@ fun HifzAiScreen(
             return
         }
 
-        // Compact Top Controls: Surah Picker + ONE unified "Choose Reciter" button
+        // Scope Mode Switcher: By Mushaf Page (1-604) vs By Surah (1-114)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -260,45 +274,120 @@ fun HifzAiScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            OutlinedButton(
-                onClick = { showSurahPicker = true },
+            LiquidGlassChip(
+                label = L10n.pick(lang, "حسب الصفحة (١–٦٠٤)", "By Page (1–604)", "Sahifa (1–604)"),
+                selected = isPageMode,
+                onClick = { viewModel.toggleHifzScopeMode(pageMode = true, currentSurah = selectedSurah) },
                 modifier = Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
-                    .testTag("hifz_surah_picker_btn"),
-                shape = RoundedCornerShape(14.dp),
-                border = BorderStroke(1.dp, GoldPrimary.copy(alpha = 0.55f)),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.MenuBook,
-                    contentDescription = L10n.pick(lang, "اختر السورة", "Choose Surah"),
-                    tint = noorColors.goldAccent,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = L10n.pick(lang, "السورة", "Surah"),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1
+                    .testTag("hifz_scope_page_btn")
+            )
+            LiquidGlassChip(
+                label = L10n.pick(lang, "حسب السورة (١–١١٤)", "By Surah (1–114)", "Sura (1–114)"),
+                selected = !isPageMode,
+                onClick = { viewModel.toggleHifzScopeMode(pageMode = false, currentSurah = selectedSurah) },
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("hifz_scope_surah_btn")
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
+        // Compact Top Controls: Page/Surah Picker + ONE unified "Choose Reciter" button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isPageMode) {
+                OutlinedButton(
+                    onClick = { showPagePicker = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("hifz_page_picker_btn"),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, GoldPrimary.copy(alpha = 0.55f)),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MenuBook,
+                        contentDescription = L10n.pick(lang, "اختر صفحة المصحف", "Choose Page"),
+                        tint = noorColors.goldAccent,
+                        modifier = Modifier.size(18.dp)
                     )
-                    Text(
-                        text = "${currentSurahMeta.number}. ${L10n.pick(lang, currentSurahMeta.nameAr, currentSurahMeta.nameEn)}",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                    Spacer(Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = L10n.pick(lang, "المصحف · جزء ${currentPageMeta.juzNumber}", "Mushaf · Juz ${currentPageMeta.juzNumber}"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "ص $selectedPage · ${currentPageMeta.primarySurahNameAr}",
+                                "P.$selectedPage · ${currentPageMeta.primarySurahNameEn}"
+                            ),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = noorColors.goldAccent,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-                Icon(
-                    imageVector = Icons.Rounded.KeyboardArrowDown,
-                    contentDescription = null,
-                    tint = noorColors.goldAccent,
-                    modifier = Modifier.size(20.dp)
-                )
+            } else {
+                OutlinedButton(
+                    onClick = { showSurahPicker = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 48.dp)
+                        .testTag("hifz_surah_picker_btn"),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, GoldPrimary.copy(alpha = 0.55f)),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.MenuBook,
+                        contentDescription = L10n.pick(lang, "اختر السورة", "Choose Surah"),
+                        tint = noorColors.goldAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = L10n.pick(lang, "السورة", "Surah"),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
+                        Text(
+                            text = "${currentSurahMeta.number}. ${L10n.pick(lang, currentSurahMeta.nameAr, currentSurahMeta.nameEn)}",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = noorColors.goldAccent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
 
             ChooseReciterButton(
@@ -357,18 +446,66 @@ fun HifzAiScreen(
                 0 -> {
                     item {
                         LiquidGlassCard(strong = true, goldBorder = true) {
-                            if (activeVerse != null) {
+                            // Mode Switcher inside Tab 0: Write-As-I-Recite Mushaf vs Single Ayah Card
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                LiquidGlassChip(
+                                    label = L10n.pick(lang, "يكتب وراي (المصحف)", "Write-As-Recite", "Aytganda yozish"),
+                                    selected = useProgressiveWriteMode,
+                                    onClick = { useProgressiveWriteMode = true },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("hifz_mode_progressive_chip")
+                                )
+                                LiquidGlassChip(
+                                    label = L10n.pick(lang, "آية بآية", "Ayah by Ayah", "Oyatma-oyat"),
+                                    selected = !useProgressiveWriteMode,
+                                    onClick = { useProgressiveWriteMode = false },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("hifz_mode_single_ayah_chip")
+                                )
+                            }
+                            Spacer(Modifier.height(10.dp))
+
+                            if (useProgressiveWriteMode) {
+                                ProgressiveMushafDictationSection(
+                                    state = progressiveState,
+                                    isPageMode = isPageMode,
+                                    selectedPage = selectedPage,
+                                    isLoading = isVersesLoading,
+                                    loadError = versesLoadError,
+                                    mistakeSoundEnabled = mistakeSoundEnabled,
+                                    onToggleMistakeSound = { viewModel.toggleMistakeSoundEnabled() },
+                                    onReset = { viewModel.resetProgressiveRecitation() },
+                                    onNudgeWord = { viewModel.nudgeProgressiveSingleWord() },
+                                    onJumpToAyah = { s, a -> viewModel.jumpProgressiveToAyah(s, a) },
+                                    onPrevPage = {
+                                        if (selectedPage > 1) viewModel.loadHifzMushafPage(selectedPage - 1)
+                                    },
+                                    onNextPage = {
+                                        if (selectedPage < MadinahMushafPageCatalog.TOTAL_PAGES) viewModel.loadHifzMushafPage(selectedPage + 1)
+                                    },
+                                    onRetryLoad = {
+                                        if (isPageMode) viewModel.loadHifzMushafPage(selectedPage)
+                                        else viewModel.loadHifzSurah(selectedSurah)
+                                    }
+                                )
+                            } else if (activeVerse != null) {
                                 // Header row: Ayah position + Show/Hide text toggle
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
+                                    val sMeta = SurahCatalog.findSurah(activeVerse.surahNumber)
                                     Text(
                                         text = L10n.pick(
                                             lang,
-                                            "سورة ${currentSurahMeta.nameAr} · آية ${activeVerse.numberInSurah} / ${verses.size}",
-                                            "${currentSurahMeta.nameEn} · Ayah ${activeVerse.numberInSurah} / ${verses.size}"
+                                            "سورة ${sMeta.nameAr} · آية ${activeVerse.numberInSurah} / ${verses.size}",
+                                            "${sMeta.nameEn} · Ayah ${activeVerse.numberInSurah} / ${verses.size}"
                                         ),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
@@ -422,13 +559,26 @@ fun HifzAiScreen(
                                         )
                                     }
                                 }
+                            }
 
+                            val controlSurah = if (useProgressiveWriteMode) {
+                                progressiveState.currentSurahNumber
+                            } else {
+                                activeVerse?.surahNumber ?: selectedSurah
+                            }
+                            val controlAyah = if (useProgressiveWriteMode) {
+                                progressiveState.currentAyahNumber
+                            } else {
+                                activeVerse?.numberInSurah ?: 1
+                            }
+
+                            if (verses.isNotEmpty() || useProgressiveWriteMode) {
                                 Spacer(Modifier.height(12.dp))
 
                                 // 3 Clean Primary Actions: Listen to Sheikh | Record | Live Recite
                                 val isPlayingThisVerse = audioState.isPlaying &&
-                                    audioState.playingSurah == activeVerse.surahNumber &&
-                                    audioState.playingAyah == activeVerse.numberInSurah
+                                    audioState.playingSurah == controlSurah &&
+                                    audioState.playingAyah == controlAyah
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -440,8 +590,8 @@ fun HifzAiScreen(
                                                 viewModel.stopAudio()
                                             } else {
                                                 viewModel.playReferenceAyah(
-                                                    surahNumber = activeVerse.surahNumber,
-                                                    ayahNumber = activeVerse.numberInSurah,
+                                                    surahNumber = controlSurah,
+                                                    ayahNumber = controlAyah,
                                                     explicitReciter = selectedReciter
                                                 )
                                             }
@@ -505,9 +655,9 @@ fun HifzAiScreen(
                                         Button(
                                             onClick = {
                                                 viewModel.stopRecitationRecording(
-                                                    surahNumber = selectedSurah,
-                                                    fromAyah = activeVerse.numberInSurah,
-                                                    toAyah = activeVerse.numberInSurah,
+                                                    surahNumber = controlSurah,
+                                                    fromAyah = controlAyah,
+                                                    toAyah = controlAyah,
                                                     testMode = selectedTestMode.key
                                                 )
                                             },
@@ -692,11 +842,15 @@ fun HifzAiScreen(
                                         )
                                         TextButton(
                                             onClick = {
-                                                viewModel.evaluateRecitedVerses(
-                                                    listOf(activeVerse),
-                                                    liveState.effectiveTranscript,
-                                                    testMode = selectedTestMode.key
-                                                )
+                                                if (useProgressiveWriteMode) {
+                                                    viewModel.submitProgressiveDictation(liveState.effectiveTranscript)
+                                                } else if (activeVerse != null) {
+                                                    viewModel.evaluateRecitedVerses(
+                                                        listOf(activeVerse),
+                                                        liveState.effectiveTranscript,
+                                                        testMode = selectedTestMode.key
+                                                    )
+                                                }
                                             },
                                             modifier = Modifier.testTag("hifz_evaluate_btn")
                                         ) {
@@ -737,28 +891,37 @@ fun HifzAiScreen(
                                     }
                                 }
 
-                                // Optional Manual Input Evaluation (toggled from More Options — keeps idle view uncluttered)
+                                // Optional Manual Input Evaluation (toggled from More Options — feeds progressive dictation too)
                                 AnimatedVisibility(visible = showManualInput) {
                                     Column(modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                                         OutlinedTextField(
                                             value = manualReciteInput,
                                             onValueChange = { manualReciteInput = it },
                                             label = { Text(L10n.pick(lang, "اكتب أو عدّل النص المتلو للتقييم", "Type or edit recited text")) },
-                                            modifier = Modifier.fillMaxWidth()
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .testTag("hifz_manual_input_field")
                                         )
                                         Spacer(Modifier.height(6.dp))
                                         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                             Button(
                                                 onClick = {
                                                     val input = manualReciteInput.ifBlank { liveState.effectiveTranscript }
-                                                    viewModel.evaluateRecitedVerses(listOf(activeVerse), input, testMode = selectedTestMode.key)
+                                                    if (useProgressiveWriteMode) {
+                                                        viewModel.submitProgressiveDictation(input)
+                                                    } else if (activeVerse != null) {
+                                                        viewModel.evaluateRecitedVerses(listOf(activeVerse), input, testMode = selectedTestMode.key)
+                                                    }
                                                 },
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier.weight(1f).testTag("hifz_manual_submit_btn"),
                                                 colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
                                             ) {
                                                 Icon(Icons.Rounded.GraphicEq, contentDescription = null, modifier = Modifier.size(18.dp))
                                                 Spacer(Modifier.width(4.dp))
-                                                Text(L10n.pick(lang, "تقييم كلمة بكلمة", "Word-by-Word Check"))
+                                                Text(
+                                                    if (useProgressiveWriteMode) L10n.pick(lang, "تطبيق على الصفحة", "Apply to Page")
+                                                    else L10n.pick(lang, "تقييم كلمة بكلمة", "Word-by-Word Check")
+                                                )
                                             }
                                             TextButton(onClick = {
                                                 manualReciteInput = ""
@@ -768,14 +931,16 @@ fun HifzAiScreen(
                                     }
                                 }
 
-                                Spacer(Modifier.height(6.dp))
-                                HorizontalDivider(color = noorColors.goldAccent.copy(alpha = 0.16f))
-                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    TextButton(onClick = { if (activeAyahIdx > 0) activeAyahIdx-- }, enabled = activeAyahIdx > 0) {
-                                        Text(L10n.pick(lang, "← الآية السابقة", "← Previous"))
-                                    }
-                                    TextButton(onClick = { if (activeAyahIdx < verses.lastIndex) activeAyahIdx++ }, enabled = activeAyahIdx < verses.lastIndex) {
-                                        Text(L10n.pick(lang, "الآية التالية →", "Next →"))
+                                if (!useProgressiveWriteMode) {
+                                    Spacer(Modifier.height(6.dp))
+                                    HorizontalDivider(color = noorColors.goldAccent.copy(alpha = 0.16f))
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        TextButton(onClick = { if (activeAyahIdx > 0) activeAyahIdx-- }, enabled = activeAyahIdx > 0) {
+                                            Text(L10n.pick(lang, "← الآية السابقة", "← Previous"))
+                                        }
+                                        TextButton(onClick = { if (activeAyahIdx < verses.lastIndex) activeAyahIdx++ }, enabled = activeAyahIdx < verses.lastIndex) {
+                                            Text(L10n.pick(lang, "الآية التالية →", "Next →"))
+                                        }
                                     }
                                 }
                             }
@@ -1063,6 +1228,8 @@ fun HifzAiScreen(
                                     .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         selectedSurah = s.number
+                                        activeAyahIdx = 0
+                                        viewModel.loadHifzSurah(s.number)
                                         showSurahPicker = false
                                     },
                                 color = if (isSel) GoldPrimary.copy(alpha = 0.16f) else Color.Transparent
@@ -1081,6 +1248,17 @@ fun HifzAiScreen(
                 }
             },
             confirmButton = { TextButton(onClick = { showSurahPicker = false }) { Text(L10n.pick(lang, "إغلاق", "Close")) } }
+        )
+    }
+
+    if (showPagePicker) {
+        MushafPagePickerDialog(
+            currentPage = selectedPage,
+            onSelectPage = { page ->
+                activeAyahIdx = 0
+                viewModel.loadHifzMushafPage(page)
+            },
+            onDismiss = { showPagePicker = false }
         )
     }
 

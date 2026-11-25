@@ -110,8 +110,10 @@ import com.example.ui.screens.ecosystem.NoorNotesScreen
 import com.example.ui.screens.ecosystem.NoorQuizScreen
 import com.example.ui.screens.ecosystem.NoorRadioScreen
 import com.example.ui.screens.ecosystem.NoorTafseerExplorerScreen
+import com.example.ui.screens.ecosystem.NoorVideosScreen
 import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
 import com.example.ui.screens.ecosystem.TajweedScreen
+import com.example.data.local.catalog.IslamicVideoCategory
 import com.example.ui.theme.EmeraldDeep
 import com.example.ui.theme.GoldBright
 import com.example.ui.theme.GoldPrimary
@@ -156,6 +158,8 @@ object NoorRoutes {
     const val KHATM = "khatm"
     const val QUIZ = "quiz"
     const val KIDS_QUIZ = "kids_quiz"
+    const val VIDEOS = "videos"
+    const val KIDS_VIDEOS = "kids_videos"
     const val NOTES = "notes"
     const val DUAA = "duaa"
     const val RADIO = "radio"
@@ -421,6 +425,7 @@ fun NoorAppShell(
                                     onOpenLocalAi = { navController.navigate(NoorRoutes.LOCAL_AI) },
                                     onOpenLibrary = { navController.navigate(NoorRoutes.LIBRARY) },
                                     onOpenKhatm = { navController.navigate(NoorRoutes.KHATM) },
+                                    onOpenVideos = { navController.navigate(NoorRoutes.VIDEOS) },
                                     onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) }
                                 )
                             }
@@ -600,6 +605,7 @@ fun NoorAppShell(
                                     onOpenLibrary = { navController.navigate(NoorRoutes.LIBRARY) },
                                     onOpenTajweed = { navController.navigate(NoorRoutes.TAJWEED) },
                                     onOpenKids = { navController.navigate(NoorRoutes.KIDS) },
+                                    onOpenVideos = { navController.navigate(NoorRoutes.VIDEOS) },
                                     onOpenKhatm = { navController.navigate(NoorRoutes.KHATM) },
                                     onOpenQuiz = { navController.navigate(NoorRoutes.QUIZ) },
                                     onOpenNotes = { navController.navigate(NoorRoutes.NOTES) },
@@ -686,7 +692,21 @@ fun NoorAppShell(
                                     viewModel = ecosystemViewModel,
                                     onBack = { navController.popBackStack() },
                                     onOpenSurah = { s -> navController.navigate(NoorRoutes.quranReader(s)) },
-                                    onOpenKidsQuiz = { navController.navigate(NoorRoutes.KIDS_QUIZ) }
+                                    onOpenKidsQuiz = { navController.navigate(NoorRoutes.KIDS_QUIZ) },
+                                    onOpenCartoons = { navController.navigate(NoorRoutes.KIDS_VIDEOS) }
+                                )
+                            }
+                            composable(NoorRoutes.VIDEOS) {
+                                NoorVideosScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.KIDS_VIDEOS) {
+                                NoorVideosScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() },
+                                    initialCategory = IslamicVideoCategory.ISLAMIC_CARTOONS
                                 )
                             }
                             composable(NoorRoutes.KHATM) {

@@ -247,6 +247,24 @@ object L10n {
         "Recognition Unclear — Retry or Teacher Review" to "Nutq aniq emas — qayta urinib ko'ring yoki ustozga tekshirtiring",
         "Microphone permission is required for speech recognition." to "Nutqni aniqlash uchun mikrofon ruxsati kerak.",
         "Microphone permission denied." to "Mikrofon ruxsati rad etildi.",
-        "Microphone permission is required before recording." to "Ovoz yozish uchun mikrofon ruxsati kerak."
+        "Microphone permission is required before recording." to "Ovoz yozish uchun mikrofon ruxsati kerak.",
+
+        // Progressive Page Dictation & Islamic Videos
+        "By Page (1–604)" to "Sahifa bo'yicha (1–604)",
+        "By Surah (1–114)" to "Sura bo'yicha (1–114)",
+        "Write-As-Recite" to "Aytganda yozish",
+        "Ayah by Ayah" to "Oyatma-oyat",
+        "Mistake Alert Sound" to "Xato ogohlantirish tovushi",
+        "Reset Page" to "Sahifani qaytarish",
+        "Videos" to "Videolar",
+        "NOOR Videos" to "NOOR Videolar",
+        "NOOR Islamic Videos" to "NOOR islomiy videolari",
+        "Quran Lessons, Tajweed & Islamic Cartoons" to "Qur'on darslari, Tajvid va islomiy multfilmlar",
+        "Quran & Tajweed Lessons" to "Qur'on va Tajvid darslari",
+        "Islamic Cartoons" to "Islomiy multfilmlar",
+        "Prophets & Quran Stories" to "Payg'ambarlar va Qur'on qissalari",
+        "My Local Videos" to "Mening mahalliy videolarim",
+        "Pick Local Video" to "Qurilmadan video tanlash",
+        "Watch" to "Ko'rish"
     )
 }

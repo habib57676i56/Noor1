@@ -59,7 +59,8 @@ fun NoorKidsScreen(
     viewModel: EcosystemViewModel,
     onBack: () -> Unit,
     onOpenSurah: (Int) -> Unit,
-    onOpenKidsQuiz: () -> Unit
+    onOpenKidsQuiz: () -> Unit,
+    onOpenCartoons: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -118,6 +119,24 @@ fun NoorKidsScreen(
                             onClick = onOpenKidsQuiz,
                             colors = ButtonDefaults.buttonColors(containerColor = GoldPrimary, contentColor = EmeraldDeep)
                         ) { Text("ابدأ المسابقة") }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                L10n.pick(lang, "كرتون إسلامي وقصص الأنبياء", "Islamic Cartoons & Stories"),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = noorColors.goldAccent
+                            )
+                            Text(
+                                L10n.pick(lang, "شاهد حلقات كرتون تربوية ودروس قرآنية للأطفال", "Watch family-safe Islamic animations & lessons"),
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                        OutlinedButton(onClick = onOpenCartoons) {
+                            Text(L10n.pick(lang, "مشاهدة", "Watch"))
+                        }
                     }
                 }
             }

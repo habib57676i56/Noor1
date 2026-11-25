@@ -10,8 +10,14 @@ import com.example.audio.LiveRecitationState
 import com.example.audio.QuranAudioService
 import com.example.audio.QuranLiveRecitationListener
 import com.example.audio.QuranRecitationRecorder
+import com.example.audio.RecitationMistakeSoundPlayer
 import com.example.audio.RecitationRecordingState
 import com.example.audio.RecordingPlaybackState
+import com.example.data.local.catalog.IslamicVideoCatalog
+import com.example.data.local.catalog.IslamicVideoCategory
+import com.example.data.local.catalog.IslamicVideoCollection
+import com.example.data.local.catalog.IslamicVideoItem
+import com.example.data.local.catalog.MadinahMushafPageCatalog
 import com.example.data.local.catalog.QuranRadioStation
 import com.example.data.local.catalog.SurahCatalog
 import com.example.data.local.db.CustomQuizQuestionEntity
@@ -32,6 +38,8 @@ import com.example.data.local.db.QuranPersonalNoteEntity
 import com.example.data.local.db.RecitationAssessmentEntity
 import com.example.data.local.db.StudentRecitationRecordingEntity
 import com.example.data.local.db.TajweedProgressEntity
+import com.example.data.quran.IslamicVideoRepository
+import com.example.data.quran.VideoEpisodesResult
 import com.example.data.repository.StorageUsageSummary
 import com.example.data.repository.SurahLoadResult
 import com.example.domain.ai.AiIndexStats
@@ -42,10 +50,13 @@ import com.example.domain.model.AudioTrackItem
 import com.example.domain.model.QuranReciter
 import com.example.domain.model.QuranVerse
 import com.example.domain.quran.AssessmentStrictness
+import com.example.domain.quran.ProgressiveRecitationState
+import com.example.domain.quran.ProgressiveRecitationTracker
 import com.example.domain.quran.QuranRecitationAssessmentEngine
 import com.example.domain.quran.RecitationAssessmentReport
 import com.example.domain.quran.RecitationOverallLevel
 import com.example.security.LocalAdminRole
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -53,6 +64,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 data class AdminSettingsState(
@@ -128,6 +140,9 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     private val audioPlayer = app.quranAudioPlayer
     private val hifzMicListener = QuranLiveRecitationListener(application.applicationContext)
     private val recitationRecorder = QuranRecitationRecorder(application.applicationContext)
+    private val mistakeSoundPlayer = RecitationMistakeSoundPlayer()
+    private val progressiveTracker = ProgressiveRecitationTracker()
+    private val videoRepository = IslamicVideoRepository(application.applicationContext)
 
     // Halaqat flows
     val circles = repo.circles.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -136,7 +151,7 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     val attendance = repo.attendance.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val assessments = repo.assessments.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Hifz AI flows (Recording + Speech-to-Text + Word-Level Assessment)
+    // Hifz AI flows (Recording + Speech-to-Text + Word-Level Assessment + Page Progressive Dictation)
     val hifzPlans = repo.hifzPlans.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val hifzRevisionLogs = repo.hifzRevisionLogs.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val hifzWeakVerses = repo.hifzWeakVerses.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -152,11 +167,50 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     private val _hifzVerses = MutableStateFlow<List<QuranVerse>>(emptyList())
     val hifzVerses: StateFlow<List<QuranVerse>> = _hifzVerses.asStateFlow()
 
+    private val _hifzPageMode = MutableStateFlow(true)
+    val hifzPageMode: StateFlow<Boolean> = _hifzPageMode.asStateFlow()
+
+    private val _hifzSelectedPage = MutableStateFlow(1)
+    val hifzSelectedPage: StateFlow<Int> = _hifzSelectedPage.asStateFlow()
+
+    private val _hifzVersesLoading = MutableStateFlow(false)
+    val hifzVersesLoading: StateFlow<Boolean> = _hifzVersesLoading.asStateFlow()
+
+    private val _hifzLoadError = MutableStateFlow<String?>(null)
+    val hifzLoadError: StateFlow<String?> = _hifzLoadError.asStateFlow()
+
+    private val _progressiveState = MutableStateFlow(ProgressiveRecitationState())
+    val progressiveState: StateFlow<ProgressiveRecitationState> = _progressiveState.asStateFlow()
+
+    private val _mistakeSoundEnabled = MutableStateFlow(true)
+    val mistakeSoundEnabled: StateFlow<Boolean> = _mistakeSoundEnabled.asStateFlow()
+
     private val _hifzComparison = MutableStateFlow<HifzComparisonResult?>(null)
     val hifzComparison: StateFlow<HifzComparisonResult?> = _hifzComparison.asStateFlow()
 
     private val _recitationReport = MutableStateFlow<RecitationAssessmentReport?>(null)
     val recitationReport: StateFlow<RecitationAssessmentReport?> = _recitationReport.asStateFlow()
+
+    // Islamic Videos flows
+    private val _selectedVideoCollection = MutableStateFlow<IslamicVideoCollection?>(
+        IslamicVideoCatalog.curatedCollections.firstOrNull()
+    )
+    val selectedVideoCollection: StateFlow<IslamicVideoCollection?> = _selectedVideoCollection.asStateFlow()
+
+    private val _videoEpisodes = MutableStateFlow<List<IslamicVideoItem>>(emptyList())
+    val videoEpisodes: StateFlow<List<IslamicVideoItem>> = _videoEpisodes.asStateFlow()
+
+    private val _userVideos = MutableStateFlow<List<IslamicVideoItem>>(emptyList())
+    val userVideos: StateFlow<List<IslamicVideoItem>> = _userVideos.asStateFlow()
+
+    private val _videosLoading = MutableStateFlow(false)
+    val videosLoading: StateFlow<Boolean> = _videosLoading.asStateFlow()
+
+    private val _videosError = MutableStateFlow<String?>(null)
+    val videosError: StateFlow<String?> = _videosError.asStateFlow()
+
+    private val _activeVideoItem = MutableStateFlow<IslamicVideoItem?>(null)
+    val activeVideoItem: StateFlow<IslamicVideoItem?> = _activeVideoItem.asStateFlow()
 
     // Local NOOR AI flows
     val allAiKnowledge = repo.allAiKnowledge.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -218,6 +272,7 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     val audioState: StateFlow<AudioPlaybackState> = audioPlayer.state
 
     init {
+        _userVideos.value = videoRepository.getUserVideos()
         viewModelScope.launch {
             runCatching { repo.ensureSeeded() }
             _hasSuperAdmin.value = runCatching { repo.hasLocalSuperAdmin() }.getOrDefault(false)
@@ -226,6 +281,29 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
             val cfg = runCatching { AdminSettingsState.fromMap(repo.getAllAdminConfigOnce()) }.getOrDefault(AdminSettingsState())
             hifzMicListener.setPreferOffline(cfg.sttPreferOffline)
             loadHifzSurah(1)
+        }
+        viewModelScope.launch {
+            var lastTranscriptSeen = ""
+            var lastMistakeEventSeen = 0
+            hifzMicListener.state.collect { live ->
+                val transcript = live.effectiveTranscript
+                if (transcript != lastTranscriptSeen && transcript.isNotBlank()) {
+                    lastTranscriptSeen = transcript
+                    val nextState = progressiveTracker.processTranscript(
+                        fullTranscript = transcript,
+                        isPartialStreaming = live.isActive
+                    )
+                    _progressiveState.value = nextState
+                    if (nextState.mistakeEventId > lastMistakeEventSeen) {
+                        lastMistakeEventSeen = nextState.mistakeEventId
+                        if (_mistakeSoundEnabled.value) {
+                            mistakeSoundPlayer.playMistakeAlert()
+                        }
+                    }
+                } else if (transcript.isBlank()) {
+                    lastTranscriptSeen = ""
+                }
+            }
         }
     }
 
@@ -392,21 +470,133 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
 
     // ======================== HIFZ AI ACTIONS ========================
 
-    fun loadHifzSurah(surahNumber: Int) = viewModelScope.launch {
+    fun loadHifzSurah(surahNumber: Int, startAyah: Int? = null) = viewModelScope.launch {
         val clamped = surahNumber.coerceIn(1, 114)
+        val surahMeta = SurahCatalog.findSurah(clamped)
+        _hifzPageMode.value = false
+        _hifzSelectedPage.value = surahMeta.startPage
+        _hifzVersesLoading.value = true
+        _hifzLoadError.value = null
         val reciter = selectedReciter.value
+        val result = mainRepo.loadSurahVerses(clamped, reciter)
         val verses = SurahCatalog.getBundledSurahVerses(clamped, reciter)
-            ?: when (val res = mainRepo.loadSurahVerses(clamped, reciter)) {
-                is SurahLoadResult.Success -> res.verses
+            ?: when (result) {
+                is SurahLoadResult.Success -> result.verses
                 is SurahLoadResult.Error -> emptyList()
             }
         _hifzVerses.value = verses
-        if (verses.isNotEmpty()) {
-            hifzMicListener.loadSurahContext(clamped, verses, verses.first().numberInSurah)
+        _hifzVersesLoading.value = false
+        if (verses.isEmpty() && result is SurahLoadResult.Error) {
+            _hifzLoadError.value = result.messageAr
+        } else {
+            hifzMicListener.clearTranscript()
+            hifzMicListener.loadSurahContext(clamped, verses, startAyah ?: verses.firstOrNull()?.numberInSurah ?: 1)
+            _progressiveState.value = progressiveTracker.loadVerses(
+                verses = verses,
+                titleAr = "سورة ${surahMeta.nameAr}",
+                titleEn = "Surah ${surahMeta.nameEn}",
+                startAtSurah = clamped,
+                startAtAyah = startAyah
+            )
         }
         _hifzComparison.value = null
         _recitationReport.value = null
     }
+
+    /**
+     * Loads verified Uthmani verses for ANY of the 604 Madinah Mushaf pages (covering all 114 Surahs),
+     * including multi-Surah pages such as Page 604 (Al-Ikhlas, Al-Falaq, An-Nas).
+     */
+    fun loadHifzMushafPage(pageNumber: Int, startSurah: Int? = null, startAyah: Int? = null) = viewModelScope.launch {
+        val clampedPage = pageNumber.coerceIn(1, MadinahMushafPageCatalog.TOTAL_PAGES)
+        _hifzPageMode.value = true
+        _hifzSelectedPage.value = clampedPage
+        _hifzVersesLoading.value = true
+        _hifzLoadError.value = null
+
+        val meta = MadinahMushafPageCatalog.pageMeta(clampedPage)
+        val reciter = selectedReciter.value
+        val collected = withContext(Dispatchers.IO) {
+            val list = mutableListOf<QuranVerse>()
+            for (s in meta.surahsOnPage) {
+                val surahVerses = when (val res = mainRepo.loadSurahVerses(s.number, reciter)) {
+                    is SurahLoadResult.Success -> res.verses
+                    is SurahLoadResult.Error -> SurahCatalog.getBundledSurahVerses(s.number, reciter).orEmpty()
+                }
+                val onPage = surahVerses.filter { it.pageNumber == clampedPage }
+                if (onPage.isNotEmpty()) {
+                    list += onPage
+                } else if (meta.surahsOnPage.size == 1 && surahVerses.isNotEmpty()) {
+                    list += surahVerses
+                }
+            }
+            list.sortedWith(compareBy({ it.surahNumber }, { it.numberInSurah }))
+        }
+
+        _hifzVersesLoading.value = false
+        if (collected.isEmpty()) {
+            _hifzLoadError.value = "تعذّر تحميل صفحة المصحف $clampedPage. تأكد من الاتصال بالإنترنت أو حمّل المصحف دون اتصال."
+            return@launch
+        }
+        _hifzVerses.value = collected
+        hifzMicListener.clearTranscript()
+        hifzMicListener.loadSurahContext(
+            meta.primarySurahNumber,
+            collected,
+            startAyah ?: collected.first().numberInSurah
+        )
+        val surahsLabelAr = meta.surahsOnPage.joinToString(" · ") { it.nameAr }
+        val surahsLabelEn = meta.surahsOnPage.joinToString(" · ") { it.nameEn }
+        _progressiveState.value = progressiveTracker.loadVerses(
+            verses = collected,
+            titleAr = "صفحة $clampedPage — $surahsLabelAr (جزء ${meta.juzNumber})",
+            titleEn = "Page $clampedPage — $surahsLabelEn (Juz ${meta.juzNumber})",
+            startAtSurah = startSurah,
+            startAtAyah = startAyah
+        )
+        _hifzComparison.value = null
+        _recitationReport.value = null
+    }
+
+    fun toggleHifzScopeMode(pageMode: Boolean, currentSurah: Int) {
+        if (pageMode) {
+            val targetPage = SurahCatalog.findSurah(currentSurah).startPage
+            loadHifzMushafPage(targetPage)
+        } else {
+            loadHifzSurah(currentSurah)
+        }
+    }
+
+    fun resetProgressiveRecitation() {
+        hifzMicListener.clearTranscript()
+        _progressiveState.value = progressiveTracker.reset()
+    }
+
+    fun jumpProgressiveToAyah(surahNumber: Int, ayahNumber: Int) {
+        _progressiveState.value = progressiveTracker.jumpToAyah(surahNumber, ayahNumber)
+    }
+
+    fun nudgeProgressiveSingleWord() {
+        _progressiveState.value = progressiveTracker.nudgeRevealSingleWord()
+    }
+
+    fun toggleMistakeSoundEnabled() {
+        val next = !_mistakeSoundEnabled.value
+        _mistakeSoundEnabled.value = next
+        mistakeSoundPlayer.setMuted(!next)
+    }
+
+    fun submitProgressiveDictation(spokenText: String) {
+        if (spokenText.isBlank()) return
+        val prevMistakeId = _progressiveState.value.mistakeEventId
+        val next = progressiveTracker.processTranscript(spokenText, isPartialStreaming = false)
+        _progressiveState.value = next
+        if (next.mistakeEventId > prevMistakeId && _mistakeSoundEnabled.value) {
+            mistakeSoundPlayer.playMistakeAlert()
+        }
+    }
+
+    fun getMistakeAlertPlayCountForTest(): Int = mistakeSoundPlayer.playedCountForTest
 
     fun selectReciter(reciter: QuranReciter) = viewModelScope.launch {
         val prev = audioPlayer.state.value
@@ -457,7 +647,9 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     fun setSttPreferOfflineLocal(preferOffline: Boolean) {
         hifzMicListener.setPreferOffline(preferOffline)
     }
-    fun injectHifzSpeechResult(text: String) = hifzMicListener.injectRecognizedText(text, isFinal = true)
+    fun injectHifzSpeechResult(text: String) {
+        hifzMicListener.injectRecognizedText(text, isFinal = true)
+    }
     fun buildSystemSpeechIntent(): Intent = hifzMicListener.buildSystemSpeechIntent()
     fun isSpeechRecognitionAvailable(): Boolean = hifzMicListener.isSpeechServiceAvailable()
     fun inspectSttCapabilities() = hifzMicListener.inspectCapabilities()
@@ -1273,9 +1465,74 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
+    // ======================== ISLAMIC VIDEOS ACTIONS ========================
+
+    fun loadVideoCollection(collection: IslamicVideoCollection, forceRefresh: Boolean = false) = viewModelScope.launch {
+        _selectedVideoCollection.value = collection
+        _videosLoading.value = true
+        _videosError.value = null
+        when (val res = videoRepository.loadEpisodes(collection, forceRefresh = forceRefresh)) {
+            is VideoEpisodesResult.Success -> {
+                _videoEpisodes.value = res.episodes
+                if (_activeVideoItem.value == null && res.episodes.isNotEmpty()) {
+                    _activeVideoItem.value = res.episodes.first()
+                }
+            }
+            is VideoEpisodesResult.Error -> {
+                _videoEpisodes.value = emptyList()
+                _videosError.value = res.messageAr
+            }
+        }
+        _videosLoading.value = false
+    }
+
+    fun selectVideoToPlay(item: IslamicVideoItem) {
+        // Enforce single audio session across the entire app before playing video
+        stopAudio()
+        recitationRecorder.stopPlayback()
+        if (hifzLiveState.value.isActive) {
+            hifzMicListener.stopListening(clearTranscript = false)
+        }
+        _activeVideoItem.value = item
+    }
+
+    fun addUserVideoItem(
+        title: String,
+        streamUrl: String,
+        isLocalUri: Boolean,
+        categoryLabelAr: String = "فيديو مضاف"
+    ) {
+        val cleanUrl = streamUrl.trim()
+        if (cleanUrl.isBlank()) return
+        val cleanTitle = title.trim().ifBlank { "فيديو إسلامي" }
+        val item = IslamicVideoItem(
+            id = "usr_${UUID.randomUUID().toString().take(8)}",
+            collectionId = "user_saved",
+            titleAr = cleanTitle,
+            titleEn = cleanTitle,
+            subtitleAr = categoryLabelAr,
+            subtitleEn = if (isLocalUri) "Local Device Video" else "Direct Video Link",
+            category = IslamicVideoCategory.MY_VIDEOS,
+            streamUrl = cleanUrl,
+            sourceLabel = if (isLocalUri) "Device" else "Web Stream",
+            isLocalUri = isLocalUri
+        )
+        _userVideos.value = videoRepository.addUserVideo(item)
+        selectVideoToPlay(item)
+        postStatus("تمت إضافة الفيديو وتشغيله")
+    }
+
+    fun removeUserVideoItem(id: String) {
+        _userVideos.value = videoRepository.removeUserVideo(id)
+        if (_activeVideoItem.value?.id == id) {
+            _activeVideoItem.value = _videoEpisodes.value.firstOrNull()
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         hifzMicListener.stopListening()
         recitationRecorder.release()
+        mistakeSoundPlayer.release()
     }
 }

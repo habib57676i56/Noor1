@@ -34,6 +34,7 @@ import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
@@ -124,6 +125,7 @@ fun HomeScreen(
     onOpenLocalAi: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
     onOpenKhatm: () -> Unit = {},
+    onOpenVideos: () -> Unit = {},
     onOpenOfflineAdmin: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
@@ -430,6 +432,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    HomeEcoMiniTile(L10n.pick(lang, "فيديوهات", "Videos"), Icons.Rounded.OndemandVideo, onOpenVideos, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "الختمة والصيام", "Khatm"), Icons.Rounded.NightsStay, onOpenKhatm, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "الإدارة المحلية", "Local Admin"), Icons.Rounded.AdminPanelSettings, onOpenOfflineAdmin, Modifier.weight(1f))
                 }
