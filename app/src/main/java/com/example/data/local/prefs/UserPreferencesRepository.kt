@@ -34,6 +34,7 @@ private val Context.noorDataStore: DataStore<Preferences> by preferencesDataStor
 
 data class UserPreferences(
     val userName: String = "",
+    val customAvatarUri: String = "",
     val language: AppLanguage = AppLanguage.ARABIC,
     val themeMode: ThemeMode = ThemeMode.DARK,
     val cityId: String = CityCatalog.defaultCity.id,
@@ -114,6 +115,7 @@ class UserPreferencesRepository(private val context: Context) {
 
     private object Keys {
         val USER_NAME = stringPreferencesKey("user_name")
+        val CUSTOM_AVATAR_URI = stringPreferencesKey("custom_avatar_uri")
         val LANGUAGE = stringPreferencesKey("language")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val CITY_ID = stringPreferencesKey("city_id")
@@ -206,6 +208,7 @@ class UserPreferencesRepository(private val context: Context) {
     val preferencesFlow: Flow<UserPreferences> = context.noorDataStore.data.map { p ->
         UserPreferences(
             userName = p[Keys.USER_NAME] ?: "",
+            customAvatarUri = p[Keys.CUSTOM_AVATAR_URI] ?: "",
             language = AppLanguage.fromCode(p[Keys.LANGUAGE]),
             themeMode = ThemeMode.fromKey(p[Keys.THEME_MODE]),
             cityId = p[Keys.CITY_ID] ?: CityCatalog.defaultCity.id,
@@ -303,7 +306,11 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun getPreferencesOnce(): UserPreferences = preferencesFlow.first()
 
     suspend fun setUserName(name: String) {
-        context.noorDataStore.edit { it[Keys.USER_NAME] = name.trim().take(32) }
+        context.noorDataStore.edit { it[Keys.USER_NAME] = name.trim().take(48) }
+    }
+
+    suspend fun setCustomAvatarUri(uri: String) {
+        context.noorDataStore.edit { it[Keys.CUSTOM_AVATAR_URI] = uri.trim() }
     }
 
     suspend fun setLanguage(language: AppLanguage) {
@@ -575,6 +582,7 @@ class UserPreferencesRepository(private val context: Context) {
     suspend fun restoreFromPreferences(prefs: UserPreferences) {
         context.noorDataStore.edit {
             it[Keys.USER_NAME] = prefs.userName
+            it[Keys.CUSTOM_AVATAR_URI] = prefs.customAvatarUri
             it[Keys.LANGUAGE] = prefs.language.code
             it[Keys.THEME_MODE] = prefs.themeMode.key
             it[Keys.CITY_ID] = prefs.cityId

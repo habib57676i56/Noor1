@@ -697,16 +697,36 @@ fun NoorAppShell(
                                 )
                             }
                             composable(NoorRoutes.VIDEOS) {
-                                NoorVideosScreen(
-                                    viewModel = ecosystemViewModel,
-                                    onBack = { navController.popBackStack() }
-                                )
-                            }
-                            composable(NoorRoutes.KIDS_VIDEOS) {
+                                val authUser by viewModel.currentUser.collectAsStateWithLifecycle()
+                                val userProfile by viewModel.currentUserProfile.collectAsStateWithLifecycle()
+                                val effectiveName = prefs.userName.ifBlank {
+                                    userProfile?.displayName.orEmpty().ifBlank { authUser?.displayName.orEmpty() }
+                                }
+                                val effectiveAvatar = prefs.customAvatarUri.ifBlank {
+                                    authUser?.photoUrl?.toString().orEmpty()
+                                }
                                 NoorVideosScreen(
                                     viewModel = ecosystemViewModel,
                                     onBack = { navController.popBackStack() },
-                                    initialCategory = IslamicVideoCategory.ISLAMIC_CARTOONS
+                                    currentUserName = effectiveName,
+                                    currentUserAvatarUrl = effectiveAvatar
+                                )
+                            }
+                            composable(NoorRoutes.KIDS_VIDEOS) {
+                                val authUser by viewModel.currentUser.collectAsStateWithLifecycle()
+                                val userProfile by viewModel.currentUserProfile.collectAsStateWithLifecycle()
+                                val effectiveName = prefs.userName.ifBlank {
+                                    userProfile?.displayName.orEmpty().ifBlank { authUser?.displayName.orEmpty() }
+                                }
+                                val effectiveAvatar = prefs.customAvatarUri.ifBlank {
+                                    authUser?.photoUrl?.toString().orEmpty()
+                                }
+                                NoorVideosScreen(
+                                    viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() },
+                                    initialCategory = IslamicVideoCategory.ISLAMIC_CARTOONS,
+                                    currentUserName = effectiveName,
+                                    currentUserAvatarUrl = effectiveAvatar
                                 )
                             }
                             composable(NoorRoutes.KHATM) {

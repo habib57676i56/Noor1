@@ -82,10 +82,12 @@ import com.example.data.local.catalog.SurahCatalog
 import com.example.domain.calendar.HijriCalendarEngine
 import com.example.domain.model.HomeDashboardConfig
 import com.example.domain.model.PrayerName
+import com.example.domain.prayer.PrayerTimeGate
 import com.example.ui.components.IslamicRosetteOrnament
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.NoorAdCardBannerSection
 import com.example.ui.components.NoorSectionHeader
+import com.example.ui.components.NoorUserAvatar
 import com.example.ui.components.prayerIcon
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
@@ -139,6 +141,8 @@ fun HomeScreen(
     val activeAdCards by viewModel.activeAdCards.collectAsStateWithLifecycle()
     val unreadMessagesCount by viewModel.unreadAdminMessagesCount.collectAsStateWithLifecycle()
     val resolvedRole by viewModel.resolvedAdminRole.collectAsStateWithLifecycle()
+    val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val currentUserProfile by viewModel.currentUserProfile.collectAsStateWithLifecycle()
     val morningItems by viewModel.morningAdhkarItems.collectAsStateWithLifecycle()
     val eveningItems by viewModel.eveningAdhkarItems.collectAsStateWithLifecycle()
     val adhkarProgress by viewModel.adhkarProgressMap.collectAsStateWithLifecycle()
@@ -174,21 +178,33 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(Brush.linearGradient(listOf(EmeraldPrimary, EmeraldDeep)))
-                        .border(1.2.dp, GoldPrimary, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(Icons.Rounded.Mosque, contentDescription = null, tint = GoldBright, modifier = Modifier.size(24.dp))
+                val effectiveAvatarUrl = prefs.customAvatarUri.ifBlank {
+                    currentUser?.photoUrl?.toString().orEmpty()
                 }
+                val effectiveUserName = prefs.userName.ifBlank {
+                    currentUserProfile?.displayName.orEmpty().ifBlank {
+                        currentUser?.displayName.orEmpty()
+                    }
+                }
+                NoorUserAvatar(
+                    photoUrl = effectiveAvatarUrl,
+                    displayName = effectiveUserName,
+                    size = 48.dp,
+                    contentDescription = L10n.pick(lang, "صورة الحساب", "Account Profile Photo", "Profil rasmi"),
+                    onClick = onOpenSettings,
+                    modifier = Modifier.testTag("home_user_avatar")
+                )
                 Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    val greetingName = prefs.userName.ifBlank { L10n.pick(lang, "مرحباً بك في $liveBrandName", "Welcome to $liveBrandName") }
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onOpenSettings() }
+                ) {
+                    val greetingName = effectiveUserName.ifBlank {
+                        L10n.pick(lang, "مرحباً بك في $liveBrandName", "Welcome to $liveBrandName", "$liveBrandName ilovasiga xush kelibsiz")
+                    }
                     Text(
-                        text = L10n.pick(lang, "السلام عليكم", "Assalamu Alaikum"),
+                        text = L10n.pick(lang, "السلام عليكم", "Assalamu Alaikum", "Assalomu alaykum"),
                         style = MaterialTheme.typography.labelMedium,
                         color = noorColors.goldAccent
                     )
@@ -547,9 +563,11 @@ fun HomeScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
+                        val nowMillis = dashboard.gregorianCal.timeInMillis
                         dashboard.todaySchedule.allOrdered().forEach { (prayer, timeMs) ->
                             val isNext = prayer == dashboard.nextPrayerInfo.nextPrayer
-                            val isLogged = when (prayer) {
+                            val hasEntered = PrayerTimeGate.hasPrayerEntered(dashboard.todaySchedule, prayer, nowMillis)
+                            val isLogged = hasEntered && when (prayer) {
                                 PrayerName.FAJR -> todayActivity?.fajrPrayed == true
                                 PrayerName.DHUHR -> todayActivity?.dhuhrPrayed == true
                                 PrayerName.ASR -> todayActivity?.asrPrayed == true
@@ -561,8 +579,21 @@ fun HomeScreen(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(14.dp))
-                                    .background(if (isNext) EmeraldPrimary.copy(alpha = 0.26f) else Color.Transparent)
-                                    .clickable { if (prayer.isFard) viewModel.togglePrayerLogged(prayer) }
+                                    .background(
+                                        when {
+                                            isLogged -> Color(0xFF4ADE80).copy(alpha = 0.14f)
+                                            isNext -> EmeraldPrimary.copy(alpha = 0.26f)
+                                            else -> Color.Transparent
+                                        }
+                                    )
+                                    .let { mod ->
+                                        if (hasEntered) {
+                                            mod.clickable { viewModel.togglePrayerLogged(prayer, nowMillis) }
+                                        } else {
+                                            mod
+                                        }
+                                    }
+                                    .testTag("home_prayer_chip_${prayer.key}")
                                     .padding(vertical = 8.dp, horizontal = 2.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
@@ -572,7 +603,8 @@ fun HomeScreen(
                                     tint = when {
                                         isLogged -> Color(0xFF4ADE80)
                                         isNext -> GoldBright
-                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        hasEntered -> noorColors.goldAccent.copy(alpha = 0.9f)
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f)
                                     },
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -580,14 +612,20 @@ fun HomeScreen(
                                 Text(
                                     text = L10n.prayerName(prayer, lang),
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (isNext) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = if (isNext || isLogged) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (hasEntered || isNext) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
                                     maxLines = 1
                                 )
                                 Text(
                                     text = L10n.formatTime12h(timeMs, prefs.timezoneId, lang)
                                         .replace(" AM", "").replace(" PM", "").replace(" ص", "").replace(" م", ""),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = if (isNext) noorColors.goldAccent else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = when {
+                                        isLogged -> Color(0xFF4ADE80)
+                                        isNext -> noorColors.goldAccent
+                                        hasEntered -> MaterialTheme.colorScheme.onSurfaceVariant
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+                                    },
                                     maxLines = 1
                                 )
                             }

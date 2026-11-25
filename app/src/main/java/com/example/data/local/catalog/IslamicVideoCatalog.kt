@@ -10,7 +10,12 @@ enum class IslamicVideoCategory(
     QURAN_LESSONS("QURAN_LESSONS", "دروس قرآنية وتجويد", "Quran & Tajweed Lessons", "Qur'on va Tajvid darslari"),
     ISLAMIC_CARTOONS("ISLAMIC_CARTOONS", "كرتون إسلامي للأطفال", "Islamic Cartoons", "Islomiy multfilmlar"),
     PROPHETS_STORIES("PROPHETS_STORIES", "قصص الأنبياء والقرآن", "Prophets & Quran Stories", "Payg'ambarlar qissalari"),
-    MY_VIDEOS("MY_VIDEOS", "فيديوهاتي المحلية", "My Local Videos", "Mening videolarim")
+    MY_VIDEOS("MY_VIDEOS", "فيديوهاتي المحلية", "My Local Videos", "Mening videolarim");
+
+    companion object {
+        fun fromKey(key: String?): IslamicVideoCategory =
+            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: MY_VIDEOS
+    }
 }
 
 data class IslamicVideoCollection(
@@ -26,7 +31,11 @@ data class IslamicVideoCollection(
     val speakerOrStudioAr: String,
     val speakerOrStudioEn: String,
     val isKidsSafe: Boolean = true
-)
+) {
+    /** Authentic Archive.org cover thumbnail URL for this Islamic collection. */
+    val coverThumbnailUrl: String
+        get() = "https://archive.org/services/img/$archiveItemId"
+}
 
 data class IslamicVideoItem(
     val id: String,
@@ -39,7 +48,14 @@ data class IslamicVideoItem(
     val streamUrl: String,
     val durationLabel: String = "",
     val sourceLabel: String = "Archive.org",
-    val isLocalUri: Boolean = false
+    val isLocalUri: Boolean = false,
+    val thumbnailUrl: String = "",
+    val descriptionAr: String = "",
+    val descriptionEn: String = "",
+    val uploaderName: String = "",
+    val uploaderAvatarUrl: String = "",
+    val publishedAtMillis: Long = 0L,
+    val isUserPublished: Boolean = false
 )
 
 /**

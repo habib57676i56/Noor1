@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,7 @@ import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Person
@@ -37,6 +40,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -67,6 +71,7 @@ import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.NoorSectionHeader
+import com.example.ui.components.NoorUserAvatar
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.theme.LocalNoorColors
@@ -92,10 +97,27 @@ fun SettingsScreen(
     val isAr = lang == AppLanguage.ARABIC
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val currentUserProfile by viewModel.currentUserProfile.collectAsStateWithLifecycle()
     val resolvedRole by viewModel.resolvedAdminRole.collectAsStateWithLifecycle()
     val noorColors = LocalNoorColors.current
 
     var showResetConfirm by remember { mutableStateOf(false) }
+    var showEditProfileNameDialog by remember { mutableStateOf(false) }
+
+    // Zero-permission Android Photo Picker for custom profile avatar
+    val pickAvatarLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            viewModel.setCustomAvatarUri(uri.toString())
+        }
+    }
 
     val notifPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -146,8 +168,19 @@ fun SettingsScreen(
             )
         }
 
-        // NOOR 3.0 Signed-In Google Account + Role + Sign Out + Role-Gated Super Admin Control Center
+        // NOOR 3.0 Signed-In Google Account + Photo + Editable Display Name + Role + Sign Out
         item {
+            val effectiveAvatarUrl = prefs.customAvatarUri.ifBlank {
+                currentUser?.photoUrl?.toString().orEmpty()
+            }
+            val effectiveDisplayName = prefs.userName.ifBlank {
+                currentUserProfile?.displayName.orEmpty().ifBlank {
+                    currentUser?.displayName.orEmpty()
+                }
+            }.ifBlank {
+                L10n.pick(lang, "حساب نور الموثّق", "Verified NOOR Account", "Tasdiqlangan NOOR hisobi")
+            }
+
             LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp), goldBorder = true) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -155,18 +188,53 @@ fun SettingsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.VerifiedUser, null, tint = noorColors.goldAccent)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = currentUser?.displayName?.takeIf { it.isNotBlank() } ?: L10n.pick(lang, "حساب نور الموثّق", "Verified NOOR Account"),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
+                        NoorUserAvatar(
+                            photoUrl = effectiveAvatarUrl,
+                            displayName = effectiveDisplayName,
+                            size = 56.dp,
+                            showEditBadge = true,
+                            contentDescription = L10n.pick(lang, "تغيير صورة الحساب", "Change Profile Photo", "Profil rasmini o'zgartirish"),
+                            onClick = {
+                                pickAvatarLauncher.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                )
+                            },
+                            modifier = Modifier.testTag("settings_user_avatar")
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = effectiveDisplayName,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                IconButton(
+                                    onClick = { showEditProfileNameDialog = true },
+                                    modifier = Modifier.testTag("settings_edit_name_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Edit,
+                                        contentDescription = L10n.pick(lang, "تغيير الاسم", "Change Name", "Ismni o'zgartirish"),
+                                        tint = noorColors.goldAccent
+                                    )
+                                }
+                            }
                             Text(
                                 text = "${currentUser?.email ?: ""} · ${L10n.pick(lang, resolvedRole.labelAr, resolvedRole.labelEn)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = L10n.pick(
+                                    lang,
+                                    "اضغط على الصورة لتغييرها أو القلم لتعديل اسمك",
+                                    "Tap photo to update avatar or pencil to edit name",
+                                    "Rasmni o'zgartirish uchun ustiga, ism uchun qalamga bosing"
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = noorColors.goldAccent
                             )
                         }
                     }
@@ -241,15 +309,18 @@ fun SettingsScreen(
             }
         }
 
-        // 0. Personal Greeting Name & Daily Goals + Preferred Reciter
+        // 0. Account & Personal Greeting Name & Daily Goals + Preferred Reciter
         item {
-            var nameDraft by remember(prefs.userName) { mutableStateOf(prefs.userName) }
+            val initialName = prefs.userName.ifBlank {
+                currentUserProfile?.displayName.orEmpty().ifBlank { currentUser?.displayName.orEmpty() }
+            }
+            var nameDraft by remember(initialName) { mutableStateOf(initialName) }
             LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp), goldBorder = true) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.Person, null, tint = noorColors.goldAccent)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = L10n.pick(lang, "الاسم الشخصي للترحيب (محلي فقط)", "Personal Greeting Name (Local Only)"),
+                        text = L10n.pick(lang, "اسم الحساب والترحيب", "Account & Display Name", "Hisob va ko'rinadigan ism"),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = noorColors.goldAccent
@@ -750,6 +821,69 @@ fun SettingsScreen(
             dismissButton = {
                 TextButton(onClick = { showResetConfirm = false }) {
                     Text(L10n.pick(lang, "إلغاء", "Cancel"))
+                }
+            }
+        )
+    }
+
+    if (showEditProfileNameDialog) {
+        val currentName = prefs.userName.ifBlank {
+            currentUserProfile?.displayName.orEmpty().ifBlank { currentUser?.displayName.orEmpty() }
+        }
+        var editedName by remember(showEditProfileNameDialog) { mutableStateOf(currentName) }
+        AlertDialog(
+            onDismissRequest = { showEditProfileNameDialog = false },
+            title = {
+                Text(
+                    L10n.pick(lang, "تغيير اسم الحساب", "Change Display Name", "Hisob ismini o'zgartirish"),
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = editedName,
+                        onValueChange = { editedName = it },
+                        singleLine = true,
+                        label = { Text(L10n.pick(lang, "الاسم الجديد", "New Name", "Yangi ism")) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("settings_edit_name_input")
+                    )
+                    if (prefs.customAvatarUri.isNotBlank()) {
+                        TextButton(
+                            onClick = {
+                                viewModel.setCustomAvatarUri("")
+                                showEditProfileNameDialog = false
+                            }
+                        ) {
+                            Text(
+                                L10n.pick(
+                                    lang,
+                                    "استعادة صورة حساب Google الأصلية",
+                                    "Restore Original Google Photo",
+                                    "Asl Google profil rasmini tiklash"
+                                )
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.setUserName(editedName)
+                        showEditProfileNameDialog = false
+                    },
+                    enabled = editedName.trim().isNotEmpty(),
+                    modifier = Modifier.testTag("settings_edit_name_save_btn")
+                ) {
+                    Text(L10n.pick(lang, "حفظ", "Save", "Saqlash"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditProfileNameDialog = false }) {
+                    Text(L10n.pick(lang, "إلغاء", "Cancel", "Bekor qilish"))
                 }
             }
         )

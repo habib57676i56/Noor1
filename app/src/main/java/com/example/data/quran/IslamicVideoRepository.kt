@@ -6,6 +6,9 @@ import com.example.data.local.catalog.IslamicVideoCategory
 import com.example.data.local.catalog.IslamicVideoCollection
 import com.example.data.local.catalog.IslamicVideoItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -35,6 +38,9 @@ class IslamicVideoRepository(private val context: Context) {
 
     private val cacheDir = File(context.filesDir, "video_catalog_cache").apply { mkdirs() }
     private val prefs = context.getSharedPreferences("noor_videos_prefs", Context.MODE_PRIVATE)
+
+    private val _publishedVideos = MutableStateFlow<List<IslamicVideoItem>>(loadUserVideosFromPrefs())
+    val publishedVideos: StateFlow<List<IslamicVideoItem>> = _publishedVideos.asStateFlow()
 
     suspend fun loadEpisodes(
         collection: IslamicVideoCollection,
@@ -90,6 +96,12 @@ class IslamicVideoRepository(private val context: Context) {
     }
 
     fun getUserVideos(): List<IslamicVideoItem> {
+        val loaded = loadUserVideosFromPrefs()
+        _publishedVideos.value = loaded
+        return loaded
+    }
+
+    private fun loadUserVideosFromPrefs(): List<IslamicVideoItem> {
         val raw = prefs.getString("user_videos_json", "[]") ?: "[]"
         val arr = runCatching { JSONArray(raw) }.getOrNull() ?: return emptyList()
         val list = mutableListOf<IslamicVideoItem>()
@@ -97,19 +109,27 @@ class IslamicVideoRepository(private val context: Context) {
             val obj = arr.optJSONObject(i) ?: continue
             val url = obj.optString("streamUrl")
             if (url.isBlank()) continue
+            val category = IslamicVideoCategory.fromKey(obj.optString("category", IslamicVideoCategory.MY_VIDEOS.key))
             list.add(
                 IslamicVideoItem(
                     id = obj.optString("id"),
-                    collectionId = "user_saved",
+                    collectionId = obj.optString("collectionId", "user_saved"),
                     titleAr = obj.optString("titleAr"),
-                    titleEn = obj.optString("titleEn"),
+                    titleEn = obj.optString("titleEn").ifBlank { obj.optString("titleAr") },
                     subtitleAr = obj.optString("subtitleAr"),
-                    subtitleEn = obj.optString("subtitleEn"),
-                    category = IslamicVideoCategory.MY_VIDEOS,
+                    subtitleEn = obj.optString("subtitleEn").ifBlank { obj.optString("subtitleAr") },
+                    category = category,
                     streamUrl = url,
                     durationLabel = obj.optString("durationLabel"),
-                    sourceLabel = obj.optString("sourceLabel", "Local"),
-                    isLocalUri = obj.optBoolean("isLocalUri", true)
+                    sourceLabel = obj.optString("sourceLabel", "Published"),
+                    isLocalUri = obj.optBoolean("isLocalUri", true),
+                    thumbnailUrl = obj.optString("thumbnailUrl"),
+                    descriptionAr = obj.optString("descriptionAr"),
+                    descriptionEn = obj.optString("descriptionEn").ifBlank { obj.optString("descriptionAr") },
+                    uploaderName = obj.optString("uploaderName"),
+                    uploaderAvatarUrl = obj.optString("uploaderAvatarUrl"),
+                    publishedAtMillis = obj.optLong("publishedAtMillis", 0L),
+                    isUserPublished = obj.optBoolean("isUserPublished", true)
                 )
             )
         }
@@ -117,14 +137,30 @@ class IslamicVideoRepository(private val context: Context) {
     }
 
     fun addUserVideo(item: IslamicVideoItem): List<IslamicVideoItem> {
-        val current = getUserVideos().filterNot { it.id == item.id || it.streamUrl == item.streamUrl }
-        val updated = listOf(item) + current
+        val normalized = item.copy(
+            isUserPublished = true,
+            publishedAtMillis = if (item.publishedAtMillis > 0L) item.publishedAtMillis else System.currentTimeMillis()
+        )
+        val current = loadUserVideosFromPrefs().filterNot { it.id == normalized.id }
+        val updated = listOf(normalized) + current
+        saveUserVideos(updated)
+        return updated
+    }
+
+    fun updateVideo(updatedItem: IslamicVideoItem): List<IslamicVideoItem> {
+        val current = loadUserVideosFromPrefs()
+        val exists = current.any { it.id == updatedItem.id }
+        val updated = if (exists) {
+            current.map { if (it.id == updatedItem.id) updatedItem.copy(isUserPublished = true) else it }
+        } else {
+            listOf(updatedItem.copy(isUserPublished = true)) + current
+        }
         saveUserVideos(updated)
         return updated
     }
 
     fun removeUserVideo(id: String): List<IslamicVideoItem> {
-        val updated = getUserVideos().filterNot { it.id == id }
+        val updated = loadUserVideosFromPrefs().filterNot { it.id == id }
         saveUserVideos(updated)
         return updated
     }
@@ -135,18 +171,28 @@ class IslamicVideoRepository(private val context: Context) {
             arr.put(
                 JSONObject().apply {
                     put("id", item.id)
+                    put("collectionId", item.collectionId)
                     put("titleAr", item.titleAr)
                     put("titleEn", item.titleEn)
                     put("subtitleAr", item.subtitleAr)
                     put("subtitleEn", item.subtitleEn)
+                    put("category", item.category.key)
                     put("streamUrl", item.streamUrl)
                     put("durationLabel", item.durationLabel)
                     put("sourceLabel", item.sourceLabel)
                     put("isLocalUri", item.isLocalUri)
+                    put("thumbnailUrl", item.thumbnailUrl)
+                    put("descriptionAr", item.descriptionAr)
+                    put("descriptionEn", item.descriptionEn)
+                    put("uploaderName", item.uploaderName)
+                    put("uploaderAvatarUrl", item.uploaderAvatarUrl)
+                    put("publishedAtMillis", item.publishedAtMillis)
+                    put("isUserPublished", item.isUserPublished)
                 }
             )
         }
         prefs.edit().putString("user_videos_json", arr.toString()).apply()
+        _publishedVideos.value = items
     }
 
     companion object {
@@ -237,7 +283,12 @@ class IslamicVideoRepository(private val context: Context) {
                     streamUrl = directUrl,
                     durationLabel = cand.durationLabel,
                     sourceLabel = "Archive.org",
-                    isLocalUri = false
+                    isLocalUri = false,
+                    thumbnailUrl = collection.coverThumbnailUrl,
+                    descriptionAr = collection.subtitleAr,
+                    descriptionEn = collection.subtitleEn,
+                    uploaderName = collection.speakerOrStudioAr,
+                    isUserPublished = false
                 )
             }
         }

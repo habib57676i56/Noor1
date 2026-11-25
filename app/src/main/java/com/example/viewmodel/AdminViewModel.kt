@@ -25,10 +25,12 @@ import com.example.data.cloud.SupportTicketDoc
 import com.example.data.cloud.UserAccountDoc
 import com.example.data.cloud.UserReportDoc
 import com.example.data.local.catalog.AdhkarCatalog
+import com.example.data.local.catalog.IslamicVideoItem
 import com.example.data.local.db.AdminAdCardEntity
 import com.example.data.local.db.AdminMessageEntity
 import com.example.data.local.db.BackupSnapshotEntity
 import com.example.data.local.db.SystemErrorLogEntity
+import com.example.data.quran.IslamicVideoRepository
 import com.example.data.repository.EcosystemRepository
 import com.example.data.repository.NoorRepository
 import com.example.domain.model.AdhkarCategory
@@ -86,6 +88,9 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val localRepo: NoorRepository = (application as NoorApplication).repository
     private val ecosystemRepo: EcosystemRepository = (application as NoorApplication).ecosystemRepository
     private val cloudRepo: NoorCloudRepository = (application as NoorApplication).cloudRepository
+    private val videoRepo: IslamicVideoRepository = (application as NoorApplication).islamicVideoRepository
+
+    val publishedVideos: StateFlow<List<IslamicVideoItem>> = videoRepo.publishedVideos
 
     val rateLimiter = AdminSecurityRateLimiter()
 
@@ -748,5 +753,43 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         ecosystemRepo.deleteAdminMessageLocal(messageId)
         cloudRepo.deleteAdminMessage(messageId)
         _adminFeedback.value = "تم حذف الرسالة الإدارية"
+    }
+
+    // -------------------------------------------------------------------------
+    // Super Admin Published Videos Management (Edit & Delete)
+    // -------------------------------------------------------------------------
+
+    fun updatePublishedVideo(updated: IslamicVideoItem) = viewModelScope.launch {
+        if (!_currentRole.value.canManageContent) {
+            _adminFeedback.value = "صلاحية غير كافية لتعديل الفيديو."
+            return@launch
+        }
+        val cleanTitle = updated.titleAr.trim().ifBlank { updated.titleEn.trim() }
+        if (cleanTitle.isBlank()) {
+            _adminFeedback.value = "عنوان الفيديو مطلوب."
+            return@launch
+        }
+        videoRepo.updateVideo(
+            updated.copy(
+                titleAr = cleanTitle,
+                titleEn = updated.titleEn.trim().ifBlank { cleanTitle }
+            )
+        )
+        runCatching {
+            cloudRepo.recordAuditLog("UPDATE_VIDEO", "CMS_VIDEOS", "INFO", "Updated video: ${cleanTitle.take(60)}")
+        }
+        _adminFeedback.value = "تم تحديث الفيديو بنجاح"
+    }
+
+    fun deletePublishedVideo(videoId: String) = viewModelScope.launch {
+        if (!_currentRole.value.canManageContent) {
+            _adminFeedback.value = "صلاحية غير كافية لحذف الفيديو."
+            return@launch
+        }
+        videoRepo.removeUserVideo(videoId)
+        runCatching {
+            cloudRepo.recordAuditLog("DELETE_VIDEO", "CMS_VIDEOS", "WARNING", "Deleted published video: $videoId")
+        }
+        _adminFeedback.value = "تم حذف الفيديو بنجاح"
     }
 }

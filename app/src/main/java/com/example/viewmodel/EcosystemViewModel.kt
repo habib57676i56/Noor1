@@ -142,7 +142,7 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     private val recitationRecorder = QuranRecitationRecorder(application.applicationContext)
     private val mistakeSoundPlayer = RecitationMistakeSoundPlayer()
     private val progressiveTracker = ProgressiveRecitationTracker()
-    private val videoRepository = IslamicVideoRepository(application.applicationContext)
+    private val videoRepository = app.islamicVideoRepository
 
     // Halaqat flows
     val circles = repo.circles.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -200,8 +200,7 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     private val _videoEpisodes = MutableStateFlow<List<IslamicVideoItem>>(emptyList())
     val videoEpisodes: StateFlow<List<IslamicVideoItem>> = _videoEpisodes.asStateFlow()
 
-    private val _userVideos = MutableStateFlow<List<IslamicVideoItem>>(emptyList())
-    val userVideos: StateFlow<List<IslamicVideoItem>> = _userVideos.asStateFlow()
+    val userVideos: StateFlow<List<IslamicVideoItem>> = videoRepository.publishedVideos
 
     private val _videosLoading = MutableStateFlow(false)
     val videosLoading: StateFlow<Boolean> = _videosLoading.asStateFlow()
@@ -272,7 +271,7 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     val audioState: StateFlow<AudioPlaybackState> = audioPlayer.state
 
     init {
-        _userVideos.value = videoRepository.getUserVideos()
+        videoRepository.getUserVideos()
         viewModelScope.launch {
             runCatching { repo.ensureSeeded() }
             _hasSuperAdmin.value = runCatching { repo.hasLocalSuperAdmin() }.getOrDefault(false)
@@ -1500,33 +1499,59 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
         title: String,
         streamUrl: String,
         isLocalUri: Boolean,
-        categoryLabelAr: String = "فيديو مضاف"
+        categoryLabelAr: String = "فيديو مضاف",
+        description: String = "",
+        channelName: String = "",
+        thumbnailUrl: String = "",
+        durationLabel: String = "",
+        category: IslamicVideoCategory = IslamicVideoCategory.MY_VIDEOS,
+        uploaderName: String = "",
+        uploaderAvatarUrl: String = ""
     ) {
         val cleanUrl = streamUrl.trim()
         if (cleanUrl.isBlank()) return
         val cleanTitle = title.trim().ifBlank { "فيديو إسلامي" }
+        val cleanChannel = channelName.trim().ifBlank { uploaderName.trim().ifBlank { categoryLabelAr } }
+        val cleanDesc = description.trim()
         val item = IslamicVideoItem(
-            id = "usr_${UUID.randomUUID().toString().take(8)}",
-            collectionId = "user_saved",
+            id = "pub_${UUID.randomUUID().toString().take(8)}",
+            collectionId = "user_published",
             titleAr = cleanTitle,
             titleEn = cleanTitle,
-            subtitleAr = categoryLabelAr,
-            subtitleEn = if (isLocalUri) "Local Device Video" else "Direct Video Link",
-            category = IslamicVideoCategory.MY_VIDEOS,
+            subtitleAr = cleanChannel,
+            subtitleEn = cleanChannel.ifBlank { if (isLocalUri) "Local Device Video" else "Direct Video Link" },
+            category = if (category == IslamicVideoCategory.ALL) IslamicVideoCategory.QURAN_LESSONS else category,
             streamUrl = cleanUrl,
-            sourceLabel = if (isLocalUri) "Device" else "Web Stream",
-            isLocalUri = isLocalUri
+            durationLabel = durationLabel.trim(),
+            sourceLabel = if (isLocalUri) "NOOR Video" else "Web Stream",
+            isLocalUri = isLocalUri,
+            thumbnailUrl = thumbnailUrl.trim(),
+            descriptionAr = cleanDesc,
+            descriptionEn = cleanDesc,
+            uploaderName = uploaderName.trim().ifBlank { cleanChannel },
+            uploaderAvatarUrl = uploaderAvatarUrl.trim(),
+            publishedAtMillis = System.currentTimeMillis(),
+            isUserPublished = true
         )
-        _userVideos.value = videoRepository.addUserVideo(item)
+        videoRepository.addUserVideo(item)
         selectVideoToPlay(item)
-        postStatus("تمت إضافة الفيديو وتشغيله")
+        postStatus("تم نشر الفيديو بنجاح مع الغلاف والوصف")
+    }
+
+    fun updatePublishedVideoItem(updated: IslamicVideoItem) {
+        videoRepository.updateVideo(updated)
+        if (_activeVideoItem.value?.id == updated.id) {
+            _activeVideoItem.value = updated
+        }
+        postStatus("تم تحديث بيانات الفيديو بنجاح")
     }
 
     fun removeUserVideoItem(id: String) {
-        _userVideos.value = videoRepository.removeUserVideo(id)
+        videoRepository.removeUserVideo(id)
         if (_activeVideoItem.value?.id == id) {
             _activeVideoItem.value = _videoEpisodes.value.firstOrNull()
         }
+        postStatus("تم حذف الفيديو")
     }
 
     override fun onCleared() {

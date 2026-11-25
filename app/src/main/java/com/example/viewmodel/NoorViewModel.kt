@@ -63,6 +63,7 @@ import com.example.data.quran.MushafHighlightStyle
 import com.example.data.quran.MushafPageImageManager
 import com.example.data.quran.QuranLinguisticRepository
 import com.example.data.quran.QuranWordTimingRepository
+import com.example.domain.prayer.PrayerTimeGate
 import com.example.data.remote.MosqueSearchResult
 import com.example.data.repository.NoorRepository
 import com.example.data.repository.SurahLoadResult
@@ -720,7 +721,27 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Profile, Theme, Language & Home Dashboard ---
     fun setUserName(name: String) = viewModelScope.launch {
-        repo.prefs.setUserName(name)
+        val clean = name.trim().take(48)
+        repo.prefs.setUserName(clean)
+        if (clean.isNotBlank() && currentUser.value != null) {
+            cloudRepo.updateCurrentUserDisplayName(clean)
+        }
+        val lang = preferences.value.language
+        _statusBanner.value = when (lang) {
+            AppLanguage.ARABIC -> if (clean.isBlank()) "تم مسح الاسم" else "تم تحديث الاسم بنجاح: $clean"
+            AppLanguage.UZBEK -> if (clean.isBlank()) "Ism tozalandi" else "Ism muvaffaqiyatli yangilandi: $clean"
+            AppLanguage.ENGLISH -> if (clean.isBlank()) "Name cleared" else "Name updated: $clean"
+        }
+    }
+
+    fun setCustomAvatarUri(uri: String) = viewModelScope.launch {
+        repo.prefs.setCustomAvatarUri(uri)
+        val lang = preferences.value.language
+        _statusBanner.value = when (lang) {
+            AppLanguage.ARABIC -> "تم تحديث صورة الحساب بنجاح"
+            AppLanguage.UZBEK -> "Profil rasmi yangilandi"
+            AppLanguage.ENGLISH -> "Profile photo updated"
+        }
     }
 
     fun setLanguage(lang: AppLanguage) = viewModelScope.launch {
@@ -781,7 +802,20 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         repo.prefs.setHijriAdjustment(days)
     }
 
-    fun togglePrayerLogged(prayer: PrayerName) = viewModelScope.launch {
+    fun isPrayerTimeEntered(
+        prayer: PrayerName,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = PrayerTimeGate.hasPrayerEntered(
+        schedule = prayerDashboard.value.todaySchedule,
+        prayer = prayer,
+        nowMillis = nowMillis
+    )
+
+    fun togglePrayerLogged(
+        prayer: PrayerName,
+        nowMillis: Long = System.currentTimeMillis()
+    ) = viewModelScope.launch {
+        if (!isPrayerTimeEntered(prayer, nowMillis)) return@launch
         repo.togglePrayerLogged(prayer)
     }
 

@@ -24,12 +24,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.LocationCity
+import androidx.compose.material.icons.rounded.LockClock
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.NotificationsOff
+import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Search
@@ -52,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +68,7 @@ import com.example.domain.model.DailyPrayerSchedule
 import com.example.domain.model.IqamahDelays
 import com.example.domain.model.PrayerName
 import com.example.domain.prayer.CityCatalog
+import com.example.domain.prayer.PrayerTimeGate
 import com.example.location.LocationHelper
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
@@ -85,6 +90,7 @@ fun PrayerTimesScreen(
     val isAr = lang == AppLanguage.ARABIC
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val dashboard by viewModel.prayerDashboard.collectAsStateWithLifecycle()
+    val todayActivity by viewModel.todayActivity.collectAsStateWithLifecycle()
     val isDetecting by viewModel.isDetectingLocation.collectAsStateWithLifecycle()
     val noorColors = LocalNoorColors.current
 
@@ -279,14 +285,30 @@ fun PrayerTimesScreen(
 
         // Content by tab
         if (selectedTab == 0) {
+            val nowMillis = dashboard.gregorianCal.timeInMillis
             items(dashboard.todaySchedule.allOrdered()) { (prayer, millis) ->
                 val isNext = prayer == dashboard.nextPrayerInfo.nextPrayer
                 val notifyEnabled = prefs.isPrayerNotificationEnabled(prayer)
+                val hasEntered = PrayerTimeGate.hasPrayerEntered(dashboard.todaySchedule, prayer, nowMillis)
+                val isPrayed = hasEntered && when (prayer) {
+                    PrayerName.FAJR -> todayActivity?.fajrPrayed == true
+                    PrayerName.DHUHR -> todayActivity?.dhuhrPrayed == true
+                    PrayerName.ASR -> todayActivity?.asrPrayed == true
+                    PrayerName.MAGHRIB -> todayActivity?.maghribPrayed == true
+                    PrayerName.ISHA -> todayActivity?.ishaPrayed == true
+                    PrayerName.SUNRISE -> false
+                }
                 LiquidGlassCard(
                     modifier = Modifier
                         .padding(horizontal = 16.dp)
                         .testTag("prayer_row_${prayer.key}"),
-                    strong = isNext,
+                    strong = isNext || isPrayed,
+                    goldBorder = isPrayed,
+                    onClick = if (hasEntered) {
+                        { viewModel.togglePrayerLogged(prayer, nowMillis) }
+                    } else {
+                        null
+                    },
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)
                 ) {
                     Row(
@@ -294,21 +316,33 @@ fun PrayerTimesScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Box(
                                 modifier = Modifier
                                     .size(44.dp)
                                     .clip(RoundedCornerShape(14.dp))
                                     .background(
-                                        if (isNext) MaterialTheme.colorScheme.primary
-                                        else MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                        when {
+                                            isPrayed -> Color(0xFF4ADE80).copy(alpha = 0.22f)
+                                            isNext -> MaterialTheme.colorScheme.primary
+                                            hasEntered -> MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)
+                                        }
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = prayerIcon(prayer),
+                                    imageVector = if (isPrayed) Icons.Rounded.CheckCircle else prayerIcon(prayer),
                                     contentDescription = null,
-                                    tint = if (isNext) MaterialTheme.colorScheme.onPrimary else noorColors.goldAccent
+                                    tint = when {
+                                        isPrayed -> Color(0xFF4ADE80)
+                                        isNext -> MaterialTheme.colorScheme.onPrimary
+                                        hasEntered -> noorColors.goldAccent
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                    }
                                 )
                             }
                             Spacer(modifier = Modifier.width(14.dp))
@@ -317,18 +351,47 @@ fun PrayerTimesScreen(
                                     text = L10n.prayerName(prayer, lang),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isNext) noorColors.goldAccent else MaterialTheme.colorScheme.onSurface
+                                    color = when {
+                                        isPrayed -> Color(0xFF4ADE80)
+                                        isNext -> noorColors.goldAccent
+                                        else -> MaterialTheme.colorScheme.onSurface
+                                    }
                                 )
-                                if (isNext) {
-                                    Text(
-                                        text = L10n.pick(
-                                            lang,
-                                            "القادمة بعد ${L10n.formatCountdown(dashboard.nextPrayerInfo.remainingMillis, lang)}",
-                                            "Next in ${L10n.formatCountdown(dashboard.nextPrayerInfo.remainingMillis, lang)}"
-                                        ),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                when {
+                                    isPrayed -> {
+                                        Text(
+                                            text = L10n.pick(lang, "تمت الصلاة ✓", "Prayed ✓", "O'qildi ✓"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF4ADE80)
+                                        )
+                                    }
+                                    hasEntered -> {
+                                        Text(
+                                            text = L10n.pick(lang, "دخل وقتها — اضغط لتسجيل الصلاة", "Entered — tap to mark prayed", "Vaqti kirdi — belgilash uchun bosing"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = noorColors.goldAccent
+                                        )
+                                    }
+                                    isNext -> {
+                                        Text(
+                                            text = L10n.pick(
+                                                lang,
+                                                "القادمة بعد ${L10n.formatCountdown(dashboard.nextPrayerInfo.remainingMillis, lang)}",
+                                                "Next in ${L10n.formatCountdown(dashboard.nextPrayerInfo.remainingMillis, lang)}",
+                                                "Keyingi namoz: ${L10n.formatCountdown(dashboard.nextPrayerInfo.remainingMillis, lang)}"
+                                            ),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    prayer.isFard -> {
+                                        Text(
+                                            text = L10n.pick(lang, "لم يدخل وقتها بعد", "Not entered yet", "Vaqti hali kirmadi"),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -345,21 +408,44 @@ fun PrayerTimesScreen(
                                 if (iqDelay > 0) {
                                     val iqTime = L10n.formatTime12h(millis + iqDelay * 60_000L, prefs.timezoneId, lang)
                                     Text(
-                                        text = L10n.pick(lang, "إقامة $iqTime", "Iqamah $iqTime"),
+                                        text = L10n.pick(lang, "إقامة $iqTime", "Iqamah $iqTime", "Iqomat $iqTime"),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = noorColors.goldAccent
                                     )
                                 }
                             }
                             if (prayer.isFard) {
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = {
+                                        if (hasEntered) viewModel.togglePrayerLogged(prayer, nowMillis)
+                                    },
+                                    enabled = hasEntered,
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .testTag("prayer_check_${prayer.key}")
+                                ) {
+                                    Icon(
+                                        imageVector = when {
+                                            isPrayed -> Icons.Rounded.CheckCircle
+                                            hasEntered -> Icons.Rounded.RadioButtonUnchecked
+                                            else -> Icons.Rounded.LockClock
+                                        },
+                                        contentDescription = L10n.pick(lang, "تحديد الصلاة كـ مُصلّاة", "Mark prayer as prayed", "Namozni o'qilgan deb belgilash"),
+                                        tint = when {
+                                            isPrayed -> Color(0xFF4ADE80)
+                                            hasEntered -> noorColors.goldAccent
+                                            else -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
+                                        }
+                                    )
+                                }
                                 IconButton(
                                     onClick = { viewModel.setPrayerNotification(prayer, !notifyEnabled) },
                                     modifier = Modifier.size(48.dp)
                                 ) {
                                     Icon(
                                         imageVector = if (notifyEnabled) Icons.Rounded.NotificationsActive else Icons.Rounded.NotificationsOff,
-                                        contentDescription = L10n.pick(lang, "تبديل تنبيه الصلاة", "Toggle prayer alert"),
+                                        contentDescription = L10n.pick(lang, "تبديل تنبيه الصلاة", "Toggle prayer alert", "Namoz bildirishnomasini almashtirish"),
                                         tint = if (notifyEnabled) noorColors.goldAccent else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                                     )
                                 }

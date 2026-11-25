@@ -24,6 +24,7 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.LockClock
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.RadioButtonUnchecked
@@ -45,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.domain.model.AppLanguage
 import com.example.domain.model.PrayerName
+import com.example.domain.prayer.PrayerTimeGate
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
@@ -79,6 +82,7 @@ fun StatsScreen(
     val isAr = lang == AppLanguage.ARABIC
     val stats by viewModel.statsSummary.collectAsStateWithLifecycle()
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
+    val dashboard by viewModel.prayerDashboard.collectAsStateWithLifecycle()
     val todayActivity by viewModel.todayActivity.collectAsStateWithLifecycle()
     val customRoutines by viewModel.customRoutines.collectAsStateWithLifecycle()
     val noorColors = LocalNoorColors.current
@@ -130,13 +134,15 @@ fun StatsScreen(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // 5 Daily Prayers Tappable Chips
+                // 5 Daily Prayers Tappable Chips (Time-Gated: only prayers whose time has entered can be checked)
+                val nowMillis = dashboard.gregorianCal.timeInMillis
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     PrayerName.fardPrayers.forEach { p ->
-                        val done = when (p) {
+                        val hasEntered = PrayerTimeGate.hasPrayerEntered(dashboard.todaySchedule, p, nowMillis)
+                        val done = hasEntered && when (p) {
                             PrayerName.FAJR -> todayActivity?.fajrPrayed == true
                             PrayerName.DHUHR -> todayActivity?.dhuhrPrayed == true
                             PrayerName.ASR -> todayActivity?.asrPrayed == true
@@ -145,10 +151,18 @@ fun StatsScreen(
                             PrayerName.SUNRISE -> false
                         }
                         LiquidGlassChip(
-                            label = L10n.prayerName(p, lang),
+                            label = if (done) "${L10n.prayerName(p, lang)} ✓" else L10n.prayerName(p, lang),
                             selected = done,
-                            onClick = { viewModel.togglePrayerLogged(p) },
-                            modifier = Modifier.weight(1f)
+                            icon = if (!hasEntered) Icons.Rounded.LockClock else null,
+                            onClick = {
+                                if (hasEntered) {
+                                    viewModel.togglePrayerLogged(p, nowMillis)
+                                }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .alpha(if (hasEntered) 1f else 0.5f)
+                                .testTag("stats_prayer_chip_${p.key}")
                         )
                     }
                 }

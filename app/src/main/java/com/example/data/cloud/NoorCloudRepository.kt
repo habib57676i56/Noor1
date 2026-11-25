@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.R
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
@@ -94,6 +95,28 @@ class NoorCloudRepository(private val appContext: Context) {
             Result.success(fresh)
         } catch (e: Exception) {
             FirestoreErrorHandler.handleFirestoreError(e, OperationType.WRITE, "users/${user.uid}")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateCurrentUserDisplayName(displayName: String): Result<Unit> {
+        val clean = displayName.trim().take(80)
+        if (clean.isBlank()) return Result.failure(IllegalArgumentException("Display name cannot be blank"))
+        val user = currentUserOrNull() ?: return Result.failure(IllegalStateException("Not authenticated"))
+        return try {
+            val req = UserProfileChangeRequest.Builder()
+                .setDisplayName(clean)
+                .build()
+            runCatching { user.updateProfile(req).await() }
+            db.collection("users").document(user.uid).update(
+                mapOf(
+                    "displayName" to clean,
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            FirestoreErrorHandler.handleFirestoreError(e, OperationType.UPDATE, "users/${user.uid}")
             Result.failure(e)
         }
     }

@@ -52,7 +52,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.cloud.CmsContentCategory
 import com.example.data.cloud.CmsContentDoc
 import com.example.data.cloud.CmsWorkflowStatus
+import com.example.data.local.catalog.IslamicVideoItem
 import com.example.domain.verification.VerificationSeverity
+import com.example.ui.components.PublishOrEditVideoDialog
+import com.example.ui.components.YouTubeVideoThumbnailBox
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.viewmodel.AdminViewModel
@@ -70,11 +73,12 @@ fun AdminCmsTab(
 ) {
     val lang = LocalAppLanguage.current
     val cmsItems by adminViewModel.allCmsContent.collectAsStateWithLifecycle()
+    val publishedVideos by adminViewModel.publishedVideos.collectAsStateWithLifecycle()
     val revisions by adminViewModel.selectedRevisions.collectAsStateWithLifecycle()
     val verificationReport by adminViewModel.adhkarVerificationReport.collectAsStateWithLifecycle()
     val currentRole by adminViewModel.currentRole.collectAsStateWithLifecycle()
 
-    var subMode by remember { mutableIntStateOf(0) } // 0 = CMS Library, 1 = Adhkar Verification Scanner
+    var subMode by remember { mutableIntStateOf(0) } // 0 = CMS Library, 1 = Adhkar Scanner, 2 = Published Videos
     var selectedCategory by remember { mutableStateOf<CmsContentCategory?>(null) }
     var statusFilter by remember { mutableStateOf("ALL") }
     var searchQuery by remember { mutableStateOf("") }
@@ -82,6 +86,8 @@ fun AdminCmsTab(
     var editorItem by remember { mutableStateOf<CmsContentDoc?>(null) }
     var revisionHostItem by remember { mutableStateOf<CmsContentDoc?>(null) }
     var deletingItem by remember { mutableStateOf<CmsContentDoc?>(null) }
+    var editingVideo by remember { mutableStateOf<IslamicVideoItem?>(null) }
+    var deletingVideo by remember { mutableStateOf<IslamicVideoItem?>(null) }
 
     val filteredItems = remember(cmsItems, selectedCategory, statusFilter, searchQuery) {
         val q = searchQuery.trim()
@@ -131,21 +137,38 @@ fun AdminCmsTab(
         }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AdminFilterPill(
-                    label = L10n.pick(lang, "مكتبة المحتوى (${cmsItems.size})", "CMS Library (${cmsItems.size})"),
-                    selected = subMode == 0,
-                    onClick = { subMode = 0 }
-                )
-                AdminFilterPill(
-                    label = L10n.pick(
-                        lang,
-                        "فحص الأذكار (${verificationReport.errorCount} خطأ)",
-                        "Adhkar Scanner (${verificationReport.errorCount} errors)"
-                    ),
-                    selected = subMode == 1,
-                    onClick = { subMode = 1 }
-                )
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item {
+                    AdminFilterPill(
+                        label = L10n.pick(lang, "مكتبة المحتوى (${cmsItems.size})", "CMS Library (${cmsItems.size})"),
+                        selected = subMode == 0,
+                        onClick = { subMode = 0 }
+                    )
+                }
+                item {
+                    AdminFilterPill(
+                        label = L10n.pick(
+                            lang,
+                            "الفيديوهات المنشورة (${publishedVideos.size})",
+                            "Published Videos (${publishedVideos.size})",
+                            "Nashr qilingan videolar (${publishedVideos.size})"
+                        ),
+                        selected = subMode == 2,
+                        onClick = { subMode = 2 },
+                        modifier = Modifier.testTag("admin_cms_videos_subtab")
+                    )
+                }
+                item {
+                    AdminFilterPill(
+                        label = L10n.pick(
+                            lang,
+                            "فحص الأذكار (${verificationReport.errorCount} خطأ)",
+                            "Adhkar Scanner (${verificationReport.errorCount} errors)"
+                        ),
+                        selected = subMode == 1,
+                        onClick = { subMode = 1 }
+                    )
+                }
             }
         }
 
@@ -288,6 +311,87 @@ fun AdminCmsTab(
                                     onRequireMfa { deletingItem = doc }
                                 }) {
                                     Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete", tint = AdminPalette.AccentRose)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (subMode == 2) {
+            // Super Admin Published Videos Management (View Cover Thumbnail, Edit & Delete)
+            if (publishedVideos.isEmpty()) {
+                item {
+                    AdminPanelCard {
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "لا توجد فيديوهات منشورة بعد. أي فيديو يُنشر في قسم «فيديوهات نور» سيظهر هنا تلقائياً مع غلافه للتعديل أو الحذف.",
+                                "No published videos yet. Any video published in NOOR Videos appears here with its cover for editing or deletion.",
+                                "Hali nashr qilingan videolar yo'q. NOOR Videolar bo'limida nashr qilingan videolar shu yerda tahrirlash va o'chirish uchun ko'rinadi."
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AdminPalette.TextSecondary
+                        )
+                    }
+                }
+            } else {
+                items(publishedVideos, key = { "adm_vid_${it.id}" }) { video ->
+                    val catLabel = L10n.pick(lang, video.category.labelAr, video.category.labelEn, video.category.labelUz)
+                    AdminPanelCard(accentBorder = AdminPalette.AccentIndigo.copy(alpha = 0.45f)) {
+                        YouTubeVideoThumbnailBox(
+                            thumbnailUrl = video.thumbnailUrl,
+                            categoryLabel = catLabel,
+                            durationLabel = video.durationLabel
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Text(
+                            text = L10n.pick(lang, video.titleAr, video.titleEn.ifBlank { video.titleAr }),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = AdminPalette.TextPrimary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${video.subtitleAr.ifBlank { video.uploaderName }} · ${video.sourceLabel}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AdminPalette.AccentCyan
+                        )
+                        if (video.descriptionAr.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = video.descriptionAr,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AdminPalette.TextSecondary,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        if (currentRole.canManageContent) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { editingVideo = video },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("admin_edit_video_${video.id}")
+                                ) {
+                                    Icon(Icons.Rounded.Edit, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(L10n.pick(lang, "تعديل", "Edit", "Tahrirlash"))
+                                }
+                                Button(
+                                    onClick = { deletingVideo = video },
+                                    colors = ButtonDefaults.buttonColors(containerColor = AdminPalette.AccentRose),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("admin_delete_video_${video.id}")
+                                ) {
+                                    Icon(Icons.Rounded.DeleteOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(L10n.pick(lang, "حذف", "Delete", "O'chirish"))
                                 }
                             }
                         }
@@ -527,6 +631,67 @@ fun AdminCmsTab(
             dismissButton = {
                 TextButton(onClick = { deletingItem = null }) {
                     Text(L10n.pick(lang, "إلغاء", "Cancel"))
+                }
+            }
+        )
+    }
+
+    // Super Admin Edit Published Video Dialog
+    editingVideo?.let { target ->
+        PublishOrEditVideoDialog(
+            initial = target,
+            defaultChannelName = target.subtitleAr.ifBlank { target.uploaderName },
+            onDismiss = { editingVideo = null },
+            onSave = { title, desc, channel, cat, url, thumb, duration, isLocal ->
+                adminViewModel.updatePublishedVideo(
+                    target.copy(
+                        titleAr = title,
+                        titleEn = title,
+                        descriptionAr = desc,
+                        descriptionEn = desc,
+                        subtitleAr = channel.ifBlank { target.subtitleAr },
+                        subtitleEn = channel.ifBlank { target.subtitleEn },
+                        category = cat,
+                        streamUrl = url,
+                        thumbnailUrl = thumb,
+                        durationLabel = duration,
+                        isLocalUri = isLocal
+                    )
+                )
+                editingVideo = null
+            }
+        )
+    }
+
+    // Confirm Super Admin Delete Published Video
+    deletingVideo?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deletingVideo = null },
+            title = { Text(L10n.pick(lang, "حذف الفيديو المنشور", "Delete Published Video", "Videoni o'chirish")) },
+            text = {
+                Text(
+                    L10n.pick(
+                        lang,
+                        "هل تريد حذف الفيديو (${target.titleAr}) نهائياً؟",
+                        "Permanently delete '${target.titleAr}'?",
+                        "'${target.titleAr}' videosini butunlay o'chirmoqchimisiz?"
+                    )
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        adminViewModel.deletePublishedVideo(target.id)
+                        deletingVideo = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AdminPalette.AccentRose)
+                ) {
+                    Text(L10n.pick(lang, "حذف", "Delete", "O'chirish"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deletingVideo = null }) {
+                    Text(L10n.pick(lang, "إلغاء", "Cancel", "Bekor qilish"))
                 }
             }
         )

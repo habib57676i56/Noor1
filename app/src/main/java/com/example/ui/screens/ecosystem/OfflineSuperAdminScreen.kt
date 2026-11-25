@@ -55,12 +55,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.local.catalog.IslamicVideoItem
 import com.example.data.local.db.LocalAiKnowledgeEntity
 import com.example.security.LocalAdminRole
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.NoorSectionHeader
+import com.example.ui.components.PublishOrEditVideoDialog
+import com.example.ui.components.YouTubeVideoThumbnailBox
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.theme.EmeraldDeep
@@ -101,6 +104,7 @@ fun OfflineSuperAdminScreen(
     val backups by viewModel.backupSnapshots.collectAsStateWithLifecycle()
     val adminSettings by viewModel.adminSettings.collectAsStateWithLifecycle()
     val storageUsage by viewModel.storageUsage.collectAsStateWithLifecycle()
+    val publishedVideos by viewModel.userVideos.collectAsStateWithLifecycle()
 
     // SAF launcher for TXT / JSON / DOCX / PDF AI knowledge documents
     val importDocLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -187,6 +191,7 @@ fun OfflineSuperAdminScreen(
         val role = session.role
         var selectedTab by remember { mutableIntStateOf(0) }
         var editingKb by remember { mutableStateOf<LocalAiKnowledgeEntity?>(null) }
+        var editingVideo by remember { mutableStateOf<IslamicVideoItem?>(null) }
         var showAddKbDialog by remember { mutableStateOf(false) }
         var showAddQuizDialog by remember { mutableStateOf(false) }
         var showAddStaffDialog by remember { mutableStateOf(false) }
@@ -198,7 +203,8 @@ fun OfflineSuperAdminScreen(
             "المسابقات (${quizzes.size})",
             "الحسابات (${localAdmins.size})",
             "إعدادات الإدارة",
-            "النسخ والسجلات"
+            "النسخ والسجلات",
+            "الفيديوهات (${publishedVideos.size})"
         )
 
         LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -514,6 +520,80 @@ fun OfflineSuperAdminScreen(
                         }
                     }
                 }
+
+                // 7: Published Videos Management (Super Admin Edit & Delete with Cover Preview)
+                7 -> {
+                    item {
+                        NoorSectionHeader(
+                            title = L10n.pick(
+                                lang,
+                                "إدارة الفيديوهات المنشورة (${publishedVideos.size})",
+                                "Manage Published Videos (${publishedVideos.size})",
+                                "Nashr qilingan videolarni boshqarish (${publishedVideos.size})"
+                            )
+                        )
+                    }
+                    if (publishedVideos.isEmpty()) {
+                        item {
+                            LiquidGlassCard {
+                                Text(
+                                    text = L10n.pick(
+                                        lang,
+                                        "لا توجد فيديوهات منشورة حالياً. عند نشر أي فيديو من قسم فيديوهات نور سيظهر هنا للتعديل أو الحذف.",
+                                        "No published videos yet. Any video published in NOOR Videos will appear here for editing or deletion.",
+                                        "Hali nashr qilingan videolar yo'q. NOOR Videolar bo'limida nashr qilingan videolar shu yerda ko'rinadi."
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    } else {
+                        items(publishedVideos, key = { "off_vid_${it.id}" }) { video ->
+                            val catLabel = L10n.pick(lang, video.category.labelAr, video.category.labelEn, video.category.labelUz)
+                            LiquidGlassCard(goldBorder = true) {
+                                YouTubeVideoThumbnailBox(
+                                    thumbnailUrl = video.thumbnailUrl,
+                                    categoryLabel = catLabel,
+                                    durationLabel = video.durationLabel
+                                )
+                                Spacer(Modifier.height(8.dp))
+                                Text(video.titleAr, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    "${video.subtitleAr.ifBlank { video.uploaderName }} · $catLabel",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = noorColors.goldAccent
+                                )
+                                if (video.descriptionAr.isNotBlank()) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Text(video.descriptionAr, style = MaterialTheme.typography.bodySmall)
+                                }
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = { editingVideo = video },
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Rounded.Edit, contentDescription = null)
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(L10n.pick(lang, "تعديل", "Edit", "Tahrirlash"))
+                                    }
+                                    Button(
+                                        onClick = { viewModel.removeUserVideoItem(video.id) },
+                                        colors = ButtonDefaults.buttonColors(containerColor = SemanticError),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(Icons.Rounded.Delete, contentDescription = null)
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(L10n.pick(lang, "حذف", "Delete", "O'chirish"))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -553,6 +633,31 @@ fun OfflineSuperAdminScreen(
                 onSave = { u, name, pass, r ->
                     viewModel.createStaffAccount(u, name, pass, r)
                     showAddStaffDialog = false
+                }
+            )
+        }
+        editingVideo?.let { target ->
+            PublishOrEditVideoDialog(
+                initial = target,
+                defaultChannelName = target.subtitleAr.ifBlank { target.uploaderName },
+                onDismiss = { editingVideo = null },
+                onSave = { title, desc, channel, cat, url, thumb, duration, isLocal ->
+                    viewModel.updatePublishedVideoItem(
+                        target.copy(
+                            titleAr = title,
+                            titleEn = title,
+                            descriptionAr = desc,
+                            descriptionEn = desc,
+                            subtitleAr = channel.ifBlank { target.subtitleAr },
+                            subtitleEn = channel.ifBlank { target.subtitleEn },
+                            category = cat,
+                            streamUrl = url,
+                            thumbnailUrl = thumb,
+                            durationLabel = duration,
+                            isLocalUri = isLocal
+                        )
+                    )
+                    editingVideo = null
                 }
             )
         }

@@ -7,6 +7,7 @@ import com.example.audio.QuranAudioService
 import com.example.data.cloud.NoorCloudRepository
 import com.example.data.local.db.NoorDatabase
 import com.example.data.local.prefs.UserPreferencesRepository
+import com.example.data.quran.IslamicVideoRepository
 import com.example.data.quran.MushafCoordinateRepository
 import com.example.data.quran.MushafPageImageManager
 import com.example.data.quran.QuranLinguisticRepository
@@ -50,6 +51,9 @@ class NoorApplication : Application() {
         private set
 
     lateinit var quranLinguisticRepository: QuranLinguisticRepository
+        private set
+
+    lateinit var islamicVideoRepository: IslamicVideoRepository
         private set
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -106,6 +110,7 @@ class NoorApplication : Application() {
         mushafCoordinateRepository = MushafCoordinateRepository(applicationContext)
         quranWordTimingRepository = QuranWordTimingRepository(applicationContext)
         quranLinguisticRepository = QuranLinguisticRepository(applicationContext)
+        islamicVideoRepository = IslamicVideoRepository(applicationContext)
 
         appScope.launch {
             runCatching { ecosystemRepository.ensureSeeded() }
