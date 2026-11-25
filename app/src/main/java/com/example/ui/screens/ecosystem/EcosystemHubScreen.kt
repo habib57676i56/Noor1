@@ -28,6 +28,7 @@ import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.EventRepeat
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Mic
@@ -39,6 +40,7 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -107,6 +109,9 @@ fun EcosystemHubScreen(
     onOpenQadaTracker: () -> Unit = {},
     onOpenMirath: () -> Unit = {},
     onOpenCardDesigner: () -> Unit = {},
+    onOpenHaramainLive: () -> Unit = {},
+    onOpenGlobalQuranSearch: () -> Unit = {},
+    onOpenLiveHadith: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -236,6 +241,24 @@ fun EcosystemHubScreen(
         )
     )
 
+    val liveOnlineFeatures = listOf(
+        EcosystemModuleItem(
+            "البث المباشر للحرمين ٢٤/٧", "Live Makkah & Madinah",
+            "بث مباشر للكعبة والمسجد النبوي مع الطقس الحي", "24/7 Live Kaaba & Nabawi Streams + Weather",
+            Icons.Rounded.LiveTv, Color(0xFFE53935), "hub_haramain_live", onOpenHaramainLive
+        ),
+        EcosystemModuleItem(
+            "الباحث القرآني ومقارنة التفاسير", "Global Quran & Tafsir",
+            "بحث حي في ٦٢٣٦ آية مع الميسر والجلالين والأوزبكية", "Search All 6,236 Ayahs + Multi-Tafsir & Audio",
+            Icons.Rounded.TravelExplore, GoldPrimary, "hub_global_quran_search", onOpenGlobalQuranSearch
+        ),
+        EcosystemModuleItem(
+            "موسوعة الحديث النبوي الحية", "Live Hadith Encyclopedia",
+            "آلاف الأحاديث الصحيحة بالدرجة والشرح والفوائد", "Verified Hadiths with Grading, Notes (AR/EN/UZ)",
+            Icons.Rounded.MenuBook, EmeraldPrimary, "hub_live_hadith", onOpenLiveHadith
+        )
+    )
+
     Column(modifier = Modifier.fillMaxSize()) {
         NoorScreenHeader(
             title = L10n.pick(lang, "منظومة نور المتكاملة", "NOOR Islamic Ecosystem"),
@@ -298,6 +321,15 @@ fun EcosystemHubScreen(
                         onClick = onAdClick
                     )
                 }
+            }
+
+            item {
+                NoorSectionHeader(
+                    title = L10n.pick(lang, "الميزات الحية بالإنترنت (الحرمين، الباحث القرآني، الموسوعة)", "Live Online Super-Features")
+                )
+            }
+            item {
+                ModuleGrid(items = liveOnlineFeatures)
             }
 
             item {

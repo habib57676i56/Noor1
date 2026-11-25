@@ -100,11 +100,14 @@ import com.example.ui.screens.StatsScreen
 import com.example.ui.screens.TasbihScreen
 import com.example.ui.screens.ecosystem.AsmaUlHusnaScreen
 import com.example.ui.screens.ecosystem.EcosystemHubScreen
+import com.example.ui.screens.ecosystem.GlobalQuranSearchScreen
 import com.example.ui.screens.ecosystem.HalaqatScreen
+import com.example.ui.screens.ecosystem.HaramainLiveScreen
 import com.example.ui.screens.ecosystem.HifzAiScreen
 import com.example.ui.screens.ecosystem.IslamicCardDesignerScreen
 import com.example.ui.screens.ecosystem.IslamicLibraryScreen
 import com.example.ui.screens.ecosystem.KhatmAndWorshipScreen
+import com.example.ui.screens.ecosystem.LiveHadithEncyclopediaScreen
 import com.example.ui.screens.ecosystem.MirathCalculatorScreen
 import com.example.ui.screens.ecosystem.NoorDuaaScreen
 import com.example.ui.screens.ecosystem.NoorKidsScreen
@@ -176,6 +179,9 @@ object NoorRoutes {
     const val QADA_TRACKER = "qada_tracker"
     const val MIRATH = "mirath"
     const val CARD_DESIGNER = "card_designer"
+    const val HARAMAIN_LIVE = "haramain_live"
+    const val GLOBAL_QURAN_SEARCH = "global_quran_search"
+    const val LIVE_HADITH = "live_hadith"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -480,7 +486,10 @@ fun NoorAppShell(
                                     onOpenWorshipGuides = { navController.navigate(NoorRoutes.WORSHIP_GUIDES) },
                                     onOpenQadaTracker = { navController.navigate(NoorRoutes.QADA_TRACKER) },
                                     onOpenMirath = { navController.navigate(NoorRoutes.MIRATH) },
-                                    onOpenCardDesigner = { navController.navigate(NoorRoutes.CARD_DESIGNER) }
+                                    onOpenCardDesigner = { navController.navigate(NoorRoutes.CARD_DESIGNER) },
+                                    onOpenHaramainLive = { navController.navigate(NoorRoutes.HARAMAIN_LIVE) },
+                                    onOpenGlobalQuranSearch = { navController.navigate(NoorRoutes.GLOBAL_QURAN_SEARCH) },
+                                    onOpenLiveHadith = { navController.navigate(NoorRoutes.LIVE_HADITH) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -674,6 +683,9 @@ fun NoorAppShell(
                                     onOpenQadaTracker = { navController.navigate(NoorRoutes.QADA_TRACKER) },
                                     onOpenMirath = { navController.navigate(NoorRoutes.MIRATH) },
                                     onOpenCardDesigner = { navController.navigate(NoorRoutes.CARD_DESIGNER) },
+                                    onOpenHaramainLive = { navController.navigate(NoorRoutes.HARAMAIN_LIVE) },
+                                    onOpenGlobalQuranSearch = { navController.navigate(NoorRoutes.GLOBAL_QURAN_SEARCH) },
+                                    onOpenLiveHadith = { navController.navigate(NoorRoutes.LIVE_HADITH) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -862,6 +874,22 @@ fun NoorAppShell(
                             }
                             composable(NoorRoutes.CARD_DESIGNER) {
                                 IslamicCardDesignerScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.HARAMAIN_LIVE) {
+                                HaramainLiveScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.GLOBAL_QURAN_SEARCH) {
+                                GlobalQuranSearchScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.LIVE_HADITH) {
+                                LiveHadithEncyclopediaScreen(
                                     onBack = { navController.popBackStack() }
                                 )
                             }

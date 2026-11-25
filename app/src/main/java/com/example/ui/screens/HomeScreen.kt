@@ -47,9 +47,11 @@ import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -139,7 +141,10 @@ fun HomeScreen(
     onOpenWorshipGuides: () -> Unit = {},
     onOpenQadaTracker: () -> Unit = {},
     onOpenMirath: () -> Unit = {},
-    onOpenCardDesigner: () -> Unit = {}
+    onOpenCardDesigner: () -> Unit = {},
+    onOpenHaramainLive: () -> Unit = {},
+    onOpenGlobalQuranSearch: () -> Unit = {},
+    onOpenLiveHadith: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -496,6 +501,15 @@ fun HomeScreen(
                     HomeEcoMiniTile(L10n.pick(lang, "قضاء الصلوات", "Qada", "Qazo"), Icons.Rounded.EventRepeat, onOpenQadaTracker, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "المواريث", "Mirath", "Meros"), Icons.Rounded.Gavel, onOpenMirath, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "بطاقات آيات", "Cards", "Kartalar"), Icons.Rounded.Palette, onOpenCardDesigner, Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeEcoMiniTile(L10n.pick(lang, "بث الحرمين", "Haramain", "Haramayn"), Icons.Rounded.LiveTv, onOpenHaramainLive, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "الباحث القرآني", "Quran Search", "Qur'on izlash"), Icons.Rounded.TravelExplore, onOpenGlobalQuranSearch, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "موسوعة الحديث", "Live Hadith", "Hadislar"), Icons.Rounded.MenuBook, onOpenLiveHadith, Modifier.weight(1f))
                 }
             }
         }

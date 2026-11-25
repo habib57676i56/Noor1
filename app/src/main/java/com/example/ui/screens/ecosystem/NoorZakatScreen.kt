@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Remove
 import androidx.compose.material.icons.rounded.VolunteerActivism
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,9 +55,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.remote.LiveMetalPrices
+import com.example.data.remote.NoorLiveOnlineService
 import com.example.domain.zakat.NisabStandard
 import com.example.domain.zakat.ZakatCalculationInput
 import com.example.domain.zakat.ZakatCalculatorEngine
+import kotlinx.coroutines.launch
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
@@ -82,8 +87,12 @@ fun NoorZakatScreen(
     var selectedCurrency by remember { mutableStateOf(ZakatCalculatorEngine.currencies.first()) }
     var nisabStandard by remember { mutableStateOf(NisabStandard.GOLD_85G) }
 
+    val scope = rememberCoroutineScope()
     var goldPriceText by remember { mutableStateOf(formatRawNumber(selectedCurrency.defaultGold24kPerGram)) }
     var silverPriceText by remember { mutableStateOf(formatRawNumber(selectedCurrency.defaultSilverPerGram)) }
+    var fetchingLiveMetals by remember { mutableStateOf(false) }
+    var liveMetalsStatus by remember { mutableStateOf<String?>(null) }
+    var latestLiveMetals by remember { mutableStateOf<LiveMetalPrices?>(null) }
 
     var cashText by remember { mutableStateOf("") }
     var gold24kText by remember { mutableStateOf("") }
@@ -316,6 +325,67 @@ fun NoorZakatScreen(
                                 label = L10n.pick(lang, "سعر غرام الفضة", "Silver / gram", "1g Kumush"),
                                 suffix = selectedCurrency.symbol,
                                 modifier = Modifier.weight(1f)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    fetchingLiveMetals = true
+                                    liveMetalsStatus = null
+                                    NoorLiveOnlineService.fetchLivePreciousMetalsPrices(selectedCurrency.code)
+                                        .onSuccess { live ->
+                                            latestLiveMetals = live
+                                            goldPriceText = formatRawNumber(live.gold24kPerGram)
+                                            silverPriceText = formatRawNumber(live.silverPerGram)
+                                            liveMetalsStatus = L10n.pick(
+                                                lang,
+                                                "تم تحديث الأسعار العالمية الحية: عيار ٢٤ = ${formatMoney(live.gold24kPerGram)} · عيار ٢١ = ${formatMoney(live.gold21kPerGram)} · عيار ١٨ = ${formatMoney(live.gold18kPerGram)} ${selectedCurrency.symbol}",
+                                                "Live spot updated: 24K = ${formatMoney(live.gold24kPerGram)} · 21K = ${formatMoney(live.gold21kPerGram)} · 18K = ${formatMoney(live.gold18kPerGram)} ${selectedCurrency.symbol}",
+                                                "Jonli bozor narxlari yangilandi: 24K = ${formatMoney(live.gold24kPerGram)} · 21K = ${formatMoney(live.gold21kPerGram)} ${selectedCurrency.symbol}"
+                                            )
+                                        }
+                                        .onFailure {
+                                            liveMetalsStatus = L10n.pick(
+                                                lang,
+                                                "تعذّر جلب السعر الحي حالياً — يمكنك تعديل السعر يدوياً",
+                                                "Unable to fetch live spot price — manual entry remains active",
+                                                "Jonli narxni olib bo'lmadi — narxni qo'lda kiritishingiz mumkin"
+                                            )
+                                        }
+                                    fetchingLiveMetals = false
+                                }
+                            },
+                            enabled = !fetchingLiveMetals,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .testTag("zakat_fetch_live_gold_btn")
+                        ) {
+                            if (fetchingLiveMetals) {
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = GoldPrimary)
+                            } else {
+                                Icon(Icons.Rounded.Refresh, contentDescription = null, tint = noorColors.goldAccent, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = L10n.pick(
+                                        lang,
+                                        "تحديث أسعار الذهب والفضة العالمية الحية (${selectedCurrency.code})",
+                                        "Sync Live World Gold & Silver Prices (${selectedCurrency.code})",
+                                        "Jonli jahon oltin va kumush narxini olish (${selectedCurrency.code})"
+                                    ),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                        liveMetalsStatus?.let { status ->
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = status,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (latestLiveMetals != null) EmeraldPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }

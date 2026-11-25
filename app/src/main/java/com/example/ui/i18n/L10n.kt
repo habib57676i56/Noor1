@@ -346,6 +346,18 @@ object L10n {
         "Create & Share Luxury Ayah & Dua Cards" to "Oyat va duo kartochkalarini yarating va ulashing",
         "Qada" to "Qazo",
         "Mirath" to "Meros",
-        "Cards" to "Kartalar"
+        "Cards" to "Kartalar",
+
+        // Live Online Super-Features
+        "Live Online Super-Features" to "Jonli internet super-imkoniyatlari",
+        "Live Makkah & Madinah" to "Makka va Madina jonli efir",
+        "24/7 Live Kaaba & Nabawi Streams + Weather" to "Ka'ba va Nabaviy 24/7 jonli efiri va ob-havo",
+        "Global Quran & Tafsir" to "Qur'on qidiruvi va Tafsirlar",
+        "Search All 6,236 Ayahs + Multi-Tafsir & Audio" to "6236 oyat qidiruvi, tafsirlar va jonli tilovat",
+        "Live Hadith Encyclopedia" to "Jonli Hadislar ensiklopediyasi",
+        "Verified Hadiths with Grading, Notes (AR/EN/UZ)" to "Sahih hadislar, daraja va sharhlar (O'zbekcha)",
+        "Haramain" to "Haramayn",
+        "Quran Search" to "Qur'on izlash",
+        "Live Hadith" to "Hadislar"
     )
 }
