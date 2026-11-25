@@ -123,6 +123,8 @@ import com.example.ui.screens.ecosystem.NoorZakatScreen
 import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
 import com.example.ui.screens.ecosystem.QadaTrackerScreen
 import com.example.ui.screens.ecosystem.QuranIrabSarfScreen
+import com.example.ui.screens.ecosystem.QuranMutashabihatScreen
+import com.example.ui.screens.ecosystem.SeerahChronicleAtlasScreen
 import com.example.ui.screens.ecosystem.TajweedScreen
 import com.example.ui.screens.ecosystem.WorshipGuidesScreen
 import com.example.data.local.catalog.IslamicVideoCategory
@@ -188,6 +190,8 @@ object NoorRoutes {
     const val QURAN_IRAB_SARF = "quran_irab_sarf"
     const val CRESCENT_OBSERVATORY = "crescent_observatory"
     const val GLOBAL_UMMAH_PULSE = "global_ummah_pulse"
+    const val QURAN_MUTASHABIHAT = "quran_mutashabihat"
+    const val SEERAH_ATLAS = "seerah_atlas"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -498,7 +502,9 @@ fun NoorAppShell(
                                     onOpenLiveHadith = { navController.navigate(NoorRoutes.LIVE_HADITH) },
                                     onOpenQuranIrabSarf = { navController.navigate(NoorRoutes.QURAN_IRAB_SARF) },
                                     onOpenCrescentObservatory = { navController.navigate(NoorRoutes.CRESCENT_OBSERVATORY) },
-                                    onOpenGlobalUmmahPulse = { navController.navigate(NoorRoutes.GLOBAL_UMMAH_PULSE) }
+                                    onOpenGlobalUmmahPulse = { navController.navigate(NoorRoutes.GLOBAL_UMMAH_PULSE) },
+                                    onOpenMutashabihat = { navController.navigate(NoorRoutes.QURAN_MUTASHABIHAT) },
+                                    onOpenSeerahAtlas = { navController.navigate(NoorRoutes.SEERAH_ATLAS) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -698,6 +704,8 @@ fun NoorAppShell(
                                     onOpenQuranIrabSarf = { navController.navigate(NoorRoutes.QURAN_IRAB_SARF) },
                                     onOpenCrescentObservatory = { navController.navigate(NoorRoutes.CRESCENT_OBSERVATORY) },
                                     onOpenGlobalUmmahPulse = { navController.navigate(NoorRoutes.GLOBAL_UMMAH_PULSE) },
+                                    onOpenMutashabihat = { navController.navigate(NoorRoutes.QURAN_MUTASHABIHAT) },
+                                    onOpenSeerahAtlas = { navController.navigate(NoorRoutes.SEERAH_ATLAS) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -921,6 +929,20 @@ fun NoorAppShell(
                             }
                             composable(NoorRoutes.GLOBAL_UMMAH_PULSE) {
                                 GlobalUmmahPulseScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.QURAN_MUTASHABIHAT) {
+                                QuranMutashabihatScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.SEERAH_ATLAS) {
+                                SeerahChronicleAtlasScreen(
+                                    userLatitude = prefs.latitude,
+                                    userLongitude = prefs.longitude,
+                                    userCityLabel = L10n.pick(lang, prefs.cityNameAr, prefs.cityNameEn),
                                     onBack = { navController.popBackStack() }
                                 )
                             }

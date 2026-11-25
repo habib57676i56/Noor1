@@ -1,5 +1,13 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -48,6 +56,9 @@ import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LiveTv
+import androidx.compose.material.icons.rounded.CompareArrows
+import androidx.compose.material.icons.rounded.HistoryEdu
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Psychology
@@ -67,10 +78,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -149,7 +162,9 @@ fun HomeScreen(
     onOpenLiveHadith: () -> Unit = {},
     onOpenQuranIrabSarf: () -> Unit = {},
     onOpenCrescentObservatory: () -> Unit = {},
-    onOpenGlobalUmmahPulse: () -> Unit = {}
+    onOpenGlobalUmmahPulse: () -> Unit = {},
+    onOpenMutashabihat: () -> Unit = {},
+    onOpenSeerahAtlas: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -173,6 +188,7 @@ fun HomeScreen(
     }
 
     var showCustomizeDialog by remember { mutableStateOf(false) }
+    var ecosystemExpanded by rememberSaveable { mutableStateOf(false) }
 
     val upcomingEvent = remember(prefs.hijriAdjustmentDays) {
         HijriCalendarEngine.getUpcomingOccasions(prefs.hijriAdjustmentDays).firstOrNull()
@@ -434,13 +450,17 @@ fun HomeScreen(
             }
         }
 
-        // 2B. NOOR Complete Islamic Ecosystem Quick Launch Card (Strictly Additive)
+        // 2B. NOOR Complete Islamic Ecosystem Quick Launch Card (Collapsible by Default, Smoothly Expands Downward)
         item {
+            val arrowRotation by animateFloatAsState(
+                targetValue = if (ecosystemExpanded) 180f else 0f,
+                animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow),
+                label = "ecosystem_arrow_rotation"
+            )
             LiquidGlassCard(
                 strong = true,
                 goldBorder = true,
                 contentPadding = PaddingValues(14.dp),
-                onClick = onOpenEcosystemHub,
                 modifier = Modifier.testTag("home_ecosystem_hub_card")
             ) {
                 Row(
@@ -448,29 +468,61 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(onClick = onOpenEcosystemHub)
+                    ) {
                         Text(
-                            text = L10n.pick(lang, "منظومة نور المتكاملة (بدون إنترنت)", "NOOR Complete Ecosystem (Offline)"),
+                            text = L10n.pick(lang, "منظومة نور المتكاملة", "NOOR Complete Ecosystem", "NOOR to'liq tizimi"),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.ExtraBold,
                             color = noorColors.goldAccent
                         )
                         Text(
-                            text = L10n.pick(lang, "الحلقات · الحفظ الذكي · الذكاء المحلي · المكتبة · الختمة · الإدارة", "Halaqat · Hifz AI · Local AI · Library · Khatm · Local Admin"),
+                            text = L10n.pick(
+                                lang,
+                                "اضغط على السهم لعرض جميع الأقسام والإضافات النادرة",
+                                "Tap arrow to reveal all Islamic tools & rare modules",
+                                "Barcha bo'limlarni ochish uchun strelkani bosing"
+                            ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = L10n.pick(lang, "الكل ←", "All →"),
+                        text = L10n.pick(lang, "الكل ←", "All →", "Barchasi →"),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = noorColors.goldAccent
+                        color = noorColors.goldAccent,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable(onClick = onOpenEcosystemHub)
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { ecosystemExpanded = !ecosystemExpanded },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(GoldPrimary.copy(alpha = 0.18f))
+                            .border(1.dp, GoldPrimary.copy(alpha = 0.45f), CircleShape)
+                            .testTag("home_ecosystem_expand_toggle")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = L10n.pick(lang, "عرض المزيد", "Show More", "Ko'proq ko'rsatish"),
+                            tint = noorColors.goldAccent,
+                            modifier = Modifier.rotate(arrowRotation)
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(10.dp))
+                // Always visible top compact row (4 essentials)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -480,50 +532,105 @@ fun HomeScreen(
                     HomeEcoMiniTile(L10n.pick(lang, "نور AI", "Local AI"), Icons.Rounded.Psychology, onOpenLocalAi, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "المكتبة", "Library"), Icons.Rounded.LocalLibrary, onOpenLibrary, Modifier.weight(1f))
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+                // Expandable drawer with smooth vertical slide-down animation
+                AnimatedVisibility(
+                    visible = ecosystemExpanded,
+                    enter = expandVertically(
+                        animationSpec = spring(dampingRatio = 0.78f, stiffness = Spring.StiffnessMediumLow)
+                    ) + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
                 ) {
-                    HomeEcoMiniTile(L10n.pick(lang, "فيديوهات", "Videos"), Icons.Rounded.OndemandVideo, onOpenVideos, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "الختمة والصيام", "Khatm"), Icons.Rounded.NightsStay, onOpenKhatm, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "الإدارة المحلية", "Local Admin"), Icons.Rounded.AdminPanelSettings, onOpenOfflineAdmin, Modifier.weight(1f))
+                    Column {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            HomeEcoMiniTile(L10n.pick(lang, "فيديوهات", "Videos"), Icons.Rounded.OndemandVideo, onOpenVideos, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "الختمة والصيام", "Khatm"), Icons.Rounded.NightsStay, onOpenKhatm, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "الإدارة المحلية", "Local Admin"), Icons.Rounded.AdminPanelSettings, onOpenOfflineAdmin, Modifier.weight(1f))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            HomeEcoMiniTile(L10n.pick(lang, "حاسبة الزكاة", "Zakat", "Zakot"), Icons.Rounded.Calculate, onOpenZakat, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "أسماء الله", "99 Names", "99 Ism"), Icons.Rounded.AutoAwesome, onOpenAsmaUlHusna, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "الوضوء والعمرة", "Guides", "Qo'llanma"), Icons.Rounded.Mosque, onOpenWorshipGuides, Modifier.weight(1f))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            HomeEcoMiniTile(L10n.pick(lang, "قضاء الصلوات", "Qada", "Qazo"), Icons.Rounded.EventRepeat, onOpenQadaTracker, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "المواريث", "Mirath", "Meros"), Icons.Rounded.Gavel, onOpenMirath, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "بطاقات آيات", "Cards", "Kartalar"), Icons.Rounded.Palette, onOpenCardDesigner, Modifier.weight(1f))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            HomeEcoMiniTile(L10n.pick(lang, "بث الحرمين", "Haramain", "Haramayn"), Icons.Rounded.LiveTv, onOpenHaramainLive, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "الباحث القرآني", "Quran Search", "Qur'on izlash"), Icons.Rounded.TravelExplore, onOpenGlobalQuranSearch, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "موسوعة الحديث", "Live Hadith", "Hadislar"), Icons.Rounded.MenuBook, onOpenLiveHadith, Modifier.weight(1f))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            HomeEcoMiniTile(L10n.pick(lang, "إعراب وصرف", "I'rab & Sarf", "E'rob va Sarf"), Icons.Rounded.Spellcheck, onOpenQuranIrabSarf, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "مرصد الهلال", "Crescent Lab", "Hilol rasadxonasi"), Icons.Rounded.NightsStay, onOpenCrescentObservatory, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "نبض الأمة", "Ummah Pulse", "Ummat nafas"), Icons.Rounded.Public, onOpenGlobalUmmahPulse, Modifier.weight(1f))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            HomeEcoMiniTile(L10n.pick(lang, "متشابهات القرآن", "Mutashabihat", "Mutashobihot"), Icons.Rounded.CompareArrows, onOpenMutashabihat, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "أطلس السيرة", "Seerah Atlas", "Siyrat atlasi"), Icons.Rounded.HistoryEdu, onOpenSeerahAtlas, Modifier.weight(1f))
+                        }
+                    }
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+
+                Spacer(modifier = Modifier.height(10.dp))
+                // Bottom clickable expand/collapse arrow pill
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(EmeraldPrimary.copy(alpha = 0.14f))
+                        .border(1.dp, GoldPrimary.copy(alpha = 0.30f), RoundedCornerShape(14.dp))
+                        .clickable { ecosystemExpanded = !ecosystemExpanded }
+                        .padding(vertical = 8.dp)
+                        .testTag("home_ecosystem_more_pill"),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    HomeEcoMiniTile(L10n.pick(lang, "حاسبة الزكاة", "Zakat", "Zakot"), Icons.Rounded.Calculate, onOpenZakat, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "أسماء الله", "99 Names", "99 Ism"), Icons.Rounded.AutoAwesome, onOpenAsmaUlHusna, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "الوضوء والعمرة", "Guides", "Qo'llanma"), Icons.Rounded.Mosque, onOpenWorshipGuides, Modifier.weight(1f))
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    HomeEcoMiniTile(L10n.pick(lang, "قضاء الصلوات", "Qada", "Qazo"), Icons.Rounded.EventRepeat, onOpenQadaTracker, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "المواريث", "Mirath", "Meros"), Icons.Rounded.Gavel, onOpenMirath, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "بطاقات آيات", "Cards", "Kartalar"), Icons.Rounded.Palette, onOpenCardDesigner, Modifier.weight(1f))
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    HomeEcoMiniTile(L10n.pick(lang, "بث الحرمين", "Haramain", "Haramayn"), Icons.Rounded.LiveTv, onOpenHaramainLive, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "الباحث القرآني", "Quran Search", "Qur'on izlash"), Icons.Rounded.TravelExplore, onOpenGlobalQuranSearch, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "موسوعة الحديث", "Live Hadith", "Hadislar"), Icons.Rounded.MenuBook, onOpenLiveHadith, Modifier.weight(1f))
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    HomeEcoMiniTile(L10n.pick(lang, "إعراب وصرف", "I'rab & Sarf", "E'rob va Sarf"), Icons.Rounded.Spellcheck, onOpenQuranIrabSarf, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "مرصد الهلال", "Crescent Lab", "Hilol rasadxonasi"), Icons.Rounded.NightsStay, onOpenCrescentObservatory, Modifier.weight(1f))
-                    HomeEcoMiniTile(L10n.pick(lang, "نبض الأمة", "Ummah Pulse", "Ummat nafas"), Icons.Rounded.Public, onOpenGlobalUmmahPulse, Modifier.weight(1f))
+                    Text(
+                        text = if (ecosystemExpanded) {
+                            L10n.pick(lang, "طيّ المنظومة", "Show Less", "Yig'ish")
+                        } else {
+                            L10n.pick(lang, "عرض المزيد من منظومة نور (١٧ أداة إضافية)", "Show More NOOR Tools (17+)", "Ko'proq bo'limlarni ko'rish (17+)")
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = noorColors.goldAccent
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Rounded.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = noorColors.goldAccent,
+                        modifier = Modifier
+                            .size(18.dp)
+                            .rotate(arrowRotation)
+                    )
                 }
             }
         }

@@ -24,10 +24,12 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.ChildCare
+import androidx.compose.material.icons.rounded.CompareArrows
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.EventRepeat
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.HistoryEdu
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.MenuBook
@@ -117,6 +119,8 @@ fun EcosystemHubScreen(
     onOpenQuranIrabSarf: () -> Unit = {},
     onOpenCrescentObservatory: () -> Unit = {},
     onOpenGlobalUmmahPulse: () -> Unit = {},
+    onOpenMutashabihat: () -> Unit = {},
+    onOpenSeerahAtlas: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -276,6 +280,16 @@ fun EcosystemHubScreen(
             "نبض الأذان والقراءات النادرة", "Global Adhan & Qira'at",
             "مواقيت ١٢ عاصمة إسلامية حية + ورش وقالون والدوري والمجوّد", "12 Islamic Cities Live Adhan + Rare Qira'at Vault",
             Icons.Rounded.Public, Color(0xFF2FC291), "hub_global_ummah_pulse", onOpenGlobalUmmahPulse
+        ),
+        EcosystemModuleItem(
+            "متشابهات القرآن والضوابط", "Quran Mutashabihat Lab",
+            "فروق الآيات المتشابهة + الضوابط الذهبية + ماسح ٦٢٣٦ آية", "Word-Level Verse Diffs, Hifz Rules & Live Scanner",
+            Icons.Rounded.CompareArrows, GoldPrimary, "hub_quran_mutashabihat", onOpenMutashabihat
+        ),
+        EcosystemModuleItem(
+            "أطلس السيرة النبوية والشمائل", "Seerah Atlas & Shama'il",
+            "خريطة الهجرة بالمسافات الحقيقية + الشمائل وإحياء السنن", "Interactive Hijrah GPS Map, Seerah & Sunnah Revival",
+            Icons.Rounded.HistoryEdu, EmeraldPrimary, "hub_seerah_atlas", onOpenSeerahAtlas
         )
     )
 

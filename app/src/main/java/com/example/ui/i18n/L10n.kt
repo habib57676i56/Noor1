@@ -372,6 +372,17 @@ object L10n {
         "Crescent Lab" to "Hilol rasadxonasi",
         "Global Adhan & Qira'at" to "Ummat Azoni va Noyob Qiroatlar",
         "12 Islamic Cities Live Adhan + Rare Qira'at Vault" to "12 islom shahri jonli azoni + Varsh, Qolun va Mujavvad",
-        "Ummah Pulse" to "Ummat nafas"
+        "Ummah Pulse" to "Ummat nafas",
+
+        // 3D Splash, Collapsible Ecosystem, Mutashabihat & Seerah Atlas
+        "Remember us in your sincere prayers" to "Bizni ham solih duolaringizda unutmang",
+        "Show More" to "Ko'proq ko'rsatish",
+        "Show Less" to "Yig'ish",
+        "Quran Mutashabihat Lab" to "Qur'on Mutashobihotlari",
+        "Word-Level Verse Diffs, Hifz Rules & Live Scanner" to "So'zma-so'z farqlar, oltin qoidalar va jonli skaner",
+        "Mutashabihat" to "Mutashobihot",
+        "Seerah Atlas & Shama'il" to "Siyrat atlasi va Shamoil",
+        "Interactive Hijrah GPS Map, Seerah & Sunnah Revival" to "Hijrat GPS xaritasi, siyrat va sunnatlarni tiriltirish",
+        "Seerah Atlas" to "Siyrat atlasi"
     )
 }
