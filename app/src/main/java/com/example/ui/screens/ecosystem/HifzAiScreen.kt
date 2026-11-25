@@ -609,7 +609,7 @@ fun HifzAiScreen(
                                     )
                                 }
 
-                                // Live Speech-to-Text Status & Transcript (only shown when active or captured)
+                                // Live Speech-to-Text Status, Provider Diagnostics & Retry/Fallback
                                 if (liveState.isActive) {
                                     Spacer(Modifier.height(8.dp))
                                     LinearProgressIndicator(
@@ -618,13 +618,59 @@ fun HifzAiScreen(
                                         color = GoldBright
                                     )
                                 }
+                                if (liveState.activeProviderName.isNotBlank() && (liveState.isActive || liveState.status == LiveRecitationStatus.ERROR)) {
+                                    Spacer(Modifier.height(4.dp))
+                                    val modeLabel = if (liveState.usingOnlineMode) {
+                                        L10n.pick(lang, "عبر الإنترنت", "Online", "Onlayn")
+                                    } else {
+                                        L10n.pick(lang, "دون إنترنت", "Offline", "Oflayn")
+                                    }
+                                    Text(
+                                        text = "${liveState.activeProviderName} · $modeLabel · ${liveState.activeLocale}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.testTag("hifz_stt_provider_badge")
+                                    )
+                                }
                                 if (liveState.statusNoteAr.isNotBlank()) {
                                     Spacer(Modifier.height(4.dp))
                                     Text(L10n.pick(lang, liveState.statusNoteAr, liveState.statusNoteEn), style = MaterialTheme.typography.labelSmall, color = noorColors.goldAccent)
                                 }
                                 if (liveState.errorMessageAr.isNotBlank()) {
                                     Spacer(Modifier.height(4.dp))
-                                    Text(L10n.pick(lang, liveState.errorMessageAr, liveState.errorMessageEn), style = MaterialTheme.typography.labelSmall, color = SemanticError)
+                                    Text(
+                                        text = L10n.pick(lang, liveState.errorMessageAr, liveState.errorMessageEn),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = SemanticError,
+                                        modifier = Modifier.testTag("hifz_stt_error_text")
+                                    )
+                                }
+                                if (liveState.status == LiveRecitationStatus.ERROR || liveState.status == LiveRecitationStatus.PAUSED || liveState.hasReceivedEmptyResult) {
+                                    Spacer(Modifier.height(4.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        TextButton(
+                                            onClick = {
+                                                pendingMicAction = "STT"
+                                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                            },
+                                            modifier = Modifier.testTag("hifz_stt_retry_btn")
+                                        ) {
+                                            Text(L10n.pick(lang, "إعادة المحاولة", "Retry", "Qayta urinish"))
+                                        }
+                                        TextButton(
+                                            onClick = {
+                                                runCatching {
+                                                    systemSpeechFallbackLauncher.launch(viewModel.buildSystemSpeechIntent())
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("hifz_stt_system_fallback_btn")
+                                        ) {
+                                            Text(L10n.pick(lang, "إملاء النظام", "Voice Input", "Tizim ovozli kiritishi"))
+                                        }
+                                    }
                                 }
                                 recState.errorAr?.let { err ->
                                     Spacer(Modifier.height(4.dp))

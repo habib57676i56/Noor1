@@ -445,6 +445,9 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
         }
         hifzMicListener.resumeListening()
     }
+    fun retryHifzLiveMic() {
+        startHifzLiveMic(resetTranscript = false)
+    }
     fun stopHifzLiveMic(clearTranscript: Boolean = false) = hifzMicListener.stopListening(clearTranscript)
     fun clearHifzTranscript() = hifzMicListener.clearTranscript()
     fun clearRecitationReport() {
@@ -457,6 +460,7 @@ class EcosystemViewModel(application: Application) : AndroidViewModel(applicatio
     fun injectHifzSpeechResult(text: String) = hifzMicListener.injectRecognizedText(text, isFinal = true)
     fun buildSystemSpeechIntent(): Intent = hifzMicListener.buildSystemSpeechIntent()
     fun isSpeechRecognitionAvailable(): Boolean = hifzMicListener.isSpeechServiceAvailable()
+    fun inspectSttCapabilities() = hifzMicListener.inspectCapabilities()
 
     // Real MediaRecorder Audio Recording + Playback for Hifz Recitation
     fun startRecitationRecording(surahNumber: Int, ayahNumber: Int) {

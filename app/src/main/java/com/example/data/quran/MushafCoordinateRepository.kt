@@ -52,7 +52,7 @@ class MushafCoordinateRepository(private val appContext: Context) {
 
     private val coordsDir: File = File(appContext.filesDir, "mushaf_coords").apply { mkdirs() }
     private val glyphDbFile: File = File(coordsDir, "ayahinfo_1024.db")
-    private val layoutCache = LruCache<Int, MushafPageLayout>(24)
+    private val layoutCache = LruCache<String, MushafPageLayout>(32)
 
     private val _packStatus = MutableStateFlow(scanStatus())
     val packStatus: StateFlow<MushafCoordinatePackStatus> = _packStatus.asStateFlow()
@@ -95,25 +95,33 @@ class MushafCoordinateRepository(private val appContext: Context) {
     }
 
     /**
-     * Loads the highest-precision interactive layout available for `pageNumber` (`1..604`).
+     * Loads the highest-precision verified interactive layout available for `pageNumber` (`1..604`).
+     *
+     * Pass `actualImageWidth` and `actualImageHeight` from the decoded PNG so `ayahinfo_1024.db`
+     * pixel coordinates are normalized against the EXACT image aspect ratio (never shifted vertically!).
+     * If verified coordinates are missing for a page, returns `CoordinatePrecision.MISSING_COORDINATES`
+     * with an empty region list — NEVER fabricates guessed hit regions over blank paper!
      */
     suspend fun getPageLayout(
         pageNumber: Int,
-        fallbackVerses: List<QuranVerse> = emptyList()
+        fallbackVerses: List<QuranVerse> = emptyList(),
+        actualImageWidth: Int = 0,
+        actualImageHeight: Int = 0
     ): MushafPageLayout = withContext(Dispatchers.IO) {
         val page = pageNumber.coerceIn(1, MadinahMushafPageCatalog.TOTAL_PAGES)
+        val cacheKey = "${page}_${actualImageWidth}x${actualImageHeight}"
 
-        layoutCache.get(page)?.let { cached ->
+        layoutCache.get(cacheKey)?.let { cached ->
             // Upgrade from lower-precision cache if exact glyph DB was newly installed
             if (cached.precision == CoordinatePrecision.EXACT_GLYPH_DB || !hasExactGlyphDb()) {
                 return@withContext cached
             }
         }
 
-        // Tier 1: Exact SQLite Glyph Coordinates (ayahinfo_1024.db)
+        // Tier 1: Exact SQLite Glyph Coordinates (ayahinfo_1024.db) normalized to actual PNG dimensions
         if (hasExactGlyphDb()) {
-            queryGlyphDatabaseForPage(page)?.let { exactLayout ->
-                layoutCache.put(page, exactLayout)
+            queryGlyphDatabaseForPage(page, actualImageWidth, actualImageHeight)?.let { exactLayout ->
+                layoutCache.put(cacheKey, exactLayout)
                 return@withContext exactLayout
             }
         }
@@ -124,7 +132,7 @@ class MushafCoordinateRepository(private val appContext: Context) {
             runCatching { parseQuranComPageJson(page, localJson.readText(), CoordinatePrecision.EXACT_LINE_LAYOUT_API) }
                 .getOrNull()
                 ?.let { parsed ->
-                    layoutCache.put(page, parsed)
+                    layoutCache.put(cacheKey, parsed)
                     return@withContext parsed
                 }
         }
@@ -138,21 +146,21 @@ class MushafCoordinateRepository(private val appContext: Context) {
             if (parsed != null && parsed.ayahs.isNotEmpty()) {
                 runCatching { localJson.writeText(remoteJson) }
                 refreshStatus()
-                layoutCache.put(page, parsed)
+                layoutCache.put(cacheKey, parsed)
                 return@withContext parsed
             }
         }
 
-        // Tier 3: Verified bundled 15-line layouts for landmark pages (1, 2, 415, 597, 604)
+        // Tier 3: Verified bundled 15-line layouts for landmark pages (1, 2, 597, 604)
         buildVerifiedBundledPageLayout(page)?.let { bundled ->
-            layoutCache.put(page, bundled)
+            layoutCache.put(cacheKey, bundled)
             return@withContext bundled
         }
 
-        // Tier 4: Deterministic offline line allocation from verified Room/Catalog verses
-        val fallback = buildOfflineFallbackLayout(page, fallbackVerses)
-        layoutCache.put(page, fallback)
-        fallback
+        // Tier 4: Never invent fake coordinates over blank paper — report missing metadata honestly!
+        val missing = buildMissingCoordinatesLayout(page)
+        layoutCache.put(cacheKey, missing)
+        missing
     }
 
     /**
@@ -282,9 +290,14 @@ class MushafCoordinateRepository(private val appContext: Context) {
 
     /**
      * Reads exact glyph bounding boxes for a page from `ayahinfo_1024.db` (`glyphs` table)
-     * and converts them to normalized `[0..1]` per-line Ayah segments + per-word boxes.
+     * and converts them to normalized `[0..1]` per-line Ayah segments + per-word boxes
+     * aligned to the actual loaded `width_1024` PNG dimensions.
      */
-    private fun queryGlyphDatabaseForPage(pageNumber: Int): MushafPageLayout? {
+    internal fun queryGlyphDatabaseForPage(
+        pageNumber: Int,
+        actualImageWidth: Int = 0,
+        actualImageHeight: Int = 0
+    ): MushafPageLayout? {
         return runCatching {
             SQLiteDatabase.openDatabase(glyphDbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY).use { db ->
                 data class RawGlyph(
@@ -323,8 +336,18 @@ class MushafCoordinateRepository(private val appContext: Context) {
                 }
                 if (glyphs.isEmpty()) return@use null
 
-                val imgW = maxOf(DEFAULT_MUSHAF_WIDTH, glyphs.maxOf { it.maxX }).toFloat()
-                val imgH = maxOf(DEFAULT_MUSHAF_HEIGHT, glyphs.maxOf { it.maxY }).toFloat()
+                // CRITICAL FIX: Normalize `ayahinfo_1024.db` pixel coordinates against the true
+                // aspect-proportional height of the loaded `width_1024` PNG (e.g., 1024x1638 or 1024x1656)
+                // instead of forcing 1656 when the actual PNG height differs!
+                val maxGlyphX = glyphs.maxOf { it.maxX }
+                val maxGlyphY = glyphs.maxOf { it.maxY }
+                val proportionalRefHeight = if (actualImageWidth > 0 && actualImageHeight > 0) {
+                    DEFAULT_MUSHAF_WIDTH.toFloat() * (actualImageHeight.toFloat() / actualImageWidth.toFloat())
+                } else {
+                    DEFAULT_MUSHAF_HEIGHT.toFloat()
+                }
+                val imgW = maxOf(DEFAULT_MUSHAF_WIDTH.toFloat(), maxGlyphX.toFloat())
+                val imgH = maxOf(proportionalRefHeight, maxGlyphY.toFloat())
 
                 val groupedByAyah = glyphs.groupBy { it.surah to it.ayah }
                 val ayahRegions = groupedByAyah.entries.map { (key, ayahGlyphs) ->
@@ -446,14 +469,17 @@ class MushafCoordinateRepository(private val appContext: Context) {
         const val STANDARD_BOTTOM = 0.922f
 
         // Special ornate inner frame on Pages 1 & 2 (Al-Fatiha & opening of Al-Baqarah)
-        const val SPECIAL_P12_LEFT = 0.175f
-        const val SPECIAL_P12_RIGHT = 0.825f
-        const val SPECIAL_P12_TOP = 0.275f
-        const val SPECIAL_P12_BOTTOM = 0.775f
+        // Calibrated to King Fahd Complex `width_1024/page001.png` & `page002.png` inner cartouche
+        const val SPECIAL_P12_LEFT = 0.168f
+        const val SPECIAL_P12_RIGHT = 0.832f
+        const val SPECIAL_P12_TOP = 0.285f
+        const val SPECIAL_P12_BOTTOM = 0.755f
 
         val GLYPH_DB_MIRRORS = listOf(
             "https://android.quran.com/data/databases/ayahinfo_1024.zip",
-            "https://files.quran.app/hafs/databases/ayahinfo_1024.zip"
+            "https://files.quran.app/hafs/databases/ayahinfo_1024.zip",
+            "https://files.quran.app/data/databases/ayahinfo_1024.zip",
+            "https://files.quran.app/data/databases/v4/ayahinfo_1024.db"
         )
 
         /** All 15 verified Quranic Tilawah Sajdah positions `(surahNumber to ayahNumber)`. */
@@ -586,6 +612,16 @@ class MushafCoordinateRepository(private val appContext: Context) {
             val endMarkerByAyah = linkedMapOf<Pair<Int, Int>, NormalizedRect>()
 
             val wordsByLine = lineWords.groupBy { it.lineNumber }
+            val maxOpeningLineWeight = if (isOpening) {
+                wordsByLine.values.maxOfOrNull { lineList ->
+                    lineList.sumOf { w ->
+                        (if (w.isEndMarker) 2.2 else (stripDiacriticsLength(w.textUthmani).coerceAtLeast(2) + 1.2))
+                    }.toFloat()
+                }?.coerceAtLeast(20f) ?: 28f
+            } else {
+                1f
+            }
+
             for ((lineNum, wordsOnLine) in wordsByLine) {
                 val slotIndex = (lineNum - minLine).coerceIn(0, lineSlots - 1)
                 val lineTop = topBound + slotIndex * lineHeight + lineInsetY
@@ -596,16 +632,28 @@ class MushafCoordinateRepository(private val appContext: Context) {
                     else (stripDiacriticsLength(w.textUthmani).coerceAtLeast(2) + 1.2f)
                 }
                 val totalWeight = weights.sum().coerceAtLeast(1f)
-                val usableWidth = rightBound - leftBound
+                val fullWidth = rightBound - leftBound
 
-                // In Arabic RTL, words flow from RIGHT (`rightBound`) to LEFT (`leftBound`)!
-                var cursorRight = rightBound
+                // On opening framed pages (Page 1 Al-Fatiha & Page 2 Al-Baqarah), shorter lines are
+                // centered horizontally inside the ornate frame rather than stretched across blank paper!
+                val (lineLeftBound, lineRightBound) = if (isOpening && totalWeight < maxOpeningLineWeight * 0.92f) {
+                    val fillRatio = (totalWeight / maxOpeningLineWeight).coerceIn(0.45f, 1.0f)
+                    val centeredWidth = fullWidth * fillRatio
+                    val centerX = (leftBound + rightBound) * 0.5f
+                    (centerX - centeredWidth * 0.5f) to (centerX + centeredWidth * 0.5f)
+                } else {
+                    leftBound to rightBound
+                }
+                val usableWidth = lineRightBound - lineLeftBound
+
+                // In Arabic RTL, words flow from RIGHT (`lineRightBound`) to LEFT (`lineLeftBound`)!
+                var cursorRight = lineRightBound
                 val perAyahLineMinX = mutableMapOf<Pair<Int, Int>, Float>()
                 val perAyahLineMaxX = mutableMapOf<Pair<Int, Int>, Float>()
 
                 wordsOnLine.forEachIndexed { idx, w ->
                     val spanW = (weights[idx] / totalWeight) * usableWidth
-                    val wordLeft = (cursorRight - spanW).coerceAtLeast(leftBound)
+                    val wordLeft = (cursorRight - spanW).coerceAtLeast(lineLeftBound)
                     val wordRight = cursorRight
                     cursorRight = wordLeft
 
@@ -686,8 +734,8 @@ class MushafCoordinateRepository(private val appContext: Context) {
                     Triple(1, 4, 4) to "مَـٰلِكِ يَوْمِ ٱلدِّينِ",
                     Triple(1, 5, 5) to "إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ",
                     Triple(1, 6, 6) to "ٱهْدِنَا ٱلصِّرَٰطَ ٱلْمُسْتَقِيمَ",
-                    Triple(1, 7, 7) to "صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ",
-                    Triple(1, 7, 8) to "غَيْرِ ٱلْمَغْضُوبِ عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ"
+                    Triple(1, 7, 7) to "صِرَٰطَ ٱلَّذِينَ أَنْعَمْتَ عَلَيْهِمْ غَيْرِ ٱلْمَغْضُوبِ",
+                    Triple(1, 7, 8) to "عَلَيْهِمْ وَلَا ٱلضَّآلِّينَ"
                 )
                 // Page 2: Al-Baqarah 2:1-5 (lines 3..8 in King Fahd framed layout)
                 2 -> listOf(
@@ -723,7 +771,7 @@ class MushafCoordinateRepository(private val appContext: Context) {
                     Triple(114, 5, 14) to "ٱلَّذِى يُوَسْوِسُ فِى صُدُورِ ٱلنَّاسِ",
                     Triple(114, 6, 15) to "مِنَ ٱلْجِنَّةِ وَٱلنَّاسِ"
                 )
-                // Page 597: Al-Alaq (contains Sajdah on 96:19 at line 15!)
+                // Page 597: Al-Alaq (contains Sajdah on 96:19 at line 14-15!)
                 597 -> listOf(
                     Triple(96, 1, 3) to "ٱقْرَأْ بِٱسْمِ رَبِّكَ ٱلَّذِى خَلَقَ",
                     Triple(96, 2, 3) to "خَلَقَ ٱلْإِنسَـٰنَ مِنْ عَلَقٍ",
@@ -748,9 +796,16 @@ class MushafCoordinateRepository(private val appContext: Context) {
                 else -> return null
             }
 
+            // CRITICAL FIX: Attach the decorative Ayah end marker (`۝`) ONLY to the FINAL line
+            // of each Ayah — never on intermediate lines of multi-line Ayahs (e.g., 1:7 line 7, 2:2 line 3)!
+            val lastIndexByAyah = mutableMapOf<Pair<Int, Int>, Int>()
+            entries.forEachIndexed { idx, (meta, _) ->
+                lastIndexByAyah[meta.first to meta.second] = idx
+            }
+
             val wordCounterPerAyah = mutableMapOf<Pair<Int, Int>, Int>()
             val inputs = mutableListOf<LineWordInput>()
-            for ((meta, text) in entries) {
+            entries.forEachIndexed { idx, (meta, text) ->
                 val (surah, ayah, line) = meta
                 val tokens = text.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
                 for (tok in tokens) {
@@ -758,7 +813,9 @@ class MushafCoordinateRepository(private val appContext: Context) {
                     wordCounterPerAyah[surah to ayah] = pos
                     inputs += LineWordInput(surah, ayah, pos, tok, line, isEndMarker = false)
                 }
-                inputs += LineWordInput(surah, ayah, wordCounterPerAyah[surah to ayah] ?: 1, "۝", line, isEndMarker = true)
+                if (lastIndexByAyah[surah to ayah] == idx) {
+                    inputs += LineWordInput(surah, ayah, wordCounterPerAyah[surah to ayah] ?: 1, "۝", line, isEndMarker = true)
+                }
             }
 
             return buildLayoutFromExactLineWords(
@@ -771,23 +828,31 @@ class MushafCoordinateRepository(private val appContext: Context) {
         }
 
         /**
-         * Deterministic offline fallback allocating verified verses across the 15 lines of a Mushaf page
-         * proportionally by character count (reserving Surah header + Bismillah lines where Surahs begin).
+         * Honest metadata-missing layout: returns zero fake hit regions when verified coordinates
+         * (`ayahinfo_1024.db` or verified 15-line layout) are not yet installed for `pageNumber`.
+         */
+        fun buildMissingCoordinatesLayout(pageNumber: Int): MushafPageLayout {
+            return MushafPageLayout(
+                pageNumber = pageNumber,
+                imageWidth = DEFAULT_MUSHAF_WIDTH,
+                imageHeight = DEFAULT_MUSHAF_HEIGHT,
+                precision = CoordinatePrecision.MISSING_COORDINATES,
+                sourceLabelAr = "بيانات إحداثيات الآيات لهذه الصفحة غير مثبّتة بعد — قم بتنزيل قاعدة إحداثيات المصحف (ayahinfo_1024.db)",
+                sourceLabelEn = "Verified verse coordinates missing for page $pageNumber — download ayahinfo_1024.db for exact Ayah selection",
+                ayahs = emptyList(),
+                isSpecialOpeningPage = (pageNumber == 1 || pageNumber == 2)
+            )
+        }
+
+        /**
+         * Retained only for explicit caller diagnostics; never used by `getPageLayout` to fabricate
+         * fake selection boxes over blank paper.
          */
         fun buildOfflineFallbackLayout(pageNumber: Int, versesOnPage: List<QuranVerse>): MushafPageLayout {
             val filtered = versesOnPage.filter { it.pageNumber == pageNumber }
                 .ifEmpty { versesOnPage }
             if (filtered.isEmpty()) {
-                val meta = MadinahMushafPageCatalog.pageMeta(pageNumber)
-                val firstSurah = meta.primarySurahNumber
-                val placeholder = LineWordInput(firstSurah, 1, 1, SurahCatalog.findSurah(firstSurah).nameAr, 4)
-                return buildLayoutFromExactLineWords(
-                    pageNumber = pageNumber,
-                    lineWords = listOf(placeholder),
-                    precision = CoordinatePrecision.ESTIMATED_OFFLINE_FALLBACK,
-                    sourceAr = "تخطيط محلي مبدئي (قم بتنزيل قاعدة الإحداثيات أو افتح السورة)",
-                    sourceEn = "Offline fallback layout (download exact coordinate DB for glyph precision)"
-                )
+                return buildMissingCoordinatesLayout(pageNumber)
             }
 
             // Build token list with explicit line breaks for Surah headers (2 lines reserved per new Surah start)

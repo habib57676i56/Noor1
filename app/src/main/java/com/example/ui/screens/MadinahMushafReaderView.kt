@@ -94,6 +94,7 @@ import com.example.data.local.catalog.MadinahMushafPageCatalog
 import com.example.data.local.catalog.SurahCatalog
 import com.example.data.quran.AyahLinguisticAnalysis
 import com.example.data.quran.AyahPageRegion
+import com.example.data.quran.CoordinatePrecision
 import com.example.data.quran.MushafCoordinateRepository
 import com.example.data.quran.MushafCoordinateTransform
 import com.example.data.quran.MushafDownloadProgress
@@ -462,6 +463,55 @@ fun MadinahMushafReaderView(
                             tint = if (downloadProgress.cachedPagesCount >= 604) SemanticSuccess else GoldPrimary
                         )
                     }
+                }
+            }
+        }
+
+        // Honest Missing-Coordinates Notice: never guess or fake verse selection regions!
+        if (!isFullScreen && currentPageLayout?.precision == CoordinatePrecision.MISSING_COORDINATES) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (nightInvertEnabled) Color(0xFF172721) else Color(0xFFFFF4DC))
+                    .border(1.dp, GoldPrimary.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                    .testTag("mushaf_missing_coords_banner"),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "بيانات إحداثيات الآيات لهذه الصفحة غير مثبّتة بعد — نزّل قاعدة الإحداثيات لتحديد الآيات بدقة.",
+                        "Verse coordinate metadata is missing for page $currentPageNumber — download coordinates for accurate selection.",
+                        "$currentPageNumber-sahifa uchun oyat koordinatalari hali yuklanmagan — aniq tanlash uchun koordinatalarni yuklab oling."
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (nightInvertEnabled) Color(0xFFE5DFC8) else EmeraldDeep,
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                TextButton(
+                    enabled = !coordPackStatus.isDownloading,
+                    onClick = {
+                        scope.launch {
+                            val ok = coordinateRepository.downloadExactGlyphDatabase()
+                            if (ok) coordReloadNonce++
+                        }
+                    },
+                    modifier = Modifier.testTag("mushaf_download_coords_inline_btn")
+                ) {
+                    Text(
+                        text = if (coordPackStatus.isDownloading) {
+                            L10n.pick(lang, "جارٍ التنزيل...", "Downloading...", "Yuklanmoqda...")
+                        } else {
+                            L10n.pick(lang, "تنزيل الإحداثيات", "Download Coordinates")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = GoldPrimary
+                    )
                 }
             }
         }
@@ -900,12 +950,18 @@ private fun MadinahMushafSinglePageCard(
     val haptics = LocalHapticFeedback.current
     var reloadNonce by remember(pageNumber) { mutableIntStateOf(0) }
     var loadResult by remember(pageNumber, reloadNonce) { mutableStateOf<MushafPageLoadResult?>(null) }
-    var pageLayout by remember(pageNumber, coordReloadNonce) { mutableStateOf(preloadedLayout) }
+    var pageLayout by remember(pageNumber) { mutableStateOf(preloadedLayout) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     LaunchedEffect(preloadedLayout) {
         if (preloadedLayout != null && preloadedLayout.pageNumber == pageNumber) {
-            pageLayout = preloadedLayout
+            // Only adopt preloadedLayout if we don't already have an image-calibrated EXACT_GLYPH_DB layout
+            val current = pageLayout
+            if (current == null || current.pageNumber != pageNumber ||
+                preloadedLayout.precision == CoordinatePrecision.EXACT_GLYPH_DB
+            ) {
+                pageLayout = preloadedLayout
+            }
         }
     }
 
@@ -913,11 +969,20 @@ private fun MadinahMushafSinglePageCard(
         loadResult = imageManager.loadPageBitmap(pageNumber)
     }
 
-    LaunchedEffect(pageNumber, coordReloadNonce) {
-        if (pageLayout == null || pageLayout?.pageNumber != pageNumber) {
-            val verses = loadPageVerses(pageNumber)
-            pageLayout = coordinateRepository.getPageLayout(pageNumber, verses)
-        }
+    val readyImage = loadResult as? MushafPageLoadResult.Ready
+    val actualOriginalWidth = readyImage?.originalWidth ?: 0
+    val actualOriginalHeight = readyImage?.originalHeight ?: 0
+
+    // CRITICAL FIX: Always re-resolve pageLayout whenever coordReloadNonce increments (e.g. after
+    // ayahinfo_1024.db downloads) OR once the true PNG originalWidth x originalHeight is known!
+    LaunchedEffect(pageNumber, coordReloadNonce, actualOriginalWidth, actualOriginalHeight) {
+        val verses = loadPageVerses(pageNumber)
+        pageLayout = coordinateRepository.getPageLayout(
+            pageNumber = pageNumber,
+            fallbackVerses = verses,
+            actualImageWidth = actualOriginalWidth,
+            actualImageHeight = actualOriginalHeight
+        )
     }
 
     // Keep latest state accessible inside pointerInput gesture coroutines without restarting recognizers
@@ -932,6 +997,7 @@ private fun MadinahMushafSinglePageCard(
 
     fun resolveHitAt(offset: Offset): AyahPageRegion? {
         val layout = latestLayout ?: return null
+        if (!layout.hasVerifiedCoordinates) return null
         val cSize = latestContainerSize
         if (cSize.width <= 0 || cSize.height <= 0) return null
         val ready = latestLoadResult as? MushafPageLoadResult.Ready
@@ -955,12 +1021,19 @@ private fun MadinahMushafSinglePageCard(
 
     val paperBg = if (nightInvertEnabled) MushafNightPaper else MushafPaperBg
     val statusInk = if (nightInvertEnabled) GoldBright else EmeraldDeep
+    val effectiveAspectRatio = remember(actualOriginalWidth, actualOriginalHeight) {
+        if (actualOriginalWidth > 0 && actualOriginalHeight > 0) {
+            (actualOriginalWidth.toFloat() / actualOriginalHeight.toFloat()).coerceIn(0.52f, 0.80f)
+        } else {
+            MADINAH_MUSHAF_ASPECT_RATIO
+        }
+    }
 
     // Clean, unobstructed authentic printed Madinah Mushaf page (NO artificial double borders or extra dividers!)
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(MADINAH_MUSHAF_ASPECT_RATIO)
+            .aspectRatio(effectiveAspectRatio)
             .clip(RoundedCornerShape(if (isFullScreen) 0.dp else 12.dp))
             .background(paperBg)
             .onSizeChanged { containerSize = it }
@@ -1001,11 +1074,14 @@ private fun MadinahMushafSinglePageCard(
                         if (isMultiTouch || isZoomedPan) {
                             val zoomChange = if (isMultiTouch) event.calculateZoom() else 1f
                             val panChange = event.calculatePan()
-                            val nextScale = (latestZoomScale * zoomChange).coerceIn(1f, 2.6f)
+                            val nextScale = (latestZoomScale * zoomChange).coerceIn(1f, 2.8f)
+                            val cSize = latestContainerSize
+                            val maxPanX = ((cSize.width * (nextScale - 1f)) * 0.5f).coerceAtLeast(0f)
+                            val maxPanY = ((cSize.height * (nextScale - 1f)) * 0.5f).coerceAtLeast(0f)
                             val nextOffset = if (nextScale > 1.02f) {
                                 Offset(
-                                    (latestZoomOffset.x + panChange.x).coerceIn(-380f, 380f),
-                                    (latestZoomOffset.y + panChange.y).coerceIn(-480f, 480f)
+                                    (latestZoomOffset.x + panChange.x).coerceIn(-maxPanX, maxPanX),
+                                    (latestZoomOffset.y + panChange.y).coerceIn(-maxPanY, maxPanY)
                                 )
                             } else {
                                 Offset.Zero

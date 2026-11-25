@@ -50,6 +50,10 @@ enum class CoordinatePrecision(val labelAr: String, val labelEn: String) {
         "تخطيط مصحف المدينة المدمج الموثّق",
         "Verified Bundled Madinah Layout"
     ),
+    MISSING_COORDINATES(
+        "بيانات إحداثيات الآيات لهذه الصفحة غير متوفرة بعد (يلزم تنزيل قاعدة الإحداثيات)",
+        "Verified verse coordinates missing for this page (download coordinate DB)"
+    ),
     ESTIMATED_OFFLINE_FALLBACK(
         "توزيع أسطر محلي احتياطي (حمّل حزمة الإحداثيات للدقة الكاملة)",
         "Offline Fallback Line Layout (Download Coordinate Pack for Exact Bounds)"
@@ -130,6 +134,11 @@ data class MushafPageLayout(
     val surahHeaderLines: List<Int> = emptyList(),
     val isSpecialOpeningPage: Boolean = (pageNumber == 1 || pageNumber == 2)
 ) {
+    val hasVerifiedCoordinates: Boolean
+        get() = precision != CoordinatePrecision.MISSING_COORDINATES &&
+            precision != CoordinatePrecision.ESTIMATED_OFFLINE_FALLBACK &&
+            ayahs.isNotEmpty()
+
     fun findAyah(surahNumber: Int, ayahNumber: Int): AyahPageRegion? =
         ayahs.firstOrNull { it.surahNumber == surahNumber && it.ayahNumber == ayahNumber }
 

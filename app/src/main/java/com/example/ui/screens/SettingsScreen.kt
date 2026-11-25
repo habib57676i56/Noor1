@@ -329,7 +329,7 @@ fun SettingsScreen(
         item {
             LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text(
-                    text = L10n.pick(lang, "اللغة (Language)", "Language (اللغة)"),
+                    text = L10n.pick(lang, "اللغة (Language / Til)", "Language (اللغة / Til)", "Til (O'zbekcha / العربية / English)"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = noorColors.goldAccent
@@ -347,6 +347,12 @@ fun SettingsScreen(
                         selected = prefs.language == AppLanguage.ENGLISH,
                         onClick = { viewModel.setLanguage(AppLanguage.ENGLISH) },
                         modifier = Modifier.weight(1f).testTag("lang_english_btn")
+                    )
+                    LiquidGlassChip(
+                        label = "O'zbekcha",
+                        selected = prefs.language == AppLanguage.UZBEK,
+                        onClick = { viewModel.setLanguage(AppLanguage.UZBEK) },
+                        modifier = Modifier.weight(1f).testTag("lang_uzbek_btn")
                     )
                 }
 

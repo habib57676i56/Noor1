@@ -2,7 +2,8 @@ package com.example.domain.model
 
 enum class AppLanguage(val code: String) {
     ARABIC("ar"),
-    ENGLISH("en");
+    ENGLISH("en"),
+    UZBEK("uz");
 
     val isRtl: Boolean get() = this == ARABIC
 

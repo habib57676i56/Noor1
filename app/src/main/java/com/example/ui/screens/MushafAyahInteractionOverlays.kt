@@ -139,7 +139,7 @@ fun MushafAyahHighlightOverlay(
     nightMode: Boolean,
     modifier: Modifier = Modifier
 ) {
-    if (layout == null || imageWidth <= 0 || imageHeight <= 0) return
+    if (layout == null || !layout.hasVerifiedCoordinates || imageWidth <= 0 || imageHeight <= 0) return
 
     val pulseTransition = rememberInfiniteTransition(label = "mushaf_highlight_pulse")
     val pulseFactor by pulseTransition.animateFloat(

@@ -67,17 +67,17 @@ object MadinahMushafPageCatalog {
     )
 
     /**
-     * Authorized open-source King Fahd Complex Madinah Mushaf page image endpoints.
-     * Primary: Quran.com Android official width_1024 Mushaf PNGs.
-     * Fallbacks: Verified Madinah 604-page PNG archives.
+     * Authorized open-source King Fahd Complex Madinah Mushaf `width_1024` page image endpoints.
+     * All mirrors serve the EXACT same King Fahd `width_1024` edition that `ayahinfo_1024.db`
+     * glyph coordinates are calibrated against, preventing margin/aspect-ratio mismatches.
      */
     fun imageUrlsForPage(pageNumber: Int): List<String> {
         val clamped = pageNumber.coerceIn(1, TOTAL_PAGES)
         val padded = clamped.toString().padStart(3, '0')
         return listOf(
             "https://android.quran.com/data/width_1024/page$padded.png",
-            "https://cdn.jsdelivr.net/gh/GovarJabbar/Quran-PNG@master/$padded.png",
-            "https://raw.githubusercontent.com/GovarJabbar/Quran-PNG/master/$padded.png"
+            "https://files.quran.app/hafs/width_1024/page$padded.png",
+            "https://files.quran.app/data/width_1024/page$padded.png"
         )
     }
 

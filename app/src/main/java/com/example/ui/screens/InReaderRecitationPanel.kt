@@ -600,12 +600,33 @@ fun InReaderRecitationPanel(
                         }
                     }
 
+                    if (liveState.activeProviderName.isNotBlank() && (liveState.isActive || liveState.status == LiveRecitationStatus.ERROR)) {
+                        val modeLabel = if (liveState.usingOnlineMode) {
+                            L10n.pick(lang, "عبر الإنترنت", "Online", "Onlayn")
+                        } else {
+                            L10n.pick(lang, "دون إنترنت", "Offline", "Oflayn")
+                        }
+                        Text(
+                            text = "${liveState.activeProviderName} · $modeLabel · ${liveState.activeLocale}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("in_reader_stt_provider_badge")
+                        )
+                    }
                     val sttStatus = L10n.pick(lang, liveState.statusNoteAr, liveState.statusNoteEn)
                     if (sttStatus.isNotBlank()) {
                         Text(
                             text = sttStatus,
                             style = MaterialTheme.typography.labelSmall,
                             color = if (liveState.status == LiveRecitationStatus.ERROR) MaterialTheme.colorScheme.error else noorColors.goldAccent
+                        )
+                    }
+                    val sttError = L10n.pick(lang, liveState.errorMessageAr, liveState.errorMessageEn)
+                    if (sttError.isNotBlank()) {
+                        Text(
+                            text = sttError,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.error
                         )
                     }
 
