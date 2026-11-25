@@ -44,11 +44,24 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import com.example.data.cloud.AdminRole
 import com.example.data.cloud.SupportTicketDoc
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.theme.NoorThemePreset
 import com.example.viewmodel.AdminViewModel
+import kotlin.math.roundToInt
 
 /**
  * Part 1D, Part 5 & Part 8 Admin Management:
@@ -61,7 +74,8 @@ import com.example.viewmodel.AdminViewModel
 fun AdminSettingsAndSupportTab(
     adminViewModel: AdminViewModel,
     onRequireMfa: (() -> Unit) -> Unit,
-    onOpenAdsAndMessaging: (Int) -> Unit = {}
+    onOpenAdsAndMessaging: (Int) -> Unit = {},
+    onOpenRecitersStudio: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val currentRole by adminViewModel.currentRole.collectAsStateWithLifecycle()
@@ -116,6 +130,13 @@ fun AdminSettingsAndSupportTab(
                 }
                 item {
                     AdminFilterPill(
+                        label = L10n.pick(lang, "استوديو القراء", "Reciters Studio"),
+                        selected = false,
+                        onClick = onOpenRecitersStudio
+                    )
+                }
+                item {
+                    AdminFilterPill(
                         label = L10n.pick(lang, "بطاقات الإعلانات", "Ad Cards"),
                         selected = false,
                         onClick = { onOpenAdsAndMessaging(0) }
@@ -157,12 +178,6 @@ fun AdminSettingsAndSupportTab(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("emerald_gold" to "Emerald & Gold", "midnight_jade" to "Midnight Jade", "royal_ivory" to "Royal Ivory").forEach { (k, label) ->
-                                AdminFilterPill(label = label, selected = draftConfig.themePreset == k, onClick = { draftConfig = draftConfig.copy(themePreset = k) })
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             AdminFilterPill(label = "Default: العربية", selected = draftConfig.defaultLanguage == "ar", onClick = { draftConfig = draftConfig.copy(defaultLanguage = "ar") })
                             AdminFilterPill(label = "Default: English", selected = draftConfig.defaultLanguage == "en", onClick = { draftConfig = draftConfig.copy(defaultLanguage = "en") })
                         }
@@ -191,11 +206,151 @@ fun AdminSettingsAndSupportTab(
                     }
                 }
 
-                // Live Feature Flags (Super Admin Exclusive)
+                // Live Visual, Color Palette, Glass Opacity & Effects Studio
+                item {
+                    val isSuperAdmin = currentRole.canControlGlobalFeatures
+                    AdminPanelCard(accentBorder = AdminPalette.AccentCyan.copy(alpha = 0.6f)) {
+                        Text(
+                            text = L10n.pick(lang, "استوديو الألوان والشفافية والمؤثرات الحية", "Live Colors, Glass Transparency & Effects Studio"),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = AdminPalette.AccentCyan
+                        )
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "تحكّم مباشر بألوان التطبيق، درجة شفافية الزجاج السائل، والمؤثرات البصرية لجميع المستخدمين",
+                                "Live control over app colors, Liquid Glass opacity, and visual effects across NOOR"
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AdminPalette.TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        Text(
+                            text = L10n.pick(lang, "لوحة الألوان الملكية (٦ ثيمات حية)", "Royal Theme Palette (6 Live Presets)"),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            items(NoorThemePreset.entries) { preset ->
+                                val selected = draftConfig.themePreset.equals(preset.key, ignoreCase = true)
+                                Column(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(
+                                            if (selected) preset.swatchPrimary.copy(alpha = 0.25f)
+                                            else Color.White.copy(alpha = 0.05f)
+                                        )
+                                        .border(
+                                            width = if (selected) 1.6.dp else 1.dp,
+                                            color = if (selected) preset.swatchAccent else Color.White.copy(alpha = 0.16f),
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                        .clickable(enabled = isSuperAdmin) {
+                                            draftConfig = draftConfig.copy(themePreset = preset.key)
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(
+                                                Brush.linearGradient(listOf(preset.swatchPrimary, preset.swatchAccent))
+                                            )
+                                            .border(1.5.dp, Color.White.copy(alpha = 0.65f), CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = L10n.pick(lang, preset.labelAr, preset.labelEn),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (selected) Color.White else AdminPalette.TextSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        val opacityPct = (draftConfig.glassOpacity * 100).roundToInt()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = L10n.pick(lang, "شفافية بطاقات الزجاج السائل", "Liquid Glass Opacity"),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            AdminStatusBadge(label = "$opacityPct%", color = AdminPalette.AccentCyan)
+                        }
+                        Slider(
+                            value = draftConfig.glassOpacity.toFloat().coerceIn(0.45f, 1.0f),
+                            onValueChange = { draftConfig = draftConfig.copy(glassOpacity = it.toDouble()) },
+                            valueRange = 0.45f..1.0f,
+                            enabled = isSuperAdmin,
+                            colors = SliderDefaults.colors(
+                                thumbColor = AdminPalette.AccentCyan,
+                                activeTrackColor = AdminPalette.AccentCyan
+                            )
+                        )
+
+                        val intensityPct = (draftConfig.effectsIntensity * 100).roundToInt()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = L10n.pick(lang, "قوة وسطوع المؤثرات الضوئية", "Atmospheric Effects Intensity"),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            AdminStatusBadge(label = "$intensityPct%", color = AdminPalette.GoldLuxe)
+                        }
+                        Slider(
+                            value = draftConfig.effectsIntensity.toFloat().coerceIn(0.2f, 1.5f),
+                            onValueChange = { draftConfig = draftConfig.copy(effectsIntensity = it.toDouble()) },
+                            valueRange = 0.2f..1.5f,
+                            enabled = isSuperAdmin,
+                            colors = SliderDefaults.colors(
+                                thumbColor = AdminPalette.GoldLuxe,
+                                activeTrackColor = AdminPalette.GoldLuxe
+                            )
+                        )
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        AdminSwitchRow(
+                            label = L10n.pick(lang, "مؤثرات الذرات والنجوم الذهبية المتحركة", "Floating Golden Starlight Motes"),
+                            checked = draftConfig.effectsStarlightEnabled,
+                            enabled = isSuperAdmin,
+                            onCheckedChange = { draftConfig = draftConfig.copy(effectsStarlightEnabled = it) }
+                        )
+                        AdminSwitchRow(
+                            label = L10n.pick(lang, "مؤثر الشفق السائل والأضواء المتدرجة", "Living Liquid Aurora Orbs"),
+                            checked = draftConfig.effectsAuroraEnabled,
+                            enabled = isSuperAdmin,
+                            onCheckedChange = { draftConfig = draftConfig.copy(effectsAuroraEnabled = it) }
+                        )
+                        AdminSwitchRow(
+                            label = L10n.pick(lang, "شاشة الفتح ثلاثية الأبعاد (3D Splash)", "3D Launch Splash Animation"),
+                            checked = draftConfig.effects3DSplashEnabled,
+                            enabled = isSuperAdmin,
+                            onCheckedChange = { draftConfig = draftConfig.copy(effects3DSplashEnabled = it) }
+                        )
+                    }
+                }
+
+                // Live Feature Flags (Super Admin Exclusive — Complete App Control)
                 item {
                     AdminPanelCard {
                         Text(
-                            L10n.pick(lang, "التحكم الكامل بميزات التطبيق (Super Admin)", "Application Feature Controls (Super Admin)"),
+                            L10n.pick(lang, "التحكم الشامل بجميع إضافات وميزات التطبيق (Super Admin)", "Complete Application & Module Controls (Super Admin)"),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -203,7 +358,19 @@ fun AdminSettingsAndSupportTab(
                         val isSuperAdmin = currentRole.canControlGlobalFeatures
                         AdminSwitchRow(L10n.pick(lang, "قارئ القرآن الكريم", "Quran Reader"), draftConfig.featureQuranEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureQuranEnabled = it) }
                         AdminSwitchRow(L10n.pick(lang, "صفحات مصحف المدينة المصوّرة (٦٠٤ ص)", "Madinah Mushaf Page Images"), draftConfig.featureMushafImagesEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureMushafImagesEnabled = it) }
-                        AdminSwitchRow(L10n.pick(lang, "المكتبة الصوتية والتلاوة", "Audio & Recitation"), draftConfig.featureAudioEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureAudioEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "المكتبة الصوتية وقائمة القراء", "Audio Library & Reciters"), draftConfig.featureAudioEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureAudioEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "قسم منظومة نور المتكاملة", "NOOR Ecosystem Hub"), draftConfig.featureEcosystemHubEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureEcosystemHubEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "الكرة الأرضية 3D للقبلة", "3D Cosmic Qibla Globe"), draftConfig.featureCosmicGlobeEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureCosmicGlobeEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "مرسم الخط الذهبي والتذهيب", "Golden Calligraphy Studio"), draftConfig.featureCalligraphyEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureCalligraphyEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "واحة السكينة الصوتية", "Acoustic Sanctuary Studio"), draftConfig.featureSanctuaryAudioEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureSanctuaryAudioEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "الأسطرلاب الإسلامي الفلكي", "Golden Islamic Astrolabe"), draftConfig.featureAstrolabeEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureAstrolabeEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "صيدلية ودواء القلوب القرآنية", "Quranic Soul Remedy"), draftConfig.featureSoulRemedyEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureSoulRemedyEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "أطلس الأنبياء والإعجاز العلمي", "25 Prophets & Cosmic Signs"), draftConfig.featureMiraclesProphetsEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureMiraclesProphetsEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "مجرة جذور القرآن 3D", "Quran Root Galaxy"), draftConfig.featureQuranUniverseEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureQuranUniverseEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "مختبر الإعراب والصرف القرآني", "I'rab & Sarf Morphology Lab"), draftConfig.featureIrabSarfEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureIrabSarfEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "بث الحرمين الشريفين المباشر", "Haramain Live Streams"), draftConfig.featureHaramainLiveEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureHaramainLiveEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "حاسبة الزكاة والمواريث الشرعية", "Zakat & Mirath Calculators"), draftConfig.featureZakatMirathEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureZakatMirathEnabled = it) }
+                        AdminSwitchRow(L10n.pick(lang, "متشابهات القرآن وأطلس السيرة", "Mutashabihat & Seerah Atlas"), draftConfig.featureMutashabihatSeerahEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureMutashabihatSeerahEnabled = it) }
                         AdminSwitchRow(L10n.pick(lang, "نظام الحفظ والمراجعة (Hifz)", "Memorization (Hifz)"), draftConfig.featureMemorizationEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureMemorizationEnabled = it) }
                         AdminSwitchRow(L10n.pick(lang, "الاستماع والتسميع والتقييم", "Listening & Recitation Assessment"), draftConfig.featureListeningAssessmentEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureListeningAssessmentEnabled = it) }
                         AdminSwitchRow(L10n.pick(lang, "ختمة القرآن الكريم", "Khatmah Tracker"), draftConfig.featureKhatmahEnabled, enabled = isSuperAdmin) { draftConfig = draftConfig.copy(featureKhatmahEnabled = it) }

@@ -29,6 +29,7 @@ import com.example.ui.navigation.NoorAppShell
 import com.example.ui.screens.MaintenanceModeScreen
 import com.example.ui.screens.NoorAuthGateScreen
 import com.example.ui.theme.NoorTheme
+import com.example.ui.theme.NoorVisualSettings
 import com.example.viewmodel.AdminViewModel
 import com.example.viewmodel.EcosystemViewModel
 import com.example.viewmodel.NoorViewModel
@@ -62,11 +63,32 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val liveVisualSettings = remember(
+                globalConfig.themePreset,
+                globalConfig.glassOpacity,
+                globalConfig.effectsStarlightEnabled,
+                globalConfig.effectsAuroraEnabled,
+                globalConfig.effects3DSplashEnabled,
+                globalConfig.effectsIntensity
+            ) {
+                NoorVisualSettings(
+                    themePreset = globalConfig.themePreset,
+                    glassOpacity = globalConfig.glassOpacity.toFloat().coerceIn(0.45f, 1.0f),
+                    effectsStarlightEnabled = globalConfig.effectsStarlightEnabled,
+                    effectsAuroraEnabled = globalConfig.effectsAuroraEnabled,
+                    effects3DSplashEnabled = globalConfig.effects3DSplashEnabled,
+                    effectsIntensity = globalConfig.effectsIntensity.toFloat().coerceIn(0.2f, 1.5f)
+                )
+            }
+
             CompositionLocalProvider(
                 LocalAppLanguage provides prefs.language,
                 LocalLayoutDirection provides layoutDirection
             ) {
-                NoorTheme(themeMode = prefs.themeMode) {
+                NoorTheme(
+                    themeMode = prefs.themeMode,
+                    visualSettings = liveVisualSettings
+                ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         val user = currentUser
                         if (user == null && !allowOfflineLocalMode) {
@@ -102,7 +124,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         Noor3DLaunchSplashOverlay(
-                            visible = show3DLaunchSplash,
+                            visible = show3DLaunchSplash && globalConfig.effects3DSplashEnabled,
                             appNameAr = globalConfig.appNameAr.ifBlank { "نور" },
                             appNameEn = globalConfig.appNameEn.ifBlank { "NOOR" },
                             onFinished = { show3DLaunchSplash = false }

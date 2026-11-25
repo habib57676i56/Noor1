@@ -114,10 +114,12 @@ fun AudioLibraryScreen(
     val downloadingIds by viewModel.downloadingTrackIds.collectAsStateWithLifecycle()
     val activeAdCards by viewModel.activeAdCards.collectAsStateWithLifecycle()
     val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
+    val customReciters by viewModel.customReciters.collectAsStateWithLifecycle()
 
     // 0: Yasser Al-Dosari, 1: All Reciters, 2: Adhan & Takbeer, 3: Supplications, 4: Favorites, 5: Recent, 6: Playlists
     var selectedTab by remember { mutableIntStateOf(0) }
     var selectedReciter by remember { mutableStateOf(QuranReciter.ALAFASY) }
+    var selectedCustomReciterId by remember { mutableStateOf<String?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var showSleepDialog by remember { mutableStateOf(false) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
@@ -125,12 +127,24 @@ fun AudioLibraryScreen(
     var selectedPlaylistId by remember { mutableStateOf<Long?>(null) }
 
     val yasserTracks = remember { AudioLibraryCatalog.yasserAlDosariTracks() }
-    val reciterTracks = remember(selectedReciter) { AudioLibraryCatalog.surahTracksForReciter(selectedReciter) }
+    val customReciterTracks = remember(customReciters) {
+        customReciters.filter { it.hasPlayableAudio() }.map { it.toAudioTrackItem() }
+    }
+    val reciterTracks = remember(selectedReciter, selectedCustomReciterId, customReciters) {
+        val cid = selectedCustomReciterId
+        if (cid != null) {
+            val picked = customReciters.firstOrNull { it.id == cid }
+            if (picked != null && picked.hasPlayableAudio()) listOf(picked.toAudioTrackItem()) else emptyList()
+        } else {
+            AudioLibraryCatalog.surahTracksForReciter(selectedReciter)
+        }
+    }
     val adhanTracks = remember { AudioLibraryCatalog.adhanAndTakbeeratTracks }
     val duaTracks = remember { AudioLibraryCatalog.curatedSupplicationRecitations }
 
-    val allKnownTracksById = remember {
+    val allKnownTracksById = remember(customReciterTracks) {
         val map = LinkedHashMap<String, AudioTrackItem>()
+        customReciterTracks.forEach { map[it.id] = it }
         QuranReciter.entries.forEach { rec ->
             AudioLibraryCatalog.surahTracksForReciter(rec).forEach { map[it.id] = it }
         }
@@ -140,7 +154,7 @@ fun AudioLibraryScreen(
     }
 
     val displayedTracks: List<AudioTrackItem> = remember(
-        selectedTab, selectedReciter, searchQuery, favoriteAudioIds, selectedPlaylistId, playlistItems
+        selectedTab, selectedReciter, selectedCustomReciterId, customReciters, searchQuery, favoriteAudioIds, selectedPlaylistId, playlistItems
     ) {
         val base = when (selectedTab) {
             0 -> yasserTracks
@@ -263,16 +277,52 @@ fun AudioLibraryScreen(
                 }
             }
 
-            // Reciter Picker when on "All Reciters" tab
+            // Reciter Picker when on "All Reciters" tab (includes Super Admin Custom Reciters first!)
             if (selectedTab == 1) {
                 item {
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(customReciters, key = { "chip_${it.id}" }) { customRec ->
+                            LiquidGlassChip(
+                                label = "★ " + L10n.pick(lang, customRec.nameAr, customRec.nameEn),
+                                selected = selectedCustomReciterId == customRec.id,
+                                onClick = { selectedCustomReciterId = customRec.id }
+                            )
+                        }
                         items(QuranReciter.entries) { reciter ->
                             LiquidGlassChip(
                                 label = L10n.pick(lang, reciter.nameAr, reciter.nameEn),
-                                selected = selectedReciter == reciter,
-                                onClick = { selectedReciter = reciter }
+                                selected = selectedCustomReciterId == null && selectedReciter == reciter,
+                                onClick = {
+                                    selectedCustomReciterId = null
+                                    selectedReciter = reciter
+                                }
                             )
+                        }
+                    }
+                }
+                if (customReciters.isNotEmpty() && selectedCustomReciterId == null) {
+                    item {
+                        LiquidGlassCard(goldBorder = true, contentPadding = PaddingValues(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(Icons.Rounded.GraphicEq, contentDescription = null, tint = noorColors.goldAccent)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = L10n.pick(lang, "القراء المضافون من الإدارة (${customReciters.size})", "Admin-Added Reciters (${customReciters.size})"),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        color = noorColors.goldAccent
+                                    )
+                                    Text(
+                                        text = L10n.pick(lang, "اختر أي قارئ مميز بعلامة ★ أعلاه للاستماع إلى تلاوته المرفوعة فوراً.", "Tap any ★ reciter chip above to play their uploaded recitation."),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     }
                 }

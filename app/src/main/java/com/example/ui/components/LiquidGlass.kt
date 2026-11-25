@@ -70,6 +70,7 @@ import com.example.ui.theme.GoldPrimary
 import com.example.ui.theme.IvoryInk
 import com.example.ui.theme.LiquidAuroraJade
 import com.example.ui.theme.LocalNoorColors
+import com.example.ui.theme.LocalNoorVisualSettings
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -85,30 +86,22 @@ fun IslamicGeometricBackground(
     content: @Composable () -> Unit
 ) {
     val noorColors = LocalNoorColors.current
-    val baseGradient = if (noorColors.isDark) {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFF031411),
-                Color(0xFF020C0A),
-                Color(0xFF041311),
-                Color(0xFF020908)
-            )
+    val visualSettings = LocalNoorVisualSettings.current
+    val intensity = visualSettings.effectsIntensity.coerceIn(0.2f, 1.5f)
+    val baseGradient = Brush.verticalGradient(
+        colors = listOf(
+            noorColors.bgTop,
+            noorColors.bgMid,
+            noorColors.bgBottom,
+            noorColors.bgMid
         )
-    } else {
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFFE7F4F0),
-                Color(0xFFF1F7F5),
-                Color(0xFFE8F2EE),
-                Color(0xFFF3F8F6)
-            )
-        )
-    }
+    )
     val patternColor = noorColors.patternTint
-    val orbPrimary = noorColors.glassOrbPrimary
-    val orbSecondary = noorColors.glassOrbSecondary
-    val orbAccent = noorColors.glassOrbAccent
-    val lowerJade = if (noorColors.isDark) LiquidAuroraJade else Color(0x1E0E7C5D)
+    val orbPrimary = noorColors.glassOrbPrimary.copy(alpha = (noorColors.glassOrbPrimary.alpha * intensity).coerceAtMost(0.85f))
+    val orbSecondary = noorColors.glassOrbSecondary.copy(alpha = (noorColors.glassOrbSecondary.alpha * intensity).coerceAtMost(0.85f))
+    val orbAccent = noorColors.glassOrbAccent.copy(alpha = (noorColors.glassOrbAccent.alpha * intensity).coerceAtMost(0.85f))
+    val lowerJade = (if (noorColors.isDark) noorColors.emeraldGlow.copy(alpha = 0.24f) else noorColors.emeraldGlow.copy(alpha = 0.14f))
+        .let { it.copy(alpha = (it.alpha * intensity).coerceAtMost(0.65f)) }
 
     val ambientTransition = rememberInfiniteTransition(label = "noor_living_atmosphere")
     val auroraPhase by ambientTransition.animateFloat(
@@ -130,41 +123,43 @@ fun IslamicGeometricBackground(
             .background(baseGradient)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val driftX = sin(auroraPhase.toDouble()).toFloat() * size.width * 0.06f
-            val driftY = cos(auroraPhase.toDouble()).toFloat() * size.height * 0.04f
+            val driftX = if (visualSettings.effectsAuroraEnabled) sin(auroraPhase.toDouble()).toFloat() * size.width * 0.06f else 0f
+            val driftY = if (visualSettings.effectsAuroraEnabled) cos(auroraPhase.toDouble()).toFloat() * size.height * 0.04f else 0f
 
-            // Top-left radiant emerald liquid orb (living drift)
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(orbPrimary, Color.Transparent),
-                    center = Offset(size.width * 0.18f + driftX, size.height * 0.08f + driftY),
-                    radius = size.width * 0.94f
+            if (visualSettings.effectsAuroraEnabled) {
+                // Top-left radiant liquid orb (living drift)
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(orbPrimary, Color.Transparent),
+                        center = Offset(size.width * 0.18f + driftX, size.height * 0.08f + driftY),
+                        radius = size.width * 0.94f
+                    )
                 )
-            )
-            // Top-right warm champagne-gold refraction orb
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(orbSecondary, Color.Transparent),
-                    center = Offset(size.width * 0.88f - driftX, size.height * 0.16f - driftY * 0.8f),
-                    radius = size.width * 0.80f
+                // Top-right warm champagne-gold refraction orb
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(orbSecondary, Color.Transparent),
+                        center = Offset(size.width * 0.88f - driftX, size.height * 0.16f - driftY * 0.8f),
+                        radius = size.width * 0.80f
+                    )
                 )
-            )
-            // Mid-left liquid cyan prism glow for frosted glass depth
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(orbAccent, Color.Transparent),
-                    center = Offset(size.width * 0.10f - driftX * 0.7f, size.height * 0.56f + driftY),
-                    radius = size.width * 0.78f
+                // Mid-left liquid prism glow for frosted glass depth
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(orbAccent, Color.Transparent),
+                        center = Offset(size.width * 0.10f - driftX * 0.7f, size.height * 0.56f + driftY),
+                        radius = size.width * 0.78f
+                    )
                 )
-            )
-            // Bottom-right luminous jade pool under the floating dock
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(lowerJade, Color.Transparent),
-                    center = Offset(size.width * 0.82f + driftX * 0.8f, size.height * 0.88f - driftY * 0.6f),
-                    radius = size.width * 0.88f
+                // Bottom-right luminous pool under the floating dock
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(lowerJade, Color.Transparent),
+                        center = Offset(size.width * 0.82f + driftX * 0.8f, size.height * 0.88f - driftY * 0.6f),
+                        radius = size.width * 0.88f
+                    )
                 )
-            )
+            }
 
             // Fine crystal-etched 8-point Rub el Hizb geometric lattice
             val cellSize = 114.dp.toPx()
@@ -180,52 +175,53 @@ fun IslamicGeometricBackground(
                 }
             }
 
-            // Floating Golden Noor Starlight Motes (delicate rising embers & 4-point sparkles)
-            val moteCount = 20
-            val moteGold = if (noorColors.isDark) GoldBright else GoldPrimary
-            val moteJade = if (noorColors.isDark) EmeraldBright else EmeraldPrimary
-            for (i in 0 until moteCount) {
-                val seedX = ((i * 73 + 19) % 97) / 97f
-                val seedY = ((i * 41 + 11) % 89) / 89f
-                val speed = 0.65f + (i % 4) * 0.22f
-                val yNorm = ((seedY - moteProgress * speed) % 1f + 1f) % 1f
-                val sway = sin((auroraPhase * 1.4f + i * 0.9f).toDouble()).toFloat() * 14.dp.toPx()
-                val mx = seedX * size.width + sway
-                val my = yNorm * size.height
-                val twinkle = (0.35f + 0.65f * ((sin((auroraPhase * 2.5f + i * 1.7f).toDouble()) + 1.0) / 2.0)).toFloat()
-                val baseAlpha = (if (noorColors.isDark) 0.42f else 0.24f) * twinkle
-                val moteColor = if (i % 3 == 0) moteJade else moteGold
-                val r = (1.5f + (i % 3) * 1.1f).dp.toPx()
+            // Floating Golden Noor Starlight Motes (controlled by Super Admin live effects)
+            if (visualSettings.effectsStarlightEnabled) {
+                val moteCount = (20 * intensity).toInt().coerceIn(8, 30)
+                val moteGold = noorColors.goldSoft
+                val moteJade = noorColors.emeraldGlow
+                for (i in 0 until moteCount) {
+                    val seedX = ((i * 73 + 19) % 97) / 97f
+                    val seedY = ((i * 41 + 11) % 89) / 89f
+                    val speed = 0.65f + (i % 4) * 0.22f
+                    val yNorm = ((seedY - moteProgress * speed) % 1f + 1f) % 1f
+                    val sway = sin((auroraPhase * 1.4f + i * 0.9f).toDouble()).toFloat() * 14.dp.toPx()
+                    val mx = seedX * size.width + sway
+                    val my = yNorm * size.height
+                    val twinkle = (0.35f + 0.65f * ((sin((auroraPhase * 2.5f + i * 1.7f).toDouble()) + 1.0) / 2.0)).toFloat()
+                    val baseAlpha = ((if (noorColors.isDark) 0.42f else 0.24f) * twinkle * intensity).coerceAtMost(0.85f)
+                    val moteColor = if (i % 3 == 0) moteJade else moteGold
+                    val r = (1.5f + (i % 3) * 1.1f).dp.toPx()
 
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(moteColor.copy(alpha = baseAlpha), Color.Transparent),
-                        center = Offset(mx, my),
-                        radius = r * 3.4f
-                    ),
-                    radius = r * 3.4f,
-                    center = Offset(mx, my)
-                )
-                drawCircle(
-                    color = moteColor.copy(alpha = (baseAlpha * 1.45f).coerceAtMost(0.85f)),
-                    radius = r * 0.72f,
-                    center = Offset(mx, my)
-                )
-                // 4-point star glint on hero motes
-                if (i % 4 == 0 && twinkle > 0.72f) {
-                    val rayLen = r * 3.0f * twinkle
-                    drawLine(
-                        color = moteColor.copy(alpha = baseAlpha * 0.85f),
-                        start = Offset(mx - rayLen, my),
-                        end = Offset(mx + rayLen, my),
-                        strokeWidth = 0.8.dp.toPx()
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(moteColor.copy(alpha = baseAlpha), Color.Transparent),
+                            center = Offset(mx, my),
+                            radius = r * 3.4f
+                        ),
+                        radius = r * 3.4f,
+                        center = Offset(mx, my)
                     )
-                    drawLine(
-                        color = moteColor.copy(alpha = baseAlpha * 0.85f),
-                        start = Offset(mx, my - rayLen),
-                        end = Offset(mx, my + rayLen),
-                        strokeWidth = 0.8.dp.toPx()
+                    drawCircle(
+                        color = moteColor.copy(alpha = (baseAlpha * 1.45f).coerceAtMost(0.90f)),
+                        radius = r * 0.72f,
+                        center = Offset(mx, my)
                     )
+                    if (i % 4 == 0 && twinkle > 0.72f) {
+                        val rayLen = r * 3.0f * twinkle
+                        drawLine(
+                            color = moteColor.copy(alpha = baseAlpha * 0.85f),
+                            start = Offset(mx - rayLen, my),
+                            end = Offset(mx + rayLen, my),
+                            strokeWidth = 0.8.dp.toPx()
+                        )
+                        drawLine(
+                            color = moteColor.copy(alpha = baseAlpha * 0.85f),
+                            start = Offset(mx, my - rayLen),
+                            end = Offset(mx, my + rayLen),
+                            strokeWidth = 0.8.dp.toPx()
+                        )
+                    }
                 }
             }
         }
@@ -414,20 +410,28 @@ fun LiquidGlassCard(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val noorColors = LocalNoorColors.current
+    val visualSettings = LocalNoorVisualSettings.current
+    val opacityScale = visualSettings.glassOpacity.coerceIn(0.45f, 1.0f)
     val fillBrush = if (noorColors.isDark) {
+        val topA = ((if (strong) 0.87f else 0.74f) * opacityScale).coerceIn(0.28f, 0.96f)
+        val midA = ((if (strong) 0.83f else 0.68f) * opacityScale).coerceIn(0.24f, 0.94f)
+        val botA = ((if (strong) 0.86f else 0.72f) * opacityScale).coerceIn(0.26f, 0.96f)
         Brush.linearGradient(
             colors = listOf(
-                if (strong) Color(0xDE13352D) else Color(0xBD0F2C25),
-                if (strong) Color(0xD40A211C) else Color(0xAD081C17),
-                if (strong) Color(0xDB061511) else Color(0xB805120F)
+                noorColors.cardTopBase.copy(alpha = topA),
+                noorColors.cardMidBase.copy(alpha = midA),
+                noorColors.cardBottomBase.copy(alpha = botA)
             )
         )
     } else {
+        val topA = ((if (strong) 0.96f else 0.88f) * opacityScale).coerceIn(0.40f, 0.98f)
+        val midA = ((if (strong) 0.92f else 0.80f) * opacityScale).coerceIn(0.36f, 0.96f)
+        val botA = ((if (strong) 0.90f else 0.76f) * opacityScale).coerceIn(0.34f, 0.95f)
         Brush.linearGradient(
             colors = listOf(
-                if (strong) Color(0xF5FFFFFF) else Color(0xE0FFFFFF),
-                if (strong) Color(0xEBF4FBF8) else Color(0xCCF2F9F6),
-                if (strong) Color(0xE5E8F5F0) else Color(0xC2E6F3EE)
+                noorColors.cardTopBase.copy(alpha = topA),
+                noorColors.cardMidBase.copy(alpha = midA),
+                noorColors.cardBottomBase.copy(alpha = botA)
             )
         )
     }

@@ -704,7 +704,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
 
         val localPath = localFileResolver?.invoke(track.id)
         val source = localPath ?: track.audioUrl
-        val isLocal = localPath != null
+        val isLocal = localPath != null || source.startsWith("/") || source.startsWith("file://")
 
         updateState {
             it.copy(

@@ -30,6 +30,12 @@ import com.example.data.local.db.AdminAdCardEntity
 import com.example.data.local.db.AdminMessageEntity
 import com.example.data.local.db.BackupSnapshotEntity
 import com.example.data.local.db.SystemErrorLogEntity
+import android.net.Uri
+import com.example.audio.AudioPlaybackState
+import com.example.audio.QuranAudioPlayer
+import com.example.data.cloud.CustomReciterDoc
+import com.example.data.quran.CustomReciterItem
+import com.example.data.quran.CustomReciterRepository
 import com.example.data.quran.IslamicVideoRepository
 import com.example.data.repository.EcosystemRepository
 import com.example.data.repository.NoorRepository
@@ -89,8 +95,11 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
     private val ecosystemRepo: EcosystemRepository = (application as NoorApplication).ecosystemRepository
     private val cloudRepo: NoorCloudRepository = (application as NoorApplication).cloudRepository
     private val videoRepo: IslamicVideoRepository = (application as NoorApplication).islamicVideoRepository
+    private val customReciterRepo: CustomReciterRepository = (application as NoorApplication).customReciterRepository
+    private val quranAudioPlayer: QuranAudioPlayer = (application as NoorApplication).quranAudioPlayer
 
     val publishedVideos: StateFlow<List<IslamicVideoItem>> = videoRepo.publishedVideos
+    val audioState: StateFlow<AudioPlaybackState> = quranAudioPlayer.state
 
     val rateLimiter = AdminSecurityRateLimiter()
 
@@ -159,6 +168,33 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     val systemErrorLogs: StateFlow<List<SystemErrorLogEntity>> = localRepo.systemErrorLogs
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val cloudCustomReciters = isAuthorizedStream
+        .flatMapLatest { ok -> if (ok) cloudRepo.observeCustomReciters() else flowOf(emptyList()) }
+
+    val customReciters: StateFlow<List<CustomReciterItem>> = combine(
+        customReciterRepo.reciters,
+        cloudCustomReciters
+    ) { localList, cloudDocs ->
+        val cloudItems = cloudDocs.map { doc ->
+            CustomReciterItem(
+                id = doc.id,
+                nameAr = doc.nameAr,
+                nameEn = doc.nameEn,
+                styleAr = doc.styleAr,
+                styleEn = doc.styleEn,
+                surahTitleAr = doc.surahTitleAr,
+                surahTitleEn = doc.surahTitleEn,
+                surahNumber = doc.surahNumber,
+                localAudioPath = "",
+                audioUrl = doc.audioUrl,
+                fileName = doc.fileName,
+                addedByEmail = doc.addedByEmail,
+                createdAtMillis = (doc.createdAt?.seconds ?: 0L) * 1000L
+            )
+        }
+        customReciterRepo.mergeWithCloudReciters(cloudItems)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val cloudAdCards = isAuthorizedStream
         .flatMapLatest { ok -> if (ok) cloudRepo.observeAllAdCardsAdmin() else flowOf(emptyList()) }
@@ -437,7 +473,8 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         newDisplayName: String,
         newStatus: String,
         newVerified: Boolean,
-        newRole: AdminRole
+        newRole: AdminRole,
+        newVerifiedBadgeLabel: String = user.verifiedBadgeLabel
     ) = viewModelScope.launch {
         if (!_currentRole.value.canManageUsers) {
             _adminFeedback.value = "Insufficient role permission to edit users."
@@ -453,12 +490,28 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             status = newStatus,
             verified = newVerified,
             role = newRole.key,
-            targetEmail = user.email
+            targetEmail = user.email,
+            verifiedBadgeLabel = newVerifiedBadgeLabel
         )
         _adminFeedback.value = if (result.isSuccess) {
             "User ${user.email} updated"
         } else {
             result.exceptionOrNull()?.message ?: "Update failed"
+        }
+    }
+
+    fun quickToggleUserVerification(user: UserAccountDoc, verified: Boolean) = viewModelScope.launch {
+        if (!_currentRole.value.canManageUsers) {
+            _adminFeedback.value = "صلاحية غير كافية لتوثيق الحسابات."
+            return@launch
+        }
+        val badge = if (verified) user.verifiedBadgeLabel.ifBlank { "موثّق" } else ""
+        val result = cloudRepo.quickToggleUserVerification(user.uid, verified, badge)
+        _adminFeedback.value = if (result.isSuccess) {
+            if (verified) "تم توثيق حساب ${user.displayName.ifBlank { user.email }} بنجاح ✓"
+            else "تم إلغاء توثيق حساب ${user.displayName.ifBlank { user.email }}"
+        } else {
+            result.exceptionOrNull()?.message ?: "تعذّر تحديث التوثيق"
         }
     }
 
@@ -792,4 +845,86 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
         }
         _adminFeedback.value = "تم حذف الفيديو بنجاح"
     }
+
+    // -------------------------------------------------------------------------
+    // Super Admin Custom Reciters Studio (Phone Audio Upload -> Reciters List)
+    // -------------------------------------------------------------------------
+
+    fun addCustomReciterFromPhone(
+        nameAr: String,
+        nameEn: String,
+        styleAr: String,
+        styleEn: String,
+        surahTitleAr: String,
+        surahTitleEn: String,
+        surahNumber: Int,
+        pickedAudioUri: Uri?,
+        remoteAudioUrl: String
+    ) = viewModelScope.launch {
+        if (!_currentRole.value.canManageContent) {
+            _adminFeedback.value = "صلاحية غير كافية لإضافة القراء."
+            return@launch
+        }
+        val email = FirebaseAuth.getInstance().currentUser?.email.orEmpty()
+        val localResult = customReciterRepo.addCustomReciterFromPhone(
+            nameAr = nameAr,
+            nameEn = nameEn,
+            styleAr = styleAr,
+            styleEn = styleEn,
+            surahTitleAr = surahTitleAr,
+            surahTitleEn = surahTitleEn,
+            surahNumber = surahNumber,
+            pickedAudioUri = pickedAudioUri,
+            remoteAudioUrl = remoteAudioUrl,
+            addedByEmail = email
+        )
+        if (localResult.isFailure) {
+            _adminFeedback.value = localResult.exceptionOrNull()?.message ?: "تعذّر حفظ القارئ"
+            return@launch
+        }
+        val created = localResult.getOrThrow()
+        runCatching {
+            cloudRepo.upsertCustomReciterCloud(
+                CustomReciterDoc(
+                    id = created.id,
+                    nameAr = created.nameAr,
+                    nameEn = created.nameEn,
+                    styleAr = created.styleAr,
+                    styleEn = created.styleEn,
+                    surahTitleAr = created.surahTitleAr,
+                    surahTitleEn = created.surahTitleEn,
+                    surahNumber = created.surahNumber,
+                    audioUrl = created.audioUrl,
+                    fileName = created.fileName,
+                    addedByEmail = email,
+                    active = true
+                )
+            )
+        }
+        _adminFeedback.value = "تمت إضافة القارئ (${created.nameAr}) وملفه الصوتي إلى قائمة القراء بنجاح ✓"
+    }
+
+    fun deleteCustomReciter(reciterId: String) = viewModelScope.launch {
+        if (!_currentRole.value.canManageContent) {
+            _adminFeedback.value = "صلاحية غير كافية لحذف القارئ."
+            return@launch
+        }
+        customReciterRepo.deleteCustomReciter(reciterId)
+        runCatching { cloudRepo.deleteCustomReciterCloud(reciterId) }
+        _adminFeedback.value = "تم حذف القارئ من القائمة"
+    }
+
+    fun previewCustomReciter(item: CustomReciterItem) {
+        val track = item.toAudioTrackItem()
+        if (audioState.value.currentTrack?.id == track.id) {
+            quranAudioPlayer.togglePauseResume()
+        } else {
+            quranAudioPlayer.playTrackQueue(listOf(track), 0)
+        }
+    }
+
+    fun stopPreviewAudio() {
+        quranAudioPlayer.stop()
+    }
 }
+

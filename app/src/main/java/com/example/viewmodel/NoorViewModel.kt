@@ -57,6 +57,8 @@ import com.example.data.local.catalog.MadinahMushafPageCatalog
 import com.example.data.local.db.HifzPlanEntity
 import com.example.data.local.prefs.UserPreferences
 import com.example.data.quran.AyahWordTimings
+import com.example.data.quran.CustomReciterItem
+import com.example.data.quran.CustomReciterRepository
 import com.example.data.quran.MushafCoordinateRepository
 import com.example.data.quran.MushafHighlightColor
 import com.example.data.quran.MushafHighlightStyle
@@ -106,7 +108,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import java.util.Locale
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -161,6 +165,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     private val ecosystemRepo: EcosystemRepository = (application as NoorApplication).ecosystemRepository
     private val cloudRepo: NoorCloudRepository = (application as NoorApplication).cloudRepository
     private val quranAudioPlayer: QuranAudioPlayer = (application as NoorApplication).quranAudioPlayer
+    private val customReciterRepo: CustomReciterRepository = (application as NoorApplication).customReciterRepository
 
     // Single-session playback request serialization: prevents rapid taps or slow async loads
     // from launching duplicate or stale Sheikh audio sessions.
@@ -246,6 +251,35 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             if (user != null) cloudRepo.observeCurrentUserProfile(user.uid) else flowOf(null)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    private val cloudCustomReciters = currentUser
+        .flatMapLatest { user ->
+            if (user != null) cloudRepo.observeCustomReciters() else flowOf(emptyList())
+        }
+
+    val customReciters: StateFlow<List<CustomReciterItem>> = combine(
+        customReciterRepo.reciters,
+        cloudCustomReciters
+    ) { localList, cloudDocs ->
+        val cloudItems = cloudDocs.map { doc ->
+            CustomReciterItem(
+                id = doc.id,
+                nameAr = doc.nameAr,
+                nameEn = doc.nameEn,
+                styleAr = doc.styleAr,
+                styleEn = doc.styleEn,
+                surahTitleAr = doc.surahTitleAr,
+                surahTitleEn = doc.surahTitleEn,
+                surahNumber = doc.surahNumber,
+                localAudioPath = "",
+                audioUrl = doc.audioUrl,
+                fileName = doc.fileName,
+                addedByEmail = doc.addedByEmail,
+                createdAtMillis = (doc.createdAt?.seconds ?: 0L) * 1000L
+            )
+        }
+        customReciterRepo.mergeWithCloudReciters(cloudItems)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val myAdminRecord = currentUser
         .flatMapLatest { user ->
@@ -653,14 +687,32 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 }
         }
 
-        // Sync user profile automatically when Google Sign-In state becomes active
+        // Sync user profile & live city/GPS location automatically whenever signed in or location changes
         viewModelScope.launch {
-            currentUser.collect { user ->
-                if (user != null) {
-                    val p = preferences.value
-                    cloudRepo.syncCurrentUserProfile(p.language.code, p.cityNameEn)
+            combine(
+                currentUser,
+                preferences.map { p ->
+                    listOf(
+                        p.language.code,
+                        p.cityNameEn,
+                        p.cityNameAr,
+                        String.format(Locale.US, "%.4f", p.latitude),
+                        String.format(Locale.US, "%.4f", p.longitude)
+                    )
+                }.distinctUntilChanged()
+            ) { user, _ -> user }
+                .collect { user ->
+                    if (user != null) {
+                        val p = preferences.value
+                        cloudRepo.syncCurrentUserProfile(
+                            preferredLanguage = p.language.code,
+                            cityName = p.cityNameEn,
+                            cityNameAr = p.cityNameAr,
+                            latitude = p.latitude,
+                            longitude = p.longitude
+                        )
+                    }
                 }
-            }
         }
 
         viewModelScope.launch {

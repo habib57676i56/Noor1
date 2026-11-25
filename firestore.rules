@@ -60,8 +60,9 @@ service cloud.firestore {
 
     function isValidUserFields(data) {
       return data.keys().hasOnly([
-        'uid', 'email', 'displayName', 'role', 'status', 'verified',
-        'preferredLanguage', 'cityName', 'adhkarCompleted', 'quranVersesRead',
+        'uid', 'email', 'displayName', 'role', 'status', 'verified', 'verifiedBadgeLabel',
+        'preferredLanguage', 'cityName', 'cityNameAr', 'latitude', 'longitude',
+        'adhkarCompleted', 'quranVersesRead',
         'audioPlays', 'tasbihCount', 'lastActiveAt', 'createdAt', 'updatedAt'
       ])
       && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128
@@ -70,8 +71,12 @@ service cloud.firestore {
       && data.role in ['USER', 'SUPPORT_AGENT', 'CONTENT_MODERATOR', 'ADMIN', 'SUPER_ADMIN']
       && data.status in ['ACTIVE', 'SUSPENDED', 'DELETED']
       && data.verified is bool
+      && (!('verifiedBadgeLabel' in data) || (data.verifiedBadgeLabel is string && data.verifiedBadgeLabel.size() <= 40))
       && (!('preferredLanguage' in data) || (data.preferredLanguage is string && data.preferredLanguage.size() <= 10))
       && (!('cityName' in data) || (data.cityName is string && data.cityName.size() <= 100))
+      && (!('cityNameAr' in data) || (data.cityNameAr is string && data.cityNameAr.size() <= 100))
+      && (!('latitude' in data) || (data.latitude is number && data.latitude >= -90 && data.latitude <= 90))
+      && (!('longitude' in data) || (data.longitude is number && data.longitude >= -180 && data.longitude <= 180))
       && (!('adhkarCompleted' in data) || (data.adhkarCompleted is number && data.adhkarCompleted >= 0))
       && (!('quranVersesRead' in data) || (data.quranVersesRead is number && data.quranVersesRead >= 0))
       && (!('audioPlays' in data) || (data.audioPlays is number && data.audioPlays >= 0))
@@ -91,12 +96,15 @@ service cloud.firestore {
     }
 
     function isValidUserSelfUpdate(newData, oldData) {
+      let oldBadge = ('verifiedBadgeLabel' in oldData) ? oldData.verifiedBadgeLabel : '';
+      let newBadge = ('verifiedBadgeLabel' in newData) ? newData.verifiedBadgeLabel : '';
       return isValidUserFields(newData)
         && newData.uid == oldData.uid
         && newData.email == oldData.email
         && newData.role == oldData.role
         && newData.status == oldData.status
         && newData.verified == oldData.verified
+        && newBadge == oldBadge
         && newData.createdAt == oldData.createdAt;
     }
 
@@ -180,12 +188,23 @@ service cloud.firestore {
         'featureKhatmahEnabled', 'featureFastingEnabled', 'featureDailyWirdEnabled',
         'featureNotificationsEnabled', 'featureAdsEnabled',
         'featureMosquesEnabled', 'featureQiblaEnabled', 'featureCalendarEnabled',
+        'glassOpacity', 'effectsStarlightEnabled', 'effectsAuroraEnabled',
+        'effects3DSplashEnabled', 'effectsIntensity',
+        'featureEcosystemHubEnabled', 'featureCosmicGlobeEnabled', 'featureCalligraphyEnabled',
+        'featureSanctuaryAudioEnabled', 'featureAstrolabeEnabled', 'featureSoulRemedyEnabled',
+        'featureMiraclesProphetsEnabled', 'featureQuranUniverseEnabled', 'featureIrabSarfEnabled',
+        'featureHaramainLiveEnabled', 'featureZakatMirathEnabled', 'featureMutashabihatSeerahEnabled',
         'defaultCalcMethod', 'defaultReciterId',
         'updatedBy', 'updatedAt'
       ])
       && data.appNameEn is string && data.appNameEn.size() >= 1 && data.appNameEn.size() <= 60
       && (!('appNameAr' in data) || (data.appNameAr is string && data.appNameAr.size() <= 60))
       && data.maintenanceMode is bool
+      && (!('glassOpacity' in data) || (data.glassOpacity is number && data.glassOpacity >= 0.45 && data.glassOpacity <= 1.0))
+      && (!('effectsIntensity' in data) || (data.effectsIntensity is number && data.effectsIntensity >= 0.2 && data.effectsIntensity <= 1.5))
+      && (!('effectsStarlightEnabled' in data) || data.effectsStarlightEnabled is bool)
+      && (!('effectsAuroraEnabled' in data) || data.effectsAuroraEnabled is bool)
+      && (!('effects3DSplashEnabled' in data) || data.effects3DSplashEnabled is bool)
       && (!('featureMushafImagesEnabled' in data) || data.featureMushafImagesEnabled is bool)
       && (!('featureMemorizationEnabled' in data) || data.featureMemorizationEnabled is bool)
       && (!('featureListeningAssessmentEnabled' in data) || data.featureListeningAssessmentEnabled is bool)
@@ -194,8 +213,40 @@ service cloud.firestore {
       && (!('featureDailyWirdEnabled' in data) || data.featureDailyWirdEnabled is bool)
       && (!('featureNotificationsEnabled' in data) || data.featureNotificationsEnabled is bool)
       && (!('featureAdsEnabled' in data) || data.featureAdsEnabled is bool)
+      && (!('featureEcosystemHubEnabled' in data) || data.featureEcosystemHubEnabled is bool)
+      && (!('featureCosmicGlobeEnabled' in data) || data.featureCosmicGlobeEnabled is bool)
+      && (!('featureCalligraphyEnabled' in data) || data.featureCalligraphyEnabled is bool)
+      && (!('featureSanctuaryAudioEnabled' in data) || data.featureSanctuaryAudioEnabled is bool)
+      && (!('featureAstrolabeEnabled' in data) || data.featureAstrolabeEnabled is bool)
+      && (!('featureSoulRemedyEnabled' in data) || data.featureSoulRemedyEnabled is bool)
+      && (!('featureMiraclesProphetsEnabled' in data) || data.featureMiraclesProphetsEnabled is bool)
+      && (!('featureQuranUniverseEnabled' in data) || data.featureQuranUniverseEnabled is bool)
+      && (!('featureIrabSarfEnabled' in data) || data.featureIrabSarfEnabled is bool)
+      && (!('featureHaramainLiveEnabled' in data) || data.featureHaramainLiveEnabled is bool)
+      && (!('featureZakatMirathEnabled' in data) || data.featureZakatMirathEnabled is bool)
+      && (!('featureMutashabihatSeerahEnabled' in data) || data.featureMutashabihatSeerahEnabled is bool)
       && data.updatedBy == request.auth.uid
       && data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidCustomReciter(data) {
+      return data.keys().hasOnly([
+        'nameAr', 'nameEn', 'styleAr', 'styleEn', 'surahTitleAr', 'surahTitleEn',
+        'surahNumber', 'audioUrl', 'fileName', 'addedBy', 'addedByEmail', 'active', 'createdAt'
+      ])
+      && data.nameAr is string && data.nameAr.size() >= 1 && data.nameAr.size() <= 100
+      && (!('nameEn' in data) || (data.nameEn is string && data.nameEn.size() <= 100))
+      && (!('styleAr' in data) || (data.styleAr is string && data.styleAr.size() <= 60))
+      && (!('styleEn' in data) || (data.styleEn is string && data.styleEn.size() <= 60))
+      && (!('surahTitleAr' in data) || (data.surahTitleAr is string && data.surahTitleAr.size() <= 120))
+      && (!('surahTitleEn' in data) || (data.surahTitleEn is string && data.surahTitleEn.size() <= 120))
+      && (!('surahNumber' in data) || (data.surahNumber is number && data.surahNumber >= 1 && data.surahNumber <= 114))
+      && (!('audioUrl' in data) || (data.audioUrl is string && data.audioUrl.size() <= 500 && (data.audioUrl == '' || data.audioUrl.matches('^https://.*'))))
+      && (!('fileName' in data) || (data.fileName is string && data.fileName.size() <= 140))
+      && data.addedBy == request.auth.uid
+      && (!('addedByEmail' in data) || (data.addedByEmail is string && data.addedByEmail.size() <= 254))
+      && data.active is bool
+      && data.createdAt is timestamp && data.createdAt <= request.time;
     }
 
     function isValidAnnouncement(data) {
@@ -448,6 +499,12 @@ service cloud.firestore {
       allow update: if (isAdmin() && isValidAdminMessage(request.resource.data))
         || (isAuthenticated() && isValidAdminMessageReadUpdate(request.resource.data, resource.data));
       allow delete: if isAdmin();
+    }
+
+    match /custom_reciters/{reciterId} {
+      allow get, list: if isAuthenticated();
+      allow create, update: if isSuperAdmin() && isValidId(reciterId) && isValidCustomReciter(request.resource.data);
+      allow delete: if isSuperAdmin();
     }
 
     // Default deny catch-all

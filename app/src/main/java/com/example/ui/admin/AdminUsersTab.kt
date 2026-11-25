@@ -23,9 +23,12 @@ import androidx.compose.material.icons.rounded.DeleteForever
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Flag
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Shield
 import androidx.compose.material.icons.rounded.Verified
+import androidx.compose.ui.graphics.Color
+import java.util.Locale
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -95,7 +98,8 @@ fun AdminUsersTab(
             val matchQuery = q.isEmpty() ||
                 u.displayName.contains(q, ignoreCase = true) ||
                 u.email.contains(q, ignoreCase = true) ||
-                u.cityName.contains(q, ignoreCase = true)
+                u.cityName.contains(q, ignoreCase = true) ||
+                u.cityNameAr.contains(q, ignoreCase = true)
             matchStatus && matchQuery
         }
     }
@@ -187,7 +191,10 @@ fun AdminUsersTab(
                                         color = AdminPalette.TextPrimary
                                     )
                                     if (user.verified) {
-                                        Icon(Icons.Rounded.Verified, null, tint = AdminPalette.AccentCyan, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Rounded.Verified, contentDescription = "Verified", tint = AdminPalette.AccentCyan, modifier = Modifier.size(17.dp))
+                                        if (user.verifiedBadgeLabel.isNotBlank()) {
+                                            AdminStatusBadge(label = user.verifiedBadgeLabel, color = AdminPalette.AccentCyan)
+                                        }
                                     }
                                 }
                                 Text(user.email, style = MaterialTheme.typography.labelSmall, color = AdminPalette.TextSecondary)
@@ -205,6 +212,33 @@ fun AdminUsersTab(
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
+
+                        // User Live Location Pill (City + Coordinates)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.LocationOn,
+                                contentDescription = "User Location",
+                                tint = AdminPalette.GoldLuxe,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            val cityLabel = L10n.pick(
+                                lang,
+                                user.cityNameAr.ifBlank { user.cityName.ifBlank { "مكة المكرمة" } },
+                                user.cityName.ifBlank { "Makkah" }
+                            )
+                            val coordStr = String.format(Locale.US, "%.2f°, %.2f°", user.latitude, user.longitude)
+                            Text(
+                                text = "$cityLabel · $coordStr",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = AdminPalette.GoldLuxe
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             AdminStatusBadge(
@@ -225,12 +259,32 @@ fun AdminUsersTab(
                         if (currentRole.canManageUsers) {
                             Spacer(modifier = Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                // 1-Tap Verify / Unverify Account Toggle
+                                Button(
+                                    onClick = { adminViewModel.quickToggleUserVerification(user, !user.verified) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (user.verified) AdminPalette.AccentCyan.copy(alpha = 0.24f) else AdminPalette.AccentCyan,
+                                        contentColor = if (user.verified) AdminPalette.AccentCyan else Color(0xFF031522)
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Rounded.Verified, null, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (user.verified) L10n.pick(lang, "موثّق ✓", "Verified") else L10n.pick(lang, "توثيق", "Verify"),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                                 OutlinedButton(
                                     onClick = { editingUser = user },
                                     modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
                                 ) {
-                                    Icon(Icons.Rounded.Edit, null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Rounded.Edit, null, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(L10n.pick(lang, "إدارة", "Manage"), style = MaterialTheme.typography.labelMedium)
                                 }
@@ -312,6 +366,7 @@ fun AdminUsersTab(
         var nameDraft by remember(target) { mutableStateOf(target.displayName) }
         var statusDraft by remember(target) { mutableStateOf(target.status) }
         var verifiedDraft by remember(target) { mutableStateOf(target.verified) }
+        var badgeLabelDraft by remember(target) { mutableStateOf(target.verifiedBadgeLabel.ifBlank { "موثّق" }) }
         var roleDraft by remember(target) { mutableStateOf(AdminRole.fromKey(target.role)) }
 
         AlertDialog(
@@ -332,8 +387,18 @@ fun AdminUsersTab(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(L10n.pick(lang, "توثيق الحساب", "Account Verified"))
+                        Text(L10n.pick(lang, "توثيق الحساب (شارة بجانب الاسم)", "Account Verified Badge"))
                         Switch(checked = verifiedDraft, onCheckedChange = { verifiedDraft = it })
+                    }
+
+                    if (verifiedDraft) {
+                        OutlinedTextField(
+                            value = badgeLabelDraft,
+                            onValueChange = { badgeLabelDraft = it },
+                            label = { Text(L10n.pick(lang, "وصف شارة التوثيق (مثلاً: موثّق / حافظ / قارئ)", "Verified Badge Label")) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
 
                     if (!isPrimaryOwner) {
@@ -378,7 +443,14 @@ fun AdminUsersTab(
                 Button(onClick = {
                     val roleChanged = roleDraft.key != target.role
                     val executeSave = {
-                        adminViewModel.updateUser(target, nameDraft, statusDraft, verifiedDraft, roleDraft)
+                        adminViewModel.updateUser(
+                            user = target,
+                            newDisplayName = nameDraft,
+                            newStatus = statusDraft,
+                            newVerified = verifiedDraft,
+                            newRole = roleDraft,
+                            newVerifiedBadgeLabel = if (verifiedDraft) badgeLabelDraft else ""
+                        )
                         editingUser = null
                     }
                     if (roleChanged || statusDraft == "SUSPENDED") {
@@ -476,8 +548,24 @@ fun AdminUsersTab(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("${target.displayName.ifBlank { "NOOR Member" }} (${target.role})", fontWeight = FontWeight.Bold)
                     Text("Email: ${target.email}", style = MaterialTheme.typography.bodySmall, color = AdminPalette.AccentCyan)
-                    Text("Status: ${target.status} · Verified: ${target.verified}", style = MaterialTheme.typography.bodySmall)
-                    Text("City: ${target.cityName} · Language: ${target.preferredLanguage}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        text = L10n.pick(
+                            lang,
+                            "الحالة: ${target.status} · التوثيق: ${if (target.verified) "موثّق ✓ (${target.verifiedBadgeLabel.ifBlank { "موثّق" }})" else "غير موثّق"}",
+                            "Status: ${target.status} · Verified: ${target.verified} ${target.verifiedBadgeLabel}"
+                        ),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    Text(
+                        text = L10n.pick(
+                            lang,
+                            "الموقع: ${target.cityNameAr.ifBlank { target.cityName }} (${String.format(Locale.US, "%.4f°, %.4f°", target.latitude, target.longitude)})",
+                            "Location: ${target.cityName} (${String.format(Locale.US, "%.4f°, %.4f°", target.latitude, target.longitude)})"
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = AdminPalette.GoldLuxe
+                    )
+                    Text("Language: ${target.preferredLanguage}", style = MaterialTheme.typography.bodySmall)
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = L10n.pick(

@@ -107,8 +107,12 @@ data class UserAccountDoc(
     val role: String = "USER",
     val status: String = "ACTIVE",
     val verified: Boolean = false,
+    val verifiedBadgeLabel: String = "",
     val preferredLanguage: String = "ar",
     val cityName: String = "Makkah",
+    val cityNameAr: String = "مكة المكرمة",
+    val latitude: Double = 21.4225,
+    val longitude: Double = 39.8262,
     val adhkarCompleted: Long = 0L,
     val quranVersesRead: Long = 0L,
     val audioPlays: Long = 0L,
@@ -208,6 +212,24 @@ data class GlobalAppConfigDoc(
     val featureMosquesEnabled: Boolean = true,
     val featureQiblaEnabled: Boolean = true,
     val featureCalendarEnabled: Boolean = true,
+    // Live Super Admin Visual, Transparency, Effects & Expanded Ecosystem Controls
+    val glassOpacity: Double = 0.85,
+    val effectsStarlightEnabled: Boolean = true,
+    val effectsAuroraEnabled: Boolean = true,
+    val effects3DSplashEnabled: Boolean = true,
+    val effectsIntensity: Double = 1.0,
+    val featureEcosystemHubEnabled: Boolean = true,
+    val featureCosmicGlobeEnabled: Boolean = true,
+    val featureCalligraphyEnabled: Boolean = true,
+    val featureSanctuaryAudioEnabled: Boolean = true,
+    val featureAstrolabeEnabled: Boolean = true,
+    val featureSoulRemedyEnabled: Boolean = true,
+    val featureMiraclesProphetsEnabled: Boolean = true,
+    val featureQuranUniverseEnabled: Boolean = true,
+    val featureIrabSarfEnabled: Boolean = true,
+    val featureHaramainLiveEnabled: Boolean = true,
+    val featureZakatMirathEnabled: Boolean = true,
+    val featureMutashabihatSeerahEnabled: Boolean = true,
     val defaultCalcMethod: String = "umm_al_qura",
     val defaultReciterId: String = "yasser_dosari",
     val updatedBy: String = "",
@@ -425,4 +447,24 @@ data class AdminMessageDoc(
     val createdByEmail: String = "",
     @ServerTimestamp val createdAt: Timestamp? = null
 )
+
+@Keep
+@IgnoreExtraProperties
+data class CustomReciterDoc(
+    @DocumentId val id: String = "",
+    val nameAr: String = "",
+    val nameEn: String = "",
+    val styleAr: String = "مرتّل خاص",
+    val styleEn: String = "Custom Recitation",
+    val surahTitleAr: String = "تلاوة مختارة",
+    val surahTitleEn: String = "Featured Recitation",
+    val surahNumber: Int = 1,
+    val audioUrl: String = "",
+    val fileName: String = "",
+    val addedBy: String = "",
+    val addedByEmail: String = "",
+    val active: Boolean = true,
+    @ServerTimestamp val createdAt: Timestamp? = null
+)
+
 

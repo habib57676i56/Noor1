@@ -42,7 +42,10 @@ class NoorCloudRepository(private val appContext: Context) {
 
     suspend fun syncCurrentUserProfile(
         preferredLanguage: String,
-        cityName: String
+        cityName: String,
+        cityNameAr: String = cityName,
+        latitude: Double = 21.4225,
+        longitude: Double = 39.8262
     ): Result<UserAccountDoc> {
         val user = currentUserOrNull() ?: return Result.failure(IllegalStateException("Not authenticated"))
         return try {
@@ -59,8 +62,12 @@ class NoorCloudRepository(private val appContext: Context) {
                     "role" to initialRole,
                     "status" to "ACTIVE",
                     "verified" to isOwner,
+                    "verifiedBadgeLabel" to if (isOwner) "المالك الموثّق" else "",
                     "preferredLanguage" to preferredLanguage,
-                    "cityName" to cityName,
+                    "cityName" to cityName.take(100),
+                    "cityNameAr" to cityNameAr.take(100),
+                    "latitude" to latitude.coerceIn(-90.0, 90.0),
+                    "longitude" to longitude.coerceIn(-180.0, 180.0),
                     "adhkarCompleted" to 0L,
                     "quranVersesRead" to 0L,
                     "audioPlays" to 0L,
@@ -79,7 +86,10 @@ class NoorCloudRepository(private val appContext: Context) {
                 docRef.update(
                     mapOf(
                         "preferredLanguage" to preferredLanguage,
-                        "cityName" to cityName,
+                        "cityName" to cityName.take(100),
+                        "cityNameAr" to cityNameAr.take(100),
+                        "latitude" to latitude.coerceIn(-90.0, 90.0),
+                        "longitude" to longitude.coerceIn(-180.0, 180.0),
                         "lastActiveAt" to FieldValue.serverTimestamp(),
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
@@ -218,13 +228,30 @@ class NoorCloudRepository(private val appContext: Context) {
                 "featureMosquesEnabled" to config.featureMosquesEnabled,
                 "featureQiblaEnabled" to config.featureQiblaEnabled,
                 "featureCalendarEnabled" to config.featureCalendarEnabled,
+                "glassOpacity" to config.glassOpacity.coerceIn(0.45, 1.0),
+                "effectsStarlightEnabled" to config.effectsStarlightEnabled,
+                "effectsAuroraEnabled" to config.effectsAuroraEnabled,
+                "effects3DSplashEnabled" to config.effects3DSplashEnabled,
+                "effectsIntensity" to config.effectsIntensity.coerceIn(0.2, 1.5),
+                "featureEcosystemHubEnabled" to config.featureEcosystemHubEnabled,
+                "featureCosmicGlobeEnabled" to config.featureCosmicGlobeEnabled,
+                "featureCalligraphyEnabled" to config.featureCalligraphyEnabled,
+                "featureSanctuaryAudioEnabled" to config.featureSanctuaryAudioEnabled,
+                "featureAstrolabeEnabled" to config.featureAstrolabeEnabled,
+                "featureSoulRemedyEnabled" to config.featureSoulRemedyEnabled,
+                "featureMiraclesProphetsEnabled" to config.featureMiraclesProphetsEnabled,
+                "featureQuranUniverseEnabled" to config.featureQuranUniverseEnabled,
+                "featureIrabSarfEnabled" to config.featureIrabSarfEnabled,
+                "featureHaramainLiveEnabled" to config.featureHaramainLiveEnabled,
+                "featureZakatMirathEnabled" to config.featureZakatMirathEnabled,
+                "featureMutashabihatSeerahEnabled" to config.featureMutashabihatSeerahEnabled,
                 "defaultCalcMethod" to config.defaultCalcMethod,
                 "defaultReciterId" to config.defaultReciterId,
                 "updatedBy" to uid,
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             db.collection("app_config").document("global").set(payload).await()
-            recordAuditLog("UPDATE_GLOBAL_CONFIG", "SETTINGS", "WARNING", "Updated live global settings (maintenance=${config.maintenanceMode})")
+            recordAuditLog("UPDATE_GLOBAL_CONFIG", "SETTINGS", "WARNING", "Updated live global settings (theme=${config.themePreset}, opacity=${config.glassOpacity}, maintenance=${config.maintenanceMode})")
             Result.success(Unit)
         } catch (e: Exception) {
             FirestoreErrorHandler.handleFirestoreError(e, OperationType.WRITE, "app_config/global")
@@ -451,7 +478,8 @@ class NoorCloudRepository(private val appContext: Context) {
         status: String,
         verified: Boolean,
         role: String,
-        targetEmail: String
+        targetEmail: String,
+        verifiedBadgeLabel: String = ""
     ): Result<Unit> {
         val actorUid = auth.currentUser?.uid ?: return Result.failure(IllegalStateException("Not authenticated"))
         if (targetEmail.equals(NoorPlatformConstants.PRIMARY_OWNER_EMAIL, ignoreCase = true) &&
@@ -465,6 +493,7 @@ class NoorCloudRepository(private val appContext: Context) {
                     "displayName" to displayName.trim().take(100),
                     "status" to status,
                     "verified" to verified,
+                    "verifiedBadgeLabel" to verifiedBadgeLabel.trim().take(40),
                     "role" to role,
                     "updatedAt" to FieldValue.serverTimestamp()
                 )
@@ -488,6 +517,27 @@ class NoorCloudRepository(private val appContext: Context) {
             }
 
             recordAuditLog("USER_ADMIN_UPDATE", "USER_MGMT", "WARNING", "Updated $targetUid -> role=$role, status=$status, verified=$verified")
+            Result.success(Unit)
+        } catch (e: Exception) {
+            FirestoreErrorHandler.handleFirestoreError(e, OperationType.UPDATE, "users/$targetUid")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun quickToggleUserVerification(
+        targetUid: String,
+        verified: Boolean,
+        badgeLabel: String = if (verified) "موثّق" else ""
+    ): Result<Unit> {
+        return try {
+            db.collection("users").document(targetUid).update(
+                mapOf(
+                    "verified" to verified,
+                    "verifiedBadgeLabel" to badgeLabel.trim().take(40),
+                    "updatedAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            recordAuditLog("USER_VERIFICATION_TOGGLE", "USER_MGMT", "INFO", "Set verified=$verified for $targetUid")
             Result.success(Unit)
         } catch (e: Exception) {
             FirestoreErrorHandler.handleFirestoreError(e, OperationType.UPDATE, "users/$targetUid")
@@ -1001,4 +1051,68 @@ class NoorCloudRepository(private val appContext: Context) {
         FirestoreErrorHandler.handleFirestoreError(e, OperationType.DELETE, "admin_messages/$messageId")
         Result.failure(e)
     }
+
+    // -------------------------------------------------------------------------
+    // Custom Reciters (Super Admin Reciter Studio -> Live Reciters List)
+    // -------------------------------------------------------------------------
+
+    fun observeCustomReciters(): Flow<List<CustomReciterDoc>> = callbackFlow {
+        val reg = db.collection("custom_reciters")
+            .whereEqualTo("active", true)
+            .limit(100)
+            .addSnapshotListener { snap, error ->
+                if (error != null) {
+                    trySend(emptyList())
+                    return@addSnapshotListener
+                }
+                val list = snap?.documents
+                    ?.mapNotNull { it.toObject(CustomReciterDoc::class.java) }
+                    ?.sortedByDescending { it.createdAt?.seconds ?: 0L }
+                    .orEmpty()
+                trySend(list)
+            }
+        awaitClose { reg.remove() }
+    }
+
+    suspend fun upsertCustomReciterCloud(doc: CustomReciterDoc): Result<String> {
+        val user = currentUserOrNull() ?: return Result.failure(IllegalStateException("Not authenticated"))
+        val docId = doc.id.ifBlank { "crec_${UUID.randomUUID().toString().take(10)}" }
+        val safeUrl = doc.audioUrl.trim().take(500).let {
+            if (it.startsWith("https://", ignoreCase = true)) it else ""
+        }
+        return try {
+            db.collection("custom_reciters").document(docId).set(
+                mapOf(
+                    "nameAr" to doc.nameAr.trim().take(100),
+                    "nameEn" to doc.nameEn.trim().take(100),
+                    "styleAr" to doc.styleAr.trim().take(60),
+                    "styleEn" to doc.styleEn.trim().take(60),
+                    "surahTitleAr" to doc.surahTitleAr.trim().take(120),
+                    "surahTitleEn" to doc.surahTitleEn.trim().take(120),
+                    "surahNumber" to doc.surahNumber.coerceIn(1, 114),
+                    "audioUrl" to safeUrl,
+                    "fileName" to doc.fileName.trim().take(140),
+                    "addedBy" to user.uid,
+                    "addedByEmail" to (user.email ?: ""),
+                    "active" to true,
+                    "createdAt" to FieldValue.serverTimestamp()
+                )
+            ).await()
+            recordAuditLog("UPSERT_CUSTOM_RECITER", "CMS", "INFO", "Published custom reciter ${doc.nameAr} ($docId)")
+            Result.success(docId)
+        } catch (e: Exception) {
+            FirestoreErrorHandler.handleFirestoreError(e, OperationType.WRITE, "custom_reciters/$docId")
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteCustomReciterCloud(reciterId: String): Result<Unit> = try {
+        db.collection("custom_reciters").document(reciterId).delete().await()
+        recordAuditLog("DELETE_CUSTOM_RECITER", "CMS", "WARNING", "Deleted custom reciter $reciterId")
+        Result.success(Unit)
+    } catch (e: Exception) {
+        FirestoreErrorHandler.handleFirestoreError(e, OperationType.DELETE, "custom_reciters/$reciterId")
+        Result.failure(e)
+    }
 }
+

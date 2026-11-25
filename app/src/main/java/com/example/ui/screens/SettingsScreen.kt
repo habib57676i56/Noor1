@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.SupportAgent
+import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.VerifiedUser
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.AlertDialog
@@ -204,13 +206,28 @@ fun SettingsScreen(
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            val isVerified = currentUserProfile?.verified == true
+                            val verifiedLabel = currentUserProfile?.verifiedBadgeLabel.orEmpty()
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 Text(
                                     text = effectiveDisplayName,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.weight(1f, fill = false)
                                 )
+                                if (isVerified) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Verified,
+                                        contentDescription = L10n.pick(lang, "حساب موثّق", "Verified Account"),
+                                        tint = androidx.compose.ui.graphics.Color(0xFF38BDF8),
+                                        modifier = Modifier
+                                            .size(20.dp)
+                                            .testTag("settings_user_verified_badge")
+                                    )
+                                }
                                 IconButton(
                                     onClick = { showEditProfileNameDialog = true },
                                     modifier = Modifier.testTag("settings_edit_name_button")
@@ -221,6 +238,18 @@ fun SettingsScreen(
                                         tint = noorColors.goldAccent
                                     )
                                 }
+                            }
+                            if (isVerified) {
+                                Text(
+                                    text = L10n.pick(
+                                        lang,
+                                        "✓ ${verifiedLabel.ifBlank { "حساب موثّق رسمياً من إدارة نور" }}",
+                                        "✓ ${verifiedLabel.ifBlank { "Officially Verified NOOR Account" }}"
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = androidx.compose.ui.graphics.Color(0xFF38BDF8)
+                                )
                             }
                             Text(
                                 text = "${currentUser?.email ?: ""} · ${L10n.pick(lang, resolvedRole.labelAr, resolvedRole.labelEn)}",
