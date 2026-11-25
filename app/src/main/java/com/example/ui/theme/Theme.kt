@@ -31,8 +31,8 @@ private val NoorDarkColorScheme = darkColorScheme(
     onSurface = DarkInk,
     surfaceVariant = NightSurfaceElevated,
     onSurfaceVariant = DarkInkMuted,
-    outline = Color(0xFF27453A),
-    outlineVariant = Color(0xFF172E26),
+    outline = Color(0xFF2A4D43),
+    outlineVariant = Color(0xFF16322A),
     error = SemanticError,
     onError = Color.White
 )
@@ -54,18 +54,18 @@ private val NoorLightColorScheme = lightColorScheme(
     onSurface = LightInk,
     surfaceVariant = LightSurfaceVariant,
     onSurfaceVariant = LightInkMuted,
-    outline = Color(0xFFC1D3CB),
-    outlineVariant = Color(0xFFDAE6E0),
+    outline = Color(0xFFB7D1C8),
+    outlineVariant = Color(0xFFD5E6E0),
     error = SemanticError,
     onError = Color.White
 )
 
 val NoorShapes = Shapes(
-    extraSmall = RoundedCornerShape(10.dp),
-    small = RoundedCornerShape(14.dp),
-    medium = RoundedCornerShape(20.dp),
+    extraSmall = RoundedCornerShape(12.dp),
+    small = RoundedCornerShape(16.dp),
+    medium = RoundedCornerShape(22.dp),
     large = RoundedCornerShape(28.dp),
-    extraLarge = RoundedCornerShape(34.dp)
+    extraLarge = RoundedCornerShape(36.dp)
 )
 
 data class NoorExtendedColors(
@@ -79,7 +79,13 @@ data class NoorExtendedColors(
     val emeraldGlow: Color,
     val patternTint: Color,
     val ivoryCardBg: Color,
-    val ivoryCardInk: Color
+    val ivoryCardInk: Color,
+    val glassSpecularTop: Color = LiquidSpecularDark,
+    val glassOrbPrimary: Color = LiquidAuroraEmerald,
+    val glassOrbSecondary: Color = LiquidAuroraGold,
+    val glassOrbAccent: Color = LiquidAuroraCyan,
+    val glassDockTop: Color = Color(0xDE0E2D26),
+    val glassDockBottom: Color = Color(0xEB051512)
 )
 
 val LocalNoorColors = staticCompositionLocalOf {
@@ -92,9 +98,15 @@ val LocalNoorColors = staticCompositionLocalOf {
         goldAccent = GoldPrimary,
         goldSoft = GoldBright,
         emeraldGlow = EmeraldPrimary,
-        patternTint = Color(0x1AD9B464),
+        patternTint = Color(0x1BE2BE6E),
         ivoryCardBg = IvorySurface,
-        ivoryCardInk = IvoryInk
+        ivoryCardInk = IvoryInk,
+        glassSpecularTop = LiquidSpecularDark,
+        glassOrbPrimary = LiquidAuroraEmerald,
+        glassOrbSecondary = LiquidAuroraGold,
+        glassOrbAccent = LiquidAuroraCyan,
+        glassDockTop = Color(0xDE0E2D26),
+        glassDockBottom = Color(0xEB051512)
     )
 }
 
@@ -113,30 +125,42 @@ fun NoorTheme(
     val extendedColors = if (isDark) {
         NoorExtendedColors(
             isDark = true,
-            glassSurface = Color(0xC20D2019),
-            glassSurfaceStrong = Color(0xE6112B22),
-            glassBorderTop = Color(0x3DFFFFFF),
-            glassBorderBottom = Color(0x3DD9B464),
+            glassSurface = Color(0xB30B241E),
+            glassSurfaceStrong = Color(0xD90E2D26),
+            glassBorderTop = Color(0x57FFFFFF),
+            glassBorderBottom = Color(0x4AE2BE6E),
             goldAccent = GoldPrimary,
             goldSoft = GoldBright,
             emeraldGlow = EmeraldPrimary,
-            patternTint = Color(0x1AD9B464),
+            patternTint = Color(0x1AE2BE6E),
             ivoryCardBg = IvorySurface,
-            ivoryCardInk = IvoryInk
+            ivoryCardInk = IvoryInk,
+            glassSpecularTop = LiquidSpecularDark,
+            glassOrbPrimary = LiquidAuroraEmerald,
+            glassOrbSecondary = LiquidAuroraGold,
+            glassOrbAccent = LiquidAuroraCyan,
+            glassDockTop = Color(0xDF0F3129),
+            glassDockBottom = Color(0xEE051612)
         )
     } else {
         NoorExtendedColors(
             isDark = false,
-            glassSurface = Color(0xD8FFFFFF),
-            glassSurfaceStrong = Color(0xF5FFFFFF),
-            glassBorderTop = Color(0xEEFFFFFF),
-            glassBorderBottom = Color(0x420F6E4E),
+            glassSurface = Color(0xC9FFFFFF),
+            glassSurfaceStrong = Color(0xEBFFFFFF),
+            glassBorderTop = Color(0xF5FFFFFF),
+            glassBorderBottom = Color(0x470E7C5D),
             goldAccent = GoldMuted,
             goldSoft = GoldPrimary,
             emeraldGlow = EmeraldMist,
-            patternTint = Color(0x150F6E4E),
+            patternTint = Color(0x140E7C5D),
             ivoryCardBg = Color(0xFFFDF8EE),
-            ivoryCardInk = IvoryInk
+            ivoryCardInk = IvoryInk,
+            glassSpecularTop = LiquidSpecularLight,
+            glassOrbPrimary = LiquidAuroraLightEmerald,
+            glassOrbSecondary = LiquidAuroraLightGold,
+            glassOrbAccent = LiquidAuroraLightCyan,
+            glassDockTop = Color(0xF0FFFFFF),
+            glassDockBottom = Color(0xE0E8F4F0)
         )
     }
 

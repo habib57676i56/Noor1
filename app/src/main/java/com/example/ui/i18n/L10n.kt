@@ -301,6 +301,28 @@ object L10n {
         "Weekly" to "Haftalik",
         "Monthly" to "Oylik",
         "Today's Worship Checklist" to "Bugungi ibodatlar ro'yxati",
-        "Personal Worship Dashboard" to "Shaxsiy ibodat paneli"
+        "Personal Worship Dashboard" to "Shaxsiy ibodat paneli",
+
+        // Morning, Evening & Tahajjud/Qiyam Al-Layl Reminders + Custom Sounds
+        "Morning, Evening & Tahajjud Reminders" to "Tonggi, Kechki va Tahajjud eslatmalari",
+        "Morning Prayer & Adhkar" to "Bomdod va tonggi zikrlar",
+        "Evening Adhkar Reminder" to "Kechki zikrlar eslatmasi",
+        "Tahajjud & Qiyam Al-Layl" to "Tahajjud va tungi namoz (Qiyomul-layl)",
+        "Wake up in the blessed last third of the night" to "Kechaning muborak so'nggi uchdan birida uyg'oning",
+        "Daily morning prayer & fortress adhkar alert" to "Har kungi Bomdod va tonggi zikr eslatmasi",
+        "Daily evening remembrance & tranquility alert" to "Har kungi kechki zikr va sokinlik eslatmasi",
+        "Reminder Time" to "Eslatma vaqti",
+        "Custom Sound" to "Maxsus ovoz",
+        "Choose Reminder Sound" to "Eslatma ovozini tanlash",
+        "Import Audio from Device" to "Qurilmadan audio fayl tanlash",
+        "Preview" to "Tinglash",
+        "Test Alert" to "Sinov",
+        "Stop Sound" to "Ovozni to'xtatish",
+        "Set Reminder Time" to "Eslatma vaqtini belgilash",
+        "Hour" to "Soat",
+        "Minute" to "Daqiqa",
+        "Quick Presets" to "Tezkor vaqtlar",
+        "Tahajjud Alerts" to "Tahajjud",
+        "Next Prayer" to "Keyingi namoz"
     )
 }

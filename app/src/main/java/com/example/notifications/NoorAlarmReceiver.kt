@@ -3,6 +3,7 @@ package com.example.notifications
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.example.audio.AdhanCatalog
 import com.example.audio.AdhanPlaybackService
 import com.example.data.local.prefs.UserPreferencesRepository
 import com.example.domain.model.PrayerName
@@ -35,6 +36,8 @@ class NoorAlarmReceiver : BroadcastReceiver() {
         val isExactPrayer = intent.getBooleanExtra(NoorAlarmScheduler.EXTRA_IS_EXACT_PRAYER, false)
         val isTestAlarm = intent.getBooleanExtra(NoorAlarmScheduler.EXTRA_IS_TEST_ALARM, false)
         val prayerKey = intent.getStringExtra(NoorAlarmScheduler.EXTRA_PRAYER_KEY)
+        val reminderType = intent.getStringExtra(NoorAlarmScheduler.EXTRA_REMINDER_TYPE)
+        val customVoiceId = intent.getStringExtra(NoorAlarmScheduler.EXTRA_CUSTOM_VOICE_ID)
 
         val prayer = prayerKey?.let { runCatching { PrayerName.valueOf(it) }.getOrNull() }
         val allowPlayback = if (isExactPrayer && prayer != null) {
@@ -49,6 +52,17 @@ class NoorAlarmReceiver : BroadcastReceiver() {
 
         if (isExactPrayer && prayer != null && allowPlayback) {
             AdhanPlaybackService.startAdhan(context, prayer, title, body, isTestAlarm = isTestAlarm)
+        } else if (!reminderType.isNullOrBlank() &&
+            !customVoiceId.isNullOrBlank() &&
+            customVoiceId != AdhanCatalog.SYSTEM_DEFAULT_ID
+        ) {
+            AdhanPlaybackService.startReminderSound(
+                context = context,
+                voiceId = customVoiceId,
+                title = title,
+                body = body,
+                isTestAlarm = isTestAlarm
+            )
         }
 
         if (!isTestAlarm) {

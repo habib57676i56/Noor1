@@ -332,20 +332,51 @@ fun NoorAppShell(
                                 )
                             }
                             if (!useRail && showNavBar) {
+                                val dockShape = RoundedCornerShape(32.dp)
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 14.dp, vertical = 10.dp)
-                                ) {
-                                    NavigationBar(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(28.dp))
-                                            .border(
-                                                1.dp,
-                                                noorColors.glassBorderBottom,
-                                                RoundedCornerShape(28.dp)
+                                        .clip(dockShape)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                colors = listOf(
+                                                    noorColors.glassDockTop,
+                                                    noorColors.glassDockBottom
+                                                )
+                                            )
+                                        )
+                                        .border(
+                                            width = 1.2.dp,
+                                            brush = Brush.linearGradient(
+                                                colors = listOf(
+                                                    noorColors.glassBorderTop,
+                                                    GoldPrimary.copy(alpha = if (noorColors.isDark) 0.42f else 0.36f),
+                                                    noorColors.glassBorderBottom
+                                                )
                                             ),
-                                        containerColor = noorColors.glassSurfaceStrong,
+                                            shape = dockShape
+                                        )
+                                ) {
+                                    // Top curved liquid-glass specular sheen line
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .align(Alignment.TopCenter)
+                                            .padding(horizontal = 24.dp)
+                                            .background(
+                                                Brush.horizontalGradient(
+                                                    listOf(
+                                                        Color.Transparent,
+                                                        noorColors.glassSpecularTop,
+                                                        Color.Transparent
+                                                    )
+                                                )
+                                            )
+                                            .size(height = 2.dp, width = 200.dp)
+                                    )
+                                    NavigationBar(
+                                        containerColor = Color.Transparent,
                                         tonalElevation = 0.dp,
                                         windowInsets = WindowInsets(0, 0, 0, 0)
                                     ) {
@@ -364,13 +395,18 @@ fun NoorAppShell(
                                                     Text(
                                                         text = L10n.pick(lang, tab.labelAr, tab.labelEn),
                                                         style = MaterialTheme.typography.labelSmall,
+                                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                                         maxLines = 1
                                                     )
                                                 },
                                                 colors = NavigationBarItemDefaults.colors(
-                                                    selectedIconColor = noorColors.goldAccent,
-                                                    selectedTextColor = noorColors.goldAccent,
-                                                    indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+                                                    selectedIconColor = if (noorColors.isDark) GoldBright else noorColors.goldAccent,
+                                                    selectedTextColor = if (noorColors.isDark) GoldBright else noorColors.goldAccent,
+                                                    indicatorColor = if (noorColors.isDark) {
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
+                                                    } else {
+                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                                    },
                                                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                                                 ),
@@ -792,13 +828,25 @@ private fun FloatingAudioMiniPlayer(
     onStop: () -> Unit
 ) {
     val lang = LocalAppLanguage.current
+    val noorColors = LocalNoorColors.current
+    val pillShape = RoundedCornerShape(26.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(22.dp))
-            .background(Brush.horizontalGradient(listOf(Color(0xF00B2A1E), Color(0xF0061711))))
-            .border(1.dp, GoldPrimary.copy(alpha = 0.55f), RoundedCornerShape(22.dp))
+            .clip(pillShape)
+            .background(
+                Brush.linearGradient(
+                    listOf(Color(0xE810362C), Color(0xEC071D17), Color(0xF0051410))
+                )
+            )
+            .border(
+                1.2.dp,
+                Brush.linearGradient(
+                    listOf(GoldBright.copy(alpha = 0.8f), noorColors.glassBorderTop, GoldPrimary.copy(alpha = 0.4f))
+                ),
+                pillShape
+            )
             .clickable(onClick = onOpenPlayer)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically

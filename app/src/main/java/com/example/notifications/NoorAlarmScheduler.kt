@@ -21,20 +21,75 @@ object NoorAlarmScheduler {
     const val EXTRA_IS_EXACT_PRAYER = "extra_is_exact_prayer"
     const val EXTRA_IS_TEST_ALARM = "extra_is_test_alarm"
     const val EXTRA_PRAYER_KEY = "extra_prayer_key"
+    const val EXTRA_REMINDER_TYPE = "extra_reminder_type"
+    const val EXTRA_CUSTOM_VOICE_ID = "extra_custom_voice_id"
 
     private const val REQ_PRAYER_BASE = 2000
     private const val REQ_PRE_PRAYER_BASE = 2100
-    private const val REQ_MORNING_ADHKAR = 2201
-    private const val REQ_EVENING_ADHKAR = 2202
-    private const val REQ_QURAN_REMINDER = 2203
-    private const val REQ_TASBIH_REMINDER = 2204
+    const val REQ_MORNING_ADHKAR = 2201
+    const val REQ_EVENING_ADHKAR = 2202
+    const val REQ_QURAN_REMINDER = 2203
+    const val REQ_TASBIH_REMINDER = 2204
+    const val REQ_TAHAJJUD_REMINDER = 2205
     private const val REQ_TEST_ADHAN = 2299
+
+    /**
+     * Pure deterministic helper that computes the next daily trigger timestamp for (hour, minute).
+     */
+    fun computeNextTriggerMillis(
+        hour: Int,
+        minute: Int,
+        nowMillis: Long = System.currentTimeMillis(),
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): Long {
+        val safeHour = hour.coerceIn(0, 23)
+        val safeMinute = minute.coerceIn(0, 59)
+        val cal = Calendar.getInstance(timeZone).apply {
+            timeInMillis = nowMillis
+            set(Calendar.HOUR_OF_DAY, safeHour)
+            set(Calendar.MINUTE, safeMinute)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (timeInMillis <= nowMillis + 5_000L) {
+                add(Calendar.DAY_OF_MONTH, 1)
+            }
+        }
+        return cal.timeInMillis
+    }
+
+    fun reminderCopy(type: String, lang: AppLanguage): Pair<String, String> = when (type) {
+        "morning" -> when (lang) {
+            AppLanguage.ARABIC -> "تذكير صلاة الصبح وأذكار الصباح" to "أصبحنا وأصبح الملك لله — حافظ على صلاة الصبح وأذكار الصباح"
+            AppLanguage.UZBEK -> "Bomdod va tonggi zikrlar eslatmasi" to "Bomdod namozi va tonggi zikrlarni o'qish vaqti keldi"
+            AppLanguage.ENGLISH -> "Morning Prayer & Adhkar Reminder" to "Begin your morning with Fajr prayer and remembrance of Allah"
+        }
+        "evening" -> when (lang) {
+            AppLanguage.ARABIC -> "تذكير المساء وأذكار المساء" to "أمسينا وأمسى الملك لله — حافظ على ورد أذكار المساء والسكينة"
+            AppLanguage.UZBEK -> "Kechki zikrlar eslatmasi" to "Kechki zikrlar va sokinlik virdini o'qish vaqti keldi"
+            AppLanguage.ENGLISH -> "Evening Adhkar Reminder" to "Keep your evening Adhkar routine and peaceful remembrance"
+        }
+        "tahajjud" -> when (lang) {
+            AppLanguage.ARABIC -> "تذكير صلاة التهجد وقيام الليل" to "قم في الثلث الأخير من الليل — وقت استجابة الدعاء ومناجاة الله"
+            AppLanguage.UZBEK -> "Tahajjud va tungi namoz eslatmasi" to "Kechaning so'nggi uchdan bir qismida Tahajjud va duo vaqti keldi"
+            AppLanguage.ENGLISH -> "Tahajjud & Qiyam Al-Layl Reminder" to "Rise for the blessed night prayer and heartfelt supplication"
+        }
+        "quran" -> when (lang) {
+            AppLanguage.ARABIC -> "ورد القرآن اليومي" to "خصّص دقائق لتلاوة كتاب الله اليوم"
+            AppLanguage.UZBEK -> "Kunlik Qur'on virdi" to "Bugun Qur'oni Karim tilovati uchun bir necha daqiqa ajrating"
+            AppLanguage.ENGLISH -> "Daily Quran Reading" to "Take a peaceful moment to read the Holy Quran"
+        }
+        else -> when (lang) {
+            AppLanguage.ARABIC -> "تذكير التسبيح" to "سبحان الله والحمد لله والله أكبر"
+            AppLanguage.UZBEK -> "Tasbeh eslatmasi" to "Subhanalloh, Alhamdulillah, Allohu Akbar"
+            AppLanguage.ENGLISH -> "Tasbih Reminder" to "SubhanAllah, Alhamdulillah, Allahu Akbar"
+        }
+    }
 
     fun rescheduleAll(context: Context, prefs: UserPreferences) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
         val tz = TimeZone.getTimeZone(prefs.timezoneId)
         val now = System.currentTimeMillis()
-        val isArabic = prefs.language == AppLanguage.ARABIC
+        val lang = prefs.language
 
         val todayCal = Calendar.getInstance(tz)
         val tomorrowCal = (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 1) }
@@ -57,8 +112,12 @@ object NoorAlarmScheduler {
                 } else {
                     tomorrowSchedule.timeFor(prayer)
                 }
-                val pNameAr = prayerNameAr(prayer)
-                val pNameEn = prayerNameEn(prayer)
+                val pName = prayerNameForLang(prayer, lang)
+                val (prayerTitle, prayerBody) = when (lang) {
+                    AppLanguage.ARABIC -> "حان الآن موعد صلاة $pName" to "حيّ على الصلاة — ${prefs.cityNameAr}"
+                    AppLanguage.UZBEK -> "$pName namozi vaqti kirdi" to "Namozga shoshiling — ${prefs.cityNameEn}"
+                    AppLanguage.ENGLISH -> "Time for $pName Prayer" to "It is time for $pName in ${prefs.cityNameEn}"
+                }
 
                 scheduleSingleAlarm(
                     context = context,
@@ -66,8 +125,8 @@ object NoorAlarmScheduler {
                     requestCode = exactReq,
                     triggerAtMillis = targetTime,
                     channelId = NoorNotificationHelper.CHANNEL_PRAYER,
-                    title = if (isArabic) "حان الآن موعد صلاة $pNameAr" else "Time for $pNameEn Prayer",
-                    body = if (isArabic) "حيّ على الصلاة — ${prefs.cityNameAr}" else "It is time for $pNameEn in ${prefs.cityNameEn}",
+                    title = prayerTitle,
+                    body = prayerBody,
                     isExactPrayer = true,
                     prayerKey = prayer.name
                 )
@@ -75,18 +134,22 @@ object NoorAlarmScheduler {
                 if (prefs.prePrayerAlertMinutes > 0) {
                     val preTime = targetTime - prefs.prePrayerAlertMinutes * 60_000L
                     if (preTime > now + 5_000L) {
+                        val (preTitle, preBody) = when (lang) {
+                            AppLanguage.ARABIC -> "تذكير قبل صلاة $pName" to
+                                "متبقي ${prefs.prePrayerAlertMinutes} دقيقة على دخول وقت صلاة $pName"
+                            AppLanguage.UZBEK -> "$pName namozidan oldin eslatma" to
+                                "$pName namozigacha ${prefs.prePrayerAlertMinutes} daqiqa qoldi"
+                            AppLanguage.ENGLISH -> "Upcoming $pName Prayer" to
+                                "${prefs.prePrayerAlertMinutes} minutes remaining until $pName"
+                        }
                         scheduleSingleAlarm(
                             context = context,
                             alarmManager = alarmManager,
                             requestCode = preReq,
                             triggerAtMillis = preTime,
                             channelId = NoorNotificationHelper.CHANNEL_PRAYER,
-                            title = if (isArabic) "تذكير قبل صلاة $pNameAr" else "Upcoming $pNameEn Prayer",
-                            body = if (isArabic) {
-                                "متبقي ${prefs.prePrayerAlertMinutes} دقيقة على دخول وقت صلاة $pNameAr"
-                            } else {
-                                "${prefs.prePrayerAlertMinutes} minutes remaining until $pNameEn"
-                            }
+                            title = preTitle,
+                            body = preBody
                         )
                     } else {
                         cancelAlarm(context, alarmManager, preReq)
@@ -100,30 +163,73 @@ object NoorAlarmScheduler {
             }
         }
 
-        // Daily Adhkar, Quran, and Tasbih reminders
+        // Daily Morning, Evening, Tahajjud/Qiyam Al-Layl, Quran, and Tasbih reminders
+        val (morningTitle, morningBody) = reminderCopy("morning", lang)
         scheduleDailyReminder(
-            context, alarmManager, REQ_MORNING_ADHKAR,
-            prefs.morningAdhkarReminderEnabled, prefs.morningAdhkarHour, prefs.morningAdhkarMinute,
-            if (isArabic) "أذكار الصباح" else "Morning Adhkar",
-            if (isArabic) "ابدأ يومك بحصن المسلم وذكر الله" else "Begin your morning with remembrance of Allah"
+            context = context,
+            alarmManager = alarmManager,
+            requestCode = REQ_MORNING_ADHKAR,
+            enabled = prefs.morningAdhkarReminderEnabled,
+            hour = prefs.morningAdhkarHour,
+            minute = prefs.morningAdhkarMinute,
+            title = morningTitle,
+            body = morningBody,
+            reminderType = "morning",
+            customVoiceId = prefs.morningReminderSoundId
         )
+
+        val (eveningTitle, eveningBody) = reminderCopy("evening", lang)
         scheduleDailyReminder(
-            context, alarmManager, REQ_EVENING_ADHKAR,
-            prefs.eveningAdhkarReminderEnabled, prefs.eveningAdhkarHour, prefs.eveningAdhkarMinute,
-            if (isArabic) "أذكار المساء" else "Evening Adhkar",
-            if (isArabic) "حافظ على ورد أذكار المساء والسكينة" else "Keep your evening Adhkar routine"
+            context = context,
+            alarmManager = alarmManager,
+            requestCode = REQ_EVENING_ADHKAR,
+            enabled = prefs.eveningAdhkarReminderEnabled,
+            hour = prefs.eveningAdhkarHour,
+            minute = prefs.eveningAdhkarMinute,
+            title = eveningTitle,
+            body = eveningBody,
+            reminderType = "evening",
+            customVoiceId = prefs.eveningReminderSoundId
         )
+
+        val (tahajjudTitle, tahajjudBody) = reminderCopy("tahajjud", lang)
         scheduleDailyReminder(
-            context, alarmManager, REQ_QURAN_REMINDER,
-            prefs.quranReminderEnabled, prefs.quranReminderHour, prefs.quranReminderMinute,
-            if (isArabic) "ورد القرآن اليومي" else "Daily Quran Reading",
-            if (isArabic) "خصّص دقائق لتلاوة كتاب الله اليوم" else "Take a peaceful moment to read the Holy Quran"
+            context = context,
+            alarmManager = alarmManager,
+            requestCode = REQ_TAHAJJUD_REMINDER,
+            enabled = prefs.tahajjudReminderEnabled,
+            hour = prefs.tahajjudReminderHour,
+            minute = prefs.tahajjudReminderMinute,
+            title = tahajjudTitle,
+            body = tahajjudBody,
+            reminderType = "tahajjud",
+            customVoiceId = prefs.tahajjudReminderSoundId
         )
+
+        val (quranTitle, quranBody) = reminderCopy("quran", lang)
         scheduleDailyReminder(
-            context, alarmManager, REQ_TASBIH_REMINDER,
-            prefs.tasbihReminderEnabled, prefs.tasbihReminderHour, prefs.tasbihReminderMinute,
-            if (isArabic) "تذكير التسبيح" else "Tasbih Reminder",
-            if (isArabic) "سبحان الله والحمد لله والله أكبر" else "SubhanAllah, Alhamdulillah, Allahu Akbar"
+            context = context,
+            alarmManager = alarmManager,
+            requestCode = REQ_QURAN_REMINDER,
+            enabled = prefs.quranReminderEnabled,
+            hour = prefs.quranReminderHour,
+            minute = prefs.quranReminderMinute,
+            title = quranTitle,
+            body = quranBody,
+            reminderType = "quran"
+        )
+
+        val (tasbihTitle, tasbihBody) = reminderCopy("tasbih", lang)
+        scheduleDailyReminder(
+            context = context,
+            alarmManager = alarmManager,
+            requestCode = REQ_TASBIH_REMINDER,
+            enabled = prefs.tasbihReminderEnabled,
+            hour = prefs.tasbihReminderHour,
+            minute = prefs.tasbihReminderMinute,
+            title = tasbihTitle,
+            body = tasbihBody,
+            reminderType = "tasbih"
         )
 
         // Sync persistent prayer notification bar and Prayer Times Home Screen Widget
@@ -139,29 +245,25 @@ object NoorAlarmScheduler {
         hour: Int,
         minute: Int,
         title: String,
-        body: String
+        body: String,
+        reminderType: String? = null,
+        customVoiceId: String? = null
     ) {
         if (!enabled) {
             cancelAlarm(context, alarmManager, requestCode)
             return
         }
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, hour)
-            set(Calendar.MINUTE, minute)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis() + 5_000L) {
-                add(Calendar.DAY_OF_MONTH, 1)
-            }
-        }
+        val triggerMillis = computeNextTriggerMillis(hour, minute)
         scheduleSingleAlarm(
             context = context,
             alarmManager = alarmManager,
             requestCode = requestCode,
-            triggerAtMillis = cal.timeInMillis,
+            triggerAtMillis = triggerMillis,
             channelId = NoorNotificationHelper.CHANNEL_REMINDER,
             title = title,
-            body = body
+            body = body,
+            reminderType = reminderType,
+            customVoiceId = customVoiceId
         )
     }
 
@@ -173,8 +275,8 @@ object NoorAlarmScheduler {
     ): Long {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return 0L
         val triggerAtMillis = System.currentTimeMillis() + delaySeconds.coerceIn(5, 600) * 1000L
-        val pNameAr = prayerNameAr(prayer)
-        val pNameEn = prayerNameEn(prayer)
+        val pNameAr = prayerNameForLang(prayer, AppLanguage.ARABIC)
+        val pNameEn = prayerNameForLang(prayer, AppLanguage.ENGLISH)
         scheduleSingleAlarm(
             context = context,
             alarmManager = alarmManager,
@@ -200,7 +302,9 @@ object NoorAlarmScheduler {
         body: String,
         isExactPrayer: Boolean = false,
         prayerKey: String? = null,
-        isTestAlarm: Boolean = false
+        isTestAlarm: Boolean = false,
+        reminderType: String? = null,
+        customVoiceId: String? = null
     ) {
         val intent = Intent(context, NoorAlarmReceiver::class.java).apply {
             putExtra(EXTRA_TITLE, title)
@@ -211,6 +315,12 @@ object NoorAlarmScheduler {
             putExtra(EXTRA_IS_TEST_ALARM, isTestAlarm)
             if (prayerKey != null) {
                 putExtra(EXTRA_PRAYER_KEY, prayerKey)
+            }
+            if (!reminderType.isNullOrBlank()) {
+                putExtra(EXTRA_REMINDER_TYPE, reminderType)
+            }
+            if (!customVoiceId.isNullOrBlank()) {
+                putExtra(EXTRA_CUSTOM_VOICE_ID, customVoiceId)
             }
         }
         val pendingIntent = PendingIntent.getBroadcast(
@@ -248,21 +358,30 @@ object NoorAlarmScheduler {
         alarmManager.cancel(pendingIntent)
     }
 
-    private fun prayerNameAr(prayer: PrayerName): String = when (prayer) {
-        PrayerName.FAJR -> "الفجر"
-        PrayerName.SUNRISE -> "الشروق"
-        PrayerName.DHUHR -> "الظهر"
-        PrayerName.ASR -> "العصر"
-        PrayerName.MAGHRIB -> "المغرب"
-        PrayerName.ISHA -> "العشاء"
-    }
-
-    private fun prayerNameEn(prayer: PrayerName): String = when (prayer) {
-        PrayerName.FAJR -> "Fajr"
-        PrayerName.SUNRISE -> "Sunrise"
-        PrayerName.DHUHR -> "Dhuhr"
-        PrayerName.ASR -> "Asr"
-        PrayerName.MAGHRIB -> "Maghrib"
-        PrayerName.ISHA -> "Isha"
+    private fun prayerNameForLang(prayer: PrayerName, lang: AppLanguage): String = when (lang) {
+        AppLanguage.ARABIC -> when (prayer) {
+            PrayerName.FAJR -> "الفجر"
+            PrayerName.SUNRISE -> "الشروق"
+            PrayerName.DHUHR -> "الظهر"
+            PrayerName.ASR -> "العصر"
+            PrayerName.MAGHRIB -> "المغرب"
+            PrayerName.ISHA -> "العشاء"
+        }
+        AppLanguage.UZBEK -> when (prayer) {
+            PrayerName.FAJR -> "Bomdod"
+            PrayerName.SUNRISE -> "Quyosh"
+            PrayerName.DHUHR -> "Peshin"
+            PrayerName.ASR -> "Asr"
+            PrayerName.MAGHRIB -> "Shom"
+            PrayerName.ISHA -> "Xufton"
+        }
+        AppLanguage.ENGLISH -> when (prayer) {
+            PrayerName.FAJR -> "Fajr"
+            PrayerName.SUNRISE -> "Sunrise"
+            PrayerName.DHUHR -> "Dhuhr"
+            PrayerName.ASR -> "Asr"
+            PrayerName.MAGHRIB -> "Maghrib"
+            PrayerName.ISHA -> "Isha"
+        }
     }
 }

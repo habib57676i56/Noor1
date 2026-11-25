@@ -72,6 +72,7 @@ import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.NoorSectionHeader
 import com.example.ui.components.NoorUserAvatar
+import com.example.ui.components.SpiritualRemindersStudioSection
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.theme.LocalNoorColors
@@ -612,16 +613,6 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 SettingsToggleRow(
-                    title = L10n.pick(lang, "تذكير أذكار الصباح (٦:٣٠ ص)", "Morning Adhkar (6:30 AM)"),
-                    checked = prefs.morningAdhkarReminderEnabled,
-                    onCheckedChange = { viewModel.setReminder("morning", it) }
-                )
-                SettingsToggleRow(
-                    title = L10n.pick(lang, "تذكير أذكار المساء (٥:٣٠ م)", "Evening Adhkar (5:30 PM)"),
-                    checked = prefs.eveningAdhkarReminderEnabled,
-                    onCheckedChange = { viewModel.setReminder("evening", it) }
-                )
-                SettingsToggleRow(
                     title = L10n.pick(lang, "تذكير ورد القرآن اليومي (٩:٠٠ م)", "Daily Quran Reminder (9:00 PM)"),
                     checked = prefs.quranReminderEnabled,
                     onCheckedChange = { viewModel.setReminder("quran", it) }
@@ -655,6 +646,19 @@ fun SettingsScreen(
                     Text(L10n.pick(lang, "إرسال تنبيه تجريبي", "Send Test Notification"))
                 }
             }
+        }
+
+        // 3B. Dedicated Morning, Evening & Tahajjud / Qiyam Al-Layl Custom Sound Reminders Studio
+        item {
+            SpiritualRemindersStudioSection(
+                prefs = prefs,
+                viewModel = viewModel,
+                onRequestNotificationPermission = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        notifPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                }
+            )
         }
 
         // 4. Sound & Vibration

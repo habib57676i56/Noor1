@@ -39,6 +39,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -53,19 +55,22 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.domain.model.PrayerName
-import com.example.ui.theme.EmeraldDeep
-import com.example.ui.theme.EmeraldForest
+import com.example.ui.theme.EmeraldBright
+import com.example.ui.theme.EmeraldPrimary
+import com.example.ui.theme.EmeraldSoft
 import com.example.ui.theme.GoldBright
 import com.example.ui.theme.GoldPrimary
 import com.example.ui.theme.IvoryInk
+import com.example.ui.theme.LiquidAuroraJade
 import com.example.ui.theme.LocalNoorColors
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Ambient atmospheric background with subtle Islamic 8-point geometric Rub el Hizb lattice
- * and gentle emerald/champagne-gold luminescence.
+ * Full-screen Liquid Glass luminous atmospheric canvas.
+ * Renders multi-layered iridescent emerald, cyan-prism, and warm champagne-gold
+ * liquid aurora orbs beneath a delicate etched 8-point Rub el Hizb Islamic filigree.
  */
 @Composable
 fun IslamicGeometricBackground(
@@ -73,34 +78,73 @@ fun IslamicGeometricBackground(
     content: @Composable () -> Unit
 ) {
     val noorColors = LocalNoorColors.current
-    val bgColor = MaterialTheme.colorScheme.background
+    val baseGradient = if (noorColors.isDark) {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFF031411),
+                Color(0xFF020C0A),
+                Color(0xFF041311),
+                Color(0xFF020908)
+            )
+        )
+    } else {
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFFE7F4F0),
+                Color(0xFFF1F7F5),
+                Color(0xFFE8F2EE),
+                Color(0xFFF3F8F6)
+            )
+        )
+    }
     val patternColor = noorColors.patternTint
-    val topGlow = if (noorColors.isDark) Color(0x3D0F6E4E) else Color(0x1E1A9A6F)
-    val goldGlow = if (noorColors.isDark) Color(0x1FD9B464) else Color(0x18D9B464)
+    val orbPrimary = noorColors.glassOrbPrimary
+    val orbSecondary = noorColors.glassOrbSecondary
+    val orbAccent = noorColors.glassOrbAccent
+    val lowerJade = if (noorColors.isDark) LiquidAuroraJade else Color(0x1E0E7C5D)
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(bgColor)
+            .background(baseGradient)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
+            // Top-left radiant emerald liquid orb
             drawRect(
                 brush = Brush.radialGradient(
-                    colors = listOf(topGlow, Color.Transparent),
-                    center = Offset(size.width * 0.25f, size.height * 0.06f),
-                    radius = size.width * 0.95f
+                    colors = listOf(orbPrimary, Color.Transparent),
+                    center = Offset(size.width * 0.18f, size.height * 0.08f),
+                    radius = size.width * 0.92f
                 )
             )
+            // Top-right warm champagne-gold refraction orb
             drawRect(
                 brush = Brush.radialGradient(
-                    colors = listOf(goldGlow, Color.Transparent),
-                    center = Offset(size.width * 0.88f, size.height * 0.20f),
-                    radius = size.width * 0.72f
+                    colors = listOf(orbSecondary, Color.Transparent),
+                    center = Offset(size.width * 0.88f, size.height * 0.16f),
+                    radius = size.width * 0.78f
+                )
+            )
+            // Mid-left liquid cyan prism glow for frosted glass depth
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(orbAccent, Color.Transparent),
+                    center = Offset(size.width * 0.10f, size.height * 0.56f),
+                    radius = size.width * 0.75f
+                )
+            )
+            // Bottom-right luminous jade pool under the floating dock
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(lowerJade, Color.Transparent),
+                    center = Offset(size.width * 0.82f, size.height * 0.88f),
+                    radius = size.width * 0.85f
                 )
             )
 
-            val cellSize = 112.dp.toPx()
-            val radius = cellSize * 0.27f
+            // Fine crystal-etched 8-point Rub el Hizb geometric lattice
+            val cellSize = 114.dp.toPx()
+            val radius = cellSize * 0.26f
             val cols = (size.width / cellSize).toInt() + 2
             val rows = (size.height / cellSize).toInt() + 2
 
@@ -108,7 +152,7 @@ fun IslamicGeometricBackground(
                 for (c in 0..cols) {
                     val cx = c * cellSize + if (r % 2 == 1) cellSize * 0.5f else 0f
                     val cy = r * cellSize * 0.88f
-                    drawRubElHizb(cx, cy, radius, patternColor, 0.9.dp.toPx())
+                    drawRubElHizb(cx, cy, radius, patternColor, 0.85.dp.toPx())
                 }
             }
         }
@@ -164,16 +208,16 @@ fun OrnamentalSurahBadge(
             val cy = this.size.height / 2f
             val r = this.size.minDimension * 0.45f
             drawCircle(
-                color = gold.copy(alpha = 0.12f),
+                color = gold.copy(alpha = 0.14f),
                 radius = r * 0.82f,
                 center = Offset(cx, cy)
             )
             drawRubElHizb(cx, cy, r, gold, 1.4.dp.toPx())
             drawCircle(
-                color = gold.copy(alpha = 0.45f),
+                color = gold.copy(alpha = 0.50f),
                 radius = r * 0.64f,
                 center = Offset(cx, cy),
-                style = Stroke(width = 0.8.dp.toPx())
+                style = Stroke(width = 0.85.dp.toPx())
             )
         }
         Text(
@@ -198,8 +242,8 @@ fun IslamicRosetteOrnament(
         val cx = this.size.width / 2f
         val cy = this.size.height / 2f
         val r = this.size.minDimension * 0.44f
-        drawRubElHizb(cx, cy, r, tint.copy(alpha = 0.85f), 1.2.dp.toPx())
-        drawRubElHizb(cx, cy, r * 0.58f, tint.copy(alpha = 0.5f), 0.9.dp.toPx())
+        drawRubElHizb(cx, cy, r, tint.copy(alpha = 0.88f), 1.2.dp.toPx())
+        drawRubElHizb(cx, cy, r * 0.58f, tint.copy(alpha = 0.52f), 0.9.dp.toPx())
         drawCircle(color = tint, radius = r * 0.16f, center = Offset(cx, cy))
     }
 }
@@ -281,12 +325,15 @@ fun MosqueHorizonSilhouette(
 }
 
 /**
- * Premium Liquid Glass translucent container with specular gradient border and layered depth.
+ * Next-generation Liquid Glass translucent container with:
+ * - Diagonal frosted glass depth gradient
+ * - Curved top-edge specular refraction sheen (liquid optical glare)
+ * - Iridescent luminous multi-stop border (specular white/gold -> prism teal -> soft rim)
  */
 @Composable
 fun LiquidGlassCard(
     modifier: Modifier = Modifier,
-    shape: Shape = RoundedCornerShape(24.dp),
+    shape: Shape = RoundedCornerShape(26.dp),
     strong: Boolean = false,
     goldBorder: Boolean = false,
     contentPadding: PaddingValues = PaddingValues(18.dp),
@@ -295,34 +342,90 @@ fun LiquidGlassCard(
 ) {
     val noorColors = LocalNoorColors.current
     val fillBrush = if (noorColors.isDark) {
-        Brush.verticalGradient(
+        Brush.linearGradient(
             colors = listOf(
-                if (strong) Color(0xEB122C23) else Color(0xCF0F251D),
-                if (strong) Color(0xE0081611) else Color(0xBA07130F)
+                if (strong) Color(0xDE13352D) else Color(0xBD0F2C25),
+                if (strong) Color(0xD40A211C) else Color(0xAD081C17),
+                if (strong) Color(0xDB061511) else Color(0xB805120F)
             )
         )
     } else {
-        Brush.verticalGradient(
+        Brush.linearGradient(
             colors = listOf(
-                if (strong) Color(0xFAFFFFFF) else Color(0xEBFFFFFF),
-                if (strong) Color(0xF0F3F8F5) else Color(0xDCF0F6F3)
+                if (strong) Color(0xF5FFFFFF) else Color(0xE0FFFFFF),
+                if (strong) Color(0xEBF4FBF8) else Color(0xCCF2F9F6),
+                if (strong) Color(0xE5E8F5F0) else Color(0xC2E6F3EE)
             )
         )
     }
 
-    val borderBrush = if (goldBorder) {
-        Brush.linearGradient(listOf(GoldBright.copy(alpha = 0.75f), GoldPrimary.copy(alpha = 0.28f)))
+    val specularTop = noorColors.glassSpecularTop
+    val innerGlowColor = if (goldBorder) {
+        GoldBright.copy(alpha = if (noorColors.isDark) 0.16f else 0.24f)
+    } else if (noorColors.isDark) {
+        EmeraldSoft.copy(alpha = 0.09f)
     } else {
-        Brush.linearGradient(listOf(noorColors.glassBorderTop, noorColors.glassBorderBottom))
+        Color.White.copy(alpha = 0.55f)
+    }
+
+    val borderBrush = if (goldBorder) {
+        Brush.linearGradient(
+            colors = listOf(
+                GoldBright.copy(alpha = 0.88f),
+                Color.White.copy(alpha = if (noorColors.isDark) 0.42f else 0.90f),
+                GoldPrimary.copy(alpha = 0.52f),
+                EmeraldSoft.copy(alpha = if (noorColors.isDark) 0.28f else 0.22f)
+            )
+        )
+    } else {
+        Brush.linearGradient(
+            colors = listOf(
+                noorColors.glassBorderTop,
+                if (noorColors.isDark) EmeraldSoft.copy(alpha = 0.22f) else Color(0x99FFFFFF),
+                noorColors.glassBorderBottom
+            )
+        )
+    }
+
+    val elevationMod = if (noorColors.isDark) {
+        Modifier
+    } else {
+        Modifier.shadow(
+            elevation = if (strong) 10.dp else 6.dp,
+            shape = shape,
+            ambientColor = Color(0x1F0E7C5D),
+            spotColor = Color(0x26083024),
+            clip = false
+        )
     }
 
     val clickMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
 
     Box(
         modifier = modifier
+            .then(elevationMod)
             .clip(shape)
             .background(fillBrush)
-            .border(width = 1.dp, brush = borderBrush, shape = shape)
+            .drawWithContent {
+                // Top curved liquid-glass specular refraction sheen
+                drawRect(
+                    brush = Brush.verticalGradient(
+                        colors = listOf(specularTop, Color.Transparent),
+                        startY = 0f,
+                        endY = size.height * 0.34f
+                    )
+                )
+                // Top-left luminous prism droplet highlight
+                drawRect(
+                    brush = Brush.radialGradient(
+                        colors = listOf(innerGlowColor, Color.Transparent),
+                        center = Offset(size.width * 0.14f, 0f),
+                        radius = size.width * 0.68f
+                    )
+                )
+                drawContent()
+            }
+            .border(width = if (goldBorder) 1.25.dp else 1.1.dp, brush = borderBrush, shape = shape)
             .then(clickMod)
     ) {
         CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
@@ -357,7 +460,7 @@ fun WarmIvoryParchmentCard(
             )
             .border(
                 width = 1.2.dp,
-                brush = Brush.linearGradient(listOf(GoldPrimary.copy(alpha = 0.7f), GoldPrimary.copy(alpha = 0.25f))),
+                brush = Brush.linearGradient(listOf(GoldPrimary.copy(alpha = 0.78f), GoldPrimary.copy(alpha = 0.28f))),
                 shape = shape
             )
     ) {
@@ -381,44 +484,55 @@ fun LiquidGlassChip(
     icon: ImageVector? = null
 ) {
     val noorColors = LocalNoorColors.current
-    val bgColor = when {
-        selected -> MaterialTheme.colorScheme.primary
-        noorColors.isDark -> Color(0x9910261E)
-        else -> Color(0xD9FFFFFF)
+    val chipShape = RoundedCornerShape(50)
+    val bgBrush = when {
+        selected -> Brush.horizontalGradient(
+            colors = listOf(
+                if (noorColors.isDark) EmeraldBright else EmeraldPrimary,
+                if (noorColors.isDark) EmeraldSoft else EmeraldBright
+            )
+        )
+        noorColors.isDark -> Brush.verticalGradient(
+            colors = listOf(Color(0xAD14362D), Color(0x940A201B))
+        )
+        else -> Brush.verticalGradient(
+            colors = listOf(Color(0xECFFFFFF), Color(0xD4E8F5F0))
+        )
     }
     val contentColor = when {
-        selected -> MaterialTheme.colorScheme.onPrimary
+        selected -> if (noorColors.isDark) Color(0xFF031914) else Color.White
         else -> MaterialTheme.colorScheme.onSurface
     }
-    val borderColor = if (selected) {
-        noorColors.goldAccent.copy(alpha = 0.75f)
+    val borderBrush = if (selected) {
+        Brush.linearGradient(listOf(GoldBright.copy(alpha = 0.9f), GoldPrimary.copy(alpha = 0.55f)))
     } else {
-        noorColors.glassBorderBottom
+        Brush.linearGradient(listOf(noorColors.glassBorderTop, noorColors.glassBorderBottom))
     }
 
-    Surface(
-        onClick = onClick,
-        modifier = modifier,
-        shape = RoundedCornerShape(50),
-        color = bgColor,
-        contentColor = contentColor,
-        border = BorderStroke(1.dp, borderColor)
+    Box(
+        modifier = modifier
+            .clip(chipShape)
+            .background(bgBrush)
+            .border(width = 1.dp, brush = borderBrush, shape = chipShape)
+            .clickable(onClick = onClick)
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            if (icon != null) {
-                Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
+        CompositionLocalProvider(LocalContentColor provides contentColor) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (icon != null) {
+                    Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    maxLines = 1
+                )
             }
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                maxLines = 1
-            )
         }
     }
 }
@@ -439,9 +553,13 @@ fun NoorSectionHeader(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(
                 modifier = Modifier
-                    .size(width = 4.dp, height = 18.dp)
+                    .size(width = 4.dp, height = 20.dp)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(noorColors.goldAccent)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(GoldBright, noorColors.goldAccent, EmeraldSoft)
+                        )
+                    )
             )
             Spacer(modifier = Modifier.width(10.dp))
             Text(
@@ -455,11 +573,14 @@ fun NoorSectionHeader(
             Text(
                 text = actionLabel,
                 style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
                 color = noorColors.goldAccent,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(50))
+                    .background(noorColors.glassSurface.copy(alpha = 0.72f))
+                    .border(0.9.dp, noorColors.glassBorderBottom, RoundedCornerShape(50))
                     .clickable(onClick = onActionClick)
-                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
             )
         }
     }
@@ -472,6 +593,7 @@ fun NoorScreenHeader(
     onBack: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null
 ) {
+    val noorColors = LocalNoorColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -484,8 +606,16 @@ fun NoorScreenHeader(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(LocalNoorColors.current.glassSurface)
-                    .border(1.dp, LocalNoorColors.current.glassBorderBottom, CircleShape)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(noorColors.glassSurfaceStrong, noorColors.glassSurface)
+                        )
+                    )
+                    .border(
+                        1.1.dp,
+                        Brush.linearGradient(listOf(noorColors.glassBorderTop, noorColors.glassBorderBottom)),
+                        CircleShape
+                    )
                     .testTag("back_button")
             ) {
                 Icon(

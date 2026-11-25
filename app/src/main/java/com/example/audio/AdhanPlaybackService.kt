@@ -113,6 +113,55 @@ class AdhanPlaybackService : Service() {
                     )
                 }
             }
+            ACTION_PLAY_REMINDER_SOUND -> {
+                val voiceId = intent.getStringExtra(EXTRA_VOICE_ID).orEmpty()
+                val title = intent.getStringExtra(EXTRA_TITLE) ?: "تذكير نور · NOOR Reminder"
+                val body = intent.getStringExtra(EXTRA_BODY) ?: ""
+                val isTestAlarm = intent.getBooleanExtra(EXTRA_IS_TEST_ALARM, false)
+
+                ensureChannel()
+                val notification = buildNotification(title, body)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, notification)
+                }
+
+                scope.launch {
+                    val prefs = UserPreferencesRepository(applicationContext).getPreferencesOnce()
+                    val audioManager = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                    val isSilentOrVibrate = audioManager != null &&
+                        audioManager.ringerMode != AudioManager.RINGER_MODE_NORMAL
+
+                    val canPlayAudio = isTestAlarm || !(prefs.adhanRespectSilentMode && isSilentOrVibrate)
+                    if (!canPlayAudio || voiceId == AdhanCatalog.SYSTEM_DEFAULT_ID) {
+                        stopForeground(STOP_FOREGROUND_REMOVE)
+                        stopSelf()
+                        return@launch
+                    }
+
+                    val voice = AdhanCatalog.resolveVoice(voiceId, prefs.customAdhanRecords, applicationContext)
+                    val soundLabel = if (prefs.language == AppLanguage.ARABIC) voice.nameAr else voice.nameEn
+                    val subText = if (body.isNotBlank()) "$soundLabel · $body" else soundLabel
+                    val updatedNotif = buildNotification(title, subText)
+                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                    nm.notify(NOTIFICATION_ID, updatedNotif)
+
+                    adhanPlayer.playVoice(
+                        voice = voice,
+                        isAlarmPlayback = true,
+                        volume = prefs.adhanVolume,
+                        onCompleted = {
+                            stopForeground(STOP_FOREGROUND_REMOVE)
+                            stopSelf()
+                        }
+                    )
+                }
+            }
         }
         return START_NOT_STICKY
     }
@@ -178,8 +227,10 @@ class AdhanPlaybackService : Service() {
         const val CHANNEL_ID = "noor_adhan_playback"
         const val NOTIFICATION_ID = 4205
         const val ACTION_PLAY_ADHAN = "com.example.audio.ACTION_PLAY_ADHAN"
+        const val ACTION_PLAY_REMINDER_SOUND = "com.example.audio.ACTION_PLAY_REMINDER_SOUND"
         const val ACTION_STOP_ADHAN = "com.example.audio.ACTION_STOP_ADHAN"
         const val EXTRA_PRAYER_KEY = "extra_prayer_key"
+        const val EXTRA_VOICE_ID = "extra_voice_id"
         const val EXTRA_TITLE = "extra_title"
         const val EXTRA_BODY = "extra_body"
         const val EXTRA_IS_TEST_ALARM = "extra_is_test_alarm"
@@ -196,6 +247,31 @@ class AdhanPlaybackService : Service() {
                 val intent = Intent(context, AdhanPlaybackService::class.java).apply {
                     action = ACTION_PLAY_ADHAN
                     putExtra(EXTRA_PRAYER_KEY, prayer.name)
+                    putExtra(EXTRA_TITLE, title)
+                    putExtra(EXTRA_BODY, body)
+                    putExtra(EXTRA_IS_TEST_ALARM, isTestAlarm)
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (_: Exception) {
+            }
+        }
+
+        fun startReminderSound(
+            context: Context,
+            voiceId: String,
+            title: String,
+            body: String,
+            isTestAlarm: Boolean = false
+        ) {
+            if (voiceId.isBlank() || voiceId == AdhanCatalog.SYSTEM_DEFAULT_ID) return
+            try {
+                val intent = Intent(context, AdhanPlaybackService::class.java).apply {
+                    action = ACTION_PLAY_REMINDER_SOUND
+                    putExtra(EXTRA_VOICE_ID, voiceId)
                     putExtra(EXTRA_TITLE, title)
                     putExtra(EXTRA_BODY, body)
                     putExtra(EXTRA_IS_TEST_ALARM, isTestAlarm)

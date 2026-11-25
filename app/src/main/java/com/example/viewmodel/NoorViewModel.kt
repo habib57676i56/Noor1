@@ -846,23 +846,109 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         repo.prefs.setReminder(type, enabled, hour, minute)
     }
 
+    fun setReminderSound(type: String, voiceId: String) = viewModelScope.launch {
+        repo.prefs.setReminderSound(type, voiceId)
+        val lang = preferences.value.language
+        val voice = AdhanCatalog.resolveVoice(voiceId, preferences.value.customAdhanRecords, getApplication())
+        val soundName = com.example.ui.i18n.L10n.pick(lang, voice.nameAr, voice.nameEn)
+        _statusBanner.value = com.example.ui.i18n.L10n.pick(
+            lang,
+            "تم حفظ صوت التذكير: $soundName",
+            "Reminder sound updated: $soundName",
+            "Eslatma ovozi saqlandi: $soundName"
+        )
+    }
+
+    fun importCustomReminderSound(type: String, uri: Uri) = viewModelScope.launch {
+        val lang = preferences.value.language
+        val result = withContext(Dispatchers.IO) {
+            AdhanCatalog.importFromUri(getApplication(), uri)
+        }
+        when (result) {
+            is AdhanImportResult.Success -> {
+                repo.prefs.addCustomAdhanRecord(result.record)
+                repo.prefs.setReminderSound(type, result.record.id)
+                _statusBanner.value = com.example.ui.i18n.L10n.pick(
+                    lang,
+                    "تم تخصيص الصوت من جهازك بنجاح: ${result.record.displayName}",
+                    "Custom reminder sound imported: ${result.record.displayName}",
+                    "Qurilmadan maxsus eslatma ovozi tanlandi: ${result.record.displayName}"
+                )
+            }
+            is AdhanImportResult.Error -> {
+                _statusBanner.value = com.example.ui.i18n.L10n.pick(lang, result.messageAr, result.messageEn)
+            }
+        }
+    }
+
+    fun sendTestReminderAlert(type: String): Boolean {
+        val prefs = preferences.value
+        val lang = prefs.language
+        val (title, body) = NoorAlarmScheduler.reminderCopy(type, lang)
+        val voiceId = when (type) {
+            "morning" -> prefs.morningReminderSoundId
+            "evening" -> prefs.eveningReminderSoundId
+            "tahajjud" -> prefs.tahajjudReminderSoundId
+            else -> AdhanCatalog.SYSTEM_DEFAULT_ID
+        }
+        val notifId = when (type) {
+            "morning" -> NoorAlarmScheduler.REQ_MORNING_ADHKAR
+            "evening" -> NoorAlarmScheduler.REQ_EVENING_ADHKAR
+            "tahajjud" -> NoorAlarmScheduler.REQ_TAHAJJUD_REMINDER
+            else -> 9998
+        }
+        val sent = NoorNotificationHelper.showNotification(
+            context = getApplication(),
+            notificationId = notifId,
+            channelId = NoorNotificationHelper.CHANNEL_REMINDER,
+            title = title,
+            body = body
+        )
+        if (voiceId.isNotBlank() && voiceId != AdhanCatalog.SYSTEM_DEFAULT_ID) {
+            AdhanPlaybackService.startReminderSound(
+                context = getApplication(),
+                voiceId = voiceId,
+                title = title,
+                body = body,
+                isTestAlarm = true
+            )
+        }
+        _statusBanner.value = if (sent) {
+            com.example.ui.i18n.L10n.pick(
+                lang,
+                "تم إرسال تذكير تجريبي مع الصوت المخصص ✓",
+                "Test reminder sent with your custom sound ✓",
+                "Maxsus ovozli sinov eslatmasi yuborildi ✓"
+            )
+        } else {
+            com.example.ui.i18n.L10n.pick(
+                lang,
+                "يرجى منح إذن الإشعارات أولاً",
+                "Please grant notification permission first",
+                "Avval bildirishnoma ruxsatini bering"
+            )
+        }
+        return sent
+    }
+
     fun sendTestNotification(): Boolean {
-        val isAr = preferences.value.language == AppLanguage.ARABIC
+        val lang = preferences.value.language
         val sent = NoorNotificationHelper.showNotification(
             context = getApplication(),
             notificationId = 9999,
             channelId = NoorNotificationHelper.CHANNEL_PRAYER,
-            title = if (isAr) "تطبيق نور — تنبيه تجريبي" else "Noor — Test Notification",
-            body = if (isAr) {
-                "نظام تنبيهات الصلاة والأذكار يعمل بنجاح ودقة."
-            } else {
-                "Prayer & Adhkar notifications are active and working properly."
-            }
+            title = com.example.ui.i18n.L10n.pick(lang, "تطبيق نور — تنبيه تجريبي", "Noor — Test Notification", "NOOR — Sinov bildirishnomasi"),
+            body = com.example.ui.i18n.L10n.pick(
+                lang,
+                "نظام تنبيهات الصلاة والأذكار والتهجد يعمل بنجاح ودقة.",
+                "Prayer, Adhkar & Tahajjud notifications are active and working properly.",
+                "Namoz, zikr va Tahajjud bildirishnomalari faol va to'g'ri ishlamoqda."
+            )
         )
         _statusBanner.value = if (sent) {
-            if (isAr) "تم إرسال إشعار تجريبي بنجاح" else "Test notification sent"
+            com.example.ui.i18n.L10n.pick(lang, "تم إرسال إشعار تجريبي بنجاح", "Test notification sent", "Sinov bildirishnomasi yuborildi")
         } else {
-            if (isAr) "يرجى منح إذن الإشعارات أولاً" else "Please grant notification permission first"
+            com.example.ui.i18n.L10n.pick(lang, "يرجى منح إذن الإشعارات أولاً", "Please grant notification permission first", "Avval bildirishnoma ruxsatini bering")
         }
         return sent
     }

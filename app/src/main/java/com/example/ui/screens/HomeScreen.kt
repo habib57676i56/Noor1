@@ -221,6 +221,9 @@ fun HomeScreen(
                         onClick = onOpenAdminCenter,
                         modifier = Modifier
                             .size(44.dp)
+                            .clip(CircleShape)
+                            .background(noorColors.glassSurface)
+                            .border(1.dp, GoldPrimary.copy(alpha = 0.5f), CircleShape)
                             .testTag("home_corner_super_admin_button")
                     ) {
                         Icon(
@@ -229,12 +232,16 @@ fun HomeScreen(
                             tint = GoldBright
                         )
                     }
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
                 Box {
                     IconButton(
                         onClick = onOpenNotifications,
                         modifier = Modifier
                             .size(44.dp)
+                            .clip(CircleShape)
+                            .background(noorColors.glassSurface)
+                            .border(1.dp, noorColors.glassBorderBottom, CircleShape)
                             .testTag("home_notifications_button")
                     ) {
                         Icon(Icons.Rounded.Notifications, contentDescription = "Notifications", tint = noorColors.goldAccent)
@@ -243,23 +250,32 @@ fun HomeScreen(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(top = 8.dp, end = 8.dp)
+                                .padding(top = 6.dp, end = 6.dp)
                                 .size(9.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFFE53935))
                         )
                     }
                 }
+                Spacer(modifier = Modifier.width(6.dp))
                 IconButton(
                     onClick = { showCustomizeDialog = true },
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .background(noorColors.glassSurface)
+                        .border(1.dp, noorColors.glassBorderBottom, CircleShape)
                 ) {
                     Icon(Icons.Rounded.DashboardCustomize, contentDescription = "Customize Home", tint = noorColors.goldAccent)
                 }
+                Spacer(modifier = Modifier.width(6.dp))
                 IconButton(
                     onClick = onOpenSettings,
                     modifier = Modifier
                         .size(44.dp)
+                        .clip(CircleShape)
+                        .background(noorColors.glassSurface)
+                        .border(1.dp, noorColors.glassBorderBottom, CircleShape)
                         .testTag("home_settings_button")
                 ) {
                     Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = MaterialTheme.colorScheme.onBackground)
@@ -455,19 +471,27 @@ fun HomeScreen(
             }
         }
 
-        // 3. Hero Mosque Next Prayer Countdown Card
+        // 3. Liquid Glass Hero Mosque Next Prayer Countdown Card
         item {
             val nextInfo = dashboard.nextPrayerInfo
             val iqamahDelay = if (prefs.iqamahDelays.enabled) prefs.iqamahDelays.delayFor(nextInfo.nextPrayer) else 0
+            val heroShape = RoundedCornerShape(30.dp)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(198.dp)
-                    .clip(RoundedCornerShape(26.dp))
+                    .height(212.dp)
+                    .clip(heroShape)
                     .border(
-                        1.2.dp,
-                        Brush.linearGradient(listOf(GoldBright.copy(alpha = 0.7f), GoldPrimary.copy(alpha = 0.25f))),
-                        RoundedCornerShape(26.dp)
+                        1.35.dp,
+                        Brush.linearGradient(
+                            listOf(
+                                Color.White.copy(alpha = 0.65f),
+                                GoldBright.copy(alpha = 0.85f),
+                                EmeraldPrimary.copy(alpha = 0.45f),
+                                GoldPrimary.copy(alpha = 0.35f)
+                            )
+                        ),
+                        heroShape
                     )
                     .clickable(onClick = onOpenPrayers)
                     .testTag("hero_next_prayer_card")
@@ -478,12 +502,25 @@ fun HomeScreen(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
+                // Liquid glass frosted dark-emerald & gold optical scrim
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(
-                            Brush.horizontalGradient(
-                                listOf(Color(0xE6041711), Color(0xB807231A), Color(0x6604130E))
+                            Brush.linearGradient(
+                                listOf(Color(0xE0041C16), Color(0xB5082A22), Color(0x73041410))
+                            )
+                        )
+                )
+                // Curved liquid-glass top specular glare
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(74.dp)
+                        .align(Alignment.TopCenter)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0x36FFFFFF), Color.Transparent)
                             )
                         )
                 )
@@ -499,39 +536,97 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = L10n.pick(lang, "الصلاة القادمة", "Next Prayer"),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = GoldBright,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color(0x4DFFFFFF))
+                                .border(0.8.dp, Color(0x66FFFFFF), RoundedCornerShape(50))
+                                .padding(horizontal = 12.dp, vertical = 5.dp)
+                        ) {
+                            Icon(
+                                imageVector = prayerIcon(nextInfo.nextPrayer),
+                                contentDescription = null,
+                                tint = GoldBright,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = L10n.pick(lang, "الصلاة القادمة", "Next Prayer", "Keyingi namoz"),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = GoldBright,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                         Text(
                             text = L10n.formatTime12h(nextInfo.nextPrayerMillis, prefs.timezoneId, lang),
                             style = MaterialTheme.typography.titleMedium,
                             color = Color.White,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .background(Color(0x40000000))
+                                .border(0.8.dp, GoldBright.copy(alpha = 0.45f), RoundedCornerShape(50))
+                                .padding(horizontal = 12.dp, vertical = 4.dp)
                         )
                     }
 
-                    Column {
-                        Text(
-                            text = L10n.prayerName(nextInfo.nextPrayer, lang),
-                            style = MaterialTheme.typography.headlineLarge,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                        Text(
-                            text = L10n.formatCountdown(nextInfo.remainingMillis, lang),
-                            fontSize = 34.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GoldBright
-                        )
-                        if (iqamahDelay > 0) {
-                            val iqTime = L10n.formatTime12h(nextInfo.nextPrayerMillis + iqamahDelay * 60_000L, prefs.timezoneId, lang)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = L10n.pick(lang, "الإقامة: $iqTime (+$iqamahDelay د)", "Iqamah: $iqTime (+${iqamahDelay}m)"),
+                                text = L10n.prayerName(nextInfo.nextPrayer, lang),
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = L10n.formatCountdown(nextInfo.remainingMillis, lang),
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GoldBright
+                            )
+                            if (iqamahDelay > 0) {
+                                val iqTime = L10n.formatTime12h(nextInfo.nextPrayerMillis + iqamahDelay * 60_000L, prefs.timezoneId, lang)
+                                Text(
+                                    text = L10n.pick(lang, "الإقامة: $iqTime (+$iqamahDelay د)", "Iqamah: $iqTime (+${iqamahDelay}m)"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color(0xFF9AE6B4)
+                                )
+                            }
+                        }
+
+                        // Quick glass pill for Morning, Evening & Tahajjud reminders with custom sounds
+                        Column(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(Color(0x47FFFFFF))
+                                .border(0.9.dp, GoldBright.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
+                                .clickable(onClick = onOpenSettings)
+                                .padding(horizontal = 10.dp, vertical = 7.dp)
+                                .testTag("home_tahajjud_reminders_shortcut"),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.NightsStay,
+                                contentDescription = null,
+                                tint = GoldBright,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = L10n.pick(lang, "التهجد والأذكار", "Tahajjud Alerts", "Tahajjud"),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color(0xFF9AE6B4)
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Text(
+                                text = String.format(java.util.Locale.US, "%02d:%02d", prefs.tahajjudReminderHour, prefs.tahajjudReminderMinute),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GoldBright
                             )
                         }
                     }
@@ -540,10 +635,10 @@ fun HomeScreen(
                         progress = { nextInfo.progress },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(6.dp)),
+                            .height(7.dp)
+                            .clip(RoundedCornerShape(7.dp)),
                         color = GoldBright,
-                        trackColor = Color.White.copy(alpha = 0.22f)
+                        trackColor = Color.White.copy(alpha = 0.24f)
                     )
                 }
             }
@@ -1128,11 +1223,21 @@ private fun HomeEcoMiniTile(
     modifier: Modifier = Modifier
 ) {
     val noorColors = LocalNoorColors.current
+    val tileShape = RoundedCornerShape(18.dp)
+    val tileBrush = if (noorColors.isDark) {
+        Brush.verticalGradient(listOf(Color(0x5217B88E), Color(0x280B2720)))
+    } else {
+        Brush.verticalGradient(listOf(Color(0xE8FFFFFF), Color(0xCCE1F3EC)))
+    }
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
-            .background(EmeraldPrimary.copy(alpha = 0.16f))
-            .border(1.dp, GoldPrimary.copy(alpha = 0.35f), RoundedCornerShape(14.dp))
+            .clip(tileShape)
+            .background(tileBrush)
+            .border(
+                1.dp,
+                Brush.linearGradient(listOf(noorColors.glassBorderTop, GoldPrimary.copy(alpha = 0.42f))),
+                tileShape
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 6.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

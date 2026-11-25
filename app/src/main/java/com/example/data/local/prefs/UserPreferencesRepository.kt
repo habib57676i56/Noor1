@@ -64,6 +64,12 @@ data class UserPreferences(
     val eveningAdhkarReminderEnabled: Boolean = true,
     val eveningAdhkarHour: Int = 17,
     val eveningAdhkarMinute: Int = 30,
+    val tahajjudReminderEnabled: Boolean = true,
+    val tahajjudReminderHour: Int = 2,
+    val tahajjudReminderMinute: Int = 30,
+    val morningReminderSoundId: String = AdhanCatalog.DEFAULT_VOICE_ID,
+    val eveningReminderSoundId: String = AdhanCatalog.DEFAULT_VOICE_ID,
+    val tahajjudReminderSoundId: String = AdhanCatalog.DEFAULT_VOICE_ID,
     val quranReminderEnabled: Boolean = true,
     val quranReminderHour: Int = 21,
     val quranReminderMinute: Int = 0,
@@ -156,6 +162,12 @@ class UserPreferencesRepository(private val context: Context) {
         val REMIND_EVENING = booleanPreferencesKey("remind_evening")
         val REMIND_EVENING_H = intPreferencesKey("remind_evening_h")
         val REMIND_EVENING_M = intPreferencesKey("remind_evening_m")
+        val REMIND_TAHAJJUD = booleanPreferencesKey("remind_tahajjud")
+        val REMIND_TAHAJJUD_H = intPreferencesKey("remind_tahajjud_h")
+        val REMIND_TAHAJJUD_M = intPreferencesKey("remind_tahajjud_m")
+        val REMIND_MORNING_SOUND = stringPreferencesKey("remind_morning_sound")
+        val REMIND_EVENING_SOUND = stringPreferencesKey("remind_evening_sound")
+        val REMIND_TAHAJJUD_SOUND = stringPreferencesKey("remind_tahajjud_sound")
         val REMIND_QURAN = booleanPreferencesKey("remind_quran")
         val REMIND_QURAN_H = intPreferencesKey("remind_quran_h")
         val REMIND_QURAN_M = intPreferencesKey("remind_quran_m")
@@ -252,6 +264,12 @@ class UserPreferencesRepository(private val context: Context) {
             eveningAdhkarReminderEnabled = p[Keys.REMIND_EVENING] ?: true,
             eveningAdhkarHour = p[Keys.REMIND_EVENING_H] ?: 17,
             eveningAdhkarMinute = p[Keys.REMIND_EVENING_M] ?: 30,
+            tahajjudReminderEnabled = p[Keys.REMIND_TAHAJJUD] ?: true,
+            tahajjudReminderHour = p[Keys.REMIND_TAHAJJUD_H] ?: 2,
+            tahajjudReminderMinute = p[Keys.REMIND_TAHAJJUD_M] ?: 30,
+            morningReminderSoundId = p[Keys.REMIND_MORNING_SOUND] ?: AdhanCatalog.DEFAULT_VOICE_ID,
+            eveningReminderSoundId = p[Keys.REMIND_EVENING_SOUND] ?: AdhanCatalog.DEFAULT_VOICE_ID,
+            tahajjudReminderSoundId = p[Keys.REMIND_TAHAJJUD_SOUND] ?: AdhanCatalog.DEFAULT_VOICE_ID,
             quranReminderEnabled = p[Keys.REMIND_QURAN] ?: true,
             quranReminderHour = p[Keys.REMIND_QURAN_H] ?: 21,
             quranReminderMinute = p[Keys.REMIND_QURAN_M] ?: 0,
@@ -396,28 +414,46 @@ class UserPreferencesRepository(private val context: Context) {
         hour: Int? = null,
         minute: Int? = null
     ) {
+        val safeHour = hour?.coerceIn(0, 23)
+        val safeMinute = minute?.coerceIn(0, 59)
         context.noorDataStore.edit {
             when (type) {
                 "morning" -> {
                     it[Keys.REMIND_MORNING] = enabled
-                    if (hour != null) it[Keys.REMIND_MORNING_H] = hour
-                    if (minute != null) it[Keys.REMIND_MORNING_M] = minute
+                    if (safeHour != null) it[Keys.REMIND_MORNING_H] = safeHour
+                    if (safeMinute != null) it[Keys.REMIND_MORNING_M] = safeMinute
                 }
                 "evening" -> {
                     it[Keys.REMIND_EVENING] = enabled
-                    if (hour != null) it[Keys.REMIND_EVENING_H] = hour
-                    if (minute != null) it[Keys.REMIND_EVENING_M] = minute
+                    if (safeHour != null) it[Keys.REMIND_EVENING_H] = safeHour
+                    if (safeMinute != null) it[Keys.REMIND_EVENING_M] = safeMinute
+                }
+                "tahajjud" -> {
+                    it[Keys.REMIND_TAHAJJUD] = enabled
+                    if (safeHour != null) it[Keys.REMIND_TAHAJJUD_H] = safeHour
+                    if (safeMinute != null) it[Keys.REMIND_TAHAJJUD_M] = safeMinute
                 }
                 "quran" -> {
                     it[Keys.REMIND_QURAN] = enabled
-                    if (hour != null) it[Keys.REMIND_QURAN_H] = hour
-                    if (minute != null) it[Keys.REMIND_QURAN_M] = minute
+                    if (safeHour != null) it[Keys.REMIND_QURAN_H] = safeHour
+                    if (safeMinute != null) it[Keys.REMIND_QURAN_M] = safeMinute
                 }
                 "tasbih" -> {
                     it[Keys.REMIND_TASBIH] = enabled
-                    if (hour != null) it[Keys.REMIND_TASBIH_H] = hour
-                    if (minute != null) it[Keys.REMIND_TASBIH_M] = minute
+                    if (safeHour != null) it[Keys.REMIND_TASBIH_H] = safeHour
+                    if (safeMinute != null) it[Keys.REMIND_TASBIH_M] = safeMinute
                 }
+            }
+        }
+    }
+
+    suspend fun setReminderSound(type: String, voiceId: String) {
+        val cleanId = voiceId.ifBlank { AdhanCatalog.DEFAULT_VOICE_ID }
+        context.noorDataStore.edit {
+            when (type) {
+                "morning" -> it[Keys.REMIND_MORNING_SOUND] = cleanId
+                "evening" -> it[Keys.REMIND_EVENING_SOUND] = cleanId
+                "tahajjud" -> it[Keys.REMIND_TAHAJJUD_SOUND] = cleanId
             }
         }
     }
@@ -540,6 +576,9 @@ class UserPreferencesRepository(private val context: Context) {
             if (prefs[Keys.ADHAN_ASR_VOICE] == recordId) prefs[Keys.ADHAN_ASR_VOICE] = ""
             if (prefs[Keys.ADHAN_MAGHRIB_VOICE] == recordId) prefs[Keys.ADHAN_MAGHRIB_VOICE] = ""
             if (prefs[Keys.ADHAN_ISHA_VOICE] == recordId) prefs[Keys.ADHAN_ISHA_VOICE] = ""
+            if (prefs[Keys.REMIND_MORNING_SOUND] == recordId) prefs[Keys.REMIND_MORNING_SOUND] = AdhanCatalog.DEFAULT_VOICE_ID
+            if (prefs[Keys.REMIND_EVENING_SOUND] == recordId) prefs[Keys.REMIND_EVENING_SOUND] = AdhanCatalog.DEFAULT_VOICE_ID
+            if (prefs[Keys.REMIND_TAHAJJUD_SOUND] == recordId) prefs[Keys.REMIND_TAHAJJUD_SOUND] = AdhanCatalog.DEFAULT_VOICE_ID
         }
     }
 
@@ -617,7 +656,17 @@ class UserPreferencesRepository(private val context: Context) {
             it[Keys.NOTIFY_ISHA] = prefs.notifyIsha
             it[Keys.PRE_PRAYER_MIN] = prefs.prePrayerAlertMinutes
             it[Keys.REMIND_MORNING] = prefs.morningAdhkarReminderEnabled
+            it[Keys.REMIND_MORNING_H] = prefs.morningAdhkarHour
+            it[Keys.REMIND_MORNING_M] = prefs.morningAdhkarMinute
             it[Keys.REMIND_EVENING] = prefs.eveningAdhkarReminderEnabled
+            it[Keys.REMIND_EVENING_H] = prefs.eveningAdhkarHour
+            it[Keys.REMIND_EVENING_M] = prefs.eveningAdhkarMinute
+            it[Keys.REMIND_TAHAJJUD] = prefs.tahajjudReminderEnabled
+            it[Keys.REMIND_TAHAJJUD_H] = prefs.tahajjudReminderHour
+            it[Keys.REMIND_TAHAJJUD_M] = prefs.tahajjudReminderMinute
+            it[Keys.REMIND_MORNING_SOUND] = prefs.morningReminderSoundId
+            it[Keys.REMIND_EVENING_SOUND] = prefs.eveningReminderSoundId
+            it[Keys.REMIND_TAHAJJUD_SOUND] = prefs.tahajjudReminderSoundId
             it[Keys.REMIND_QURAN] = prefs.quranReminderEnabled
             it[Keys.REMIND_TASBIH] = prefs.tasbihReminderEnabled
             it[Keys.TASBIH_VIBRATION] = prefs.tasbihVibrationEnabled
