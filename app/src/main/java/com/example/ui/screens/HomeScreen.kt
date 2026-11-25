@@ -83,6 +83,7 @@ import com.example.domain.calendar.HijriCalendarEngine
 import com.example.domain.model.HomeDashboardConfig
 import com.example.domain.model.PrayerName
 import com.example.domain.prayer.PrayerTimeGate
+import com.example.ui.components.HeroPrayerGlassCard
 import com.example.ui.components.IslamicRosetteOrnament
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.NoorAdCardBannerSection
@@ -471,177 +472,20 @@ fun HomeScreen(
             }
         }
 
-        // 3. Liquid Glass Hero Mosque Next Prayer Countdown Card
+        // 3. Celestial Liquid Glass Hero Mosque Next Prayer Countdown Card
         item {
             val nextInfo = dashboard.nextPrayerInfo
             val iqamahDelay = if (prefs.iqamahDelays.enabled) prefs.iqamahDelays.delayFor(nextInfo.nextPrayer) else 0
-            val heroShape = RoundedCornerShape(30.dp)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(212.dp)
-                    .clip(heroShape)
-                    .border(
-                        1.35.dp,
-                        Brush.linearGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.65f),
-                                GoldBright.copy(alpha = 0.85f),
-                                EmeraldPrimary.copy(alpha = 0.45f),
-                                GoldPrimary.copy(alpha = 0.35f)
-                            )
-                        ),
-                        heroShape
-                    )
-                    .clickable(onClick = onOpenPrayers)
-                    .testTag("hero_next_prayer_card")
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.img_noor_hero_bg_1795289370813),
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-                // Liquid glass frosted dark-emerald & gold optical scrim
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                listOf(Color(0xE0041C16), Color(0xB5082A22), Color(0x73041410))
-                            )
-                        )
-                )
-                // Curved liquid-glass top specular glare
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(74.dp)
-                        .align(Alignment.TopCenter)
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color(0x36FFFFFF), Color.Transparent)
-                            )
-                        )
-                )
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(Color(0x4DFFFFFF))
-                                .border(0.8.dp, Color(0x66FFFFFF), RoundedCornerShape(50))
-                                .padding(horizontal = 12.dp, vertical = 5.dp)
-                        ) {
-                            Icon(
-                                imageVector = prayerIcon(nextInfo.nextPrayer),
-                                contentDescription = null,
-                                tint = GoldBright,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = L10n.pick(lang, "الصلاة القادمة", "Next Prayer", "Keyingi namoz"),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = GoldBright,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Text(
-                            text = L10n.formatTime12h(nextInfo.nextPrayerMillis, prefs.timezoneId, lang),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(Color(0x40000000))
-                                .border(0.8.dp, GoldBright.copy(alpha = 0.45f), RoundedCornerShape(50))
-                                .padding(horizontal = 12.dp, vertical = 4.dp)
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Bottom
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = L10n.prayerName(nextInfo.nextPrayer, lang),
-                                style = MaterialTheme.typography.headlineLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = L10n.formatCountdown(nextInfo.remainingMillis, lang),
-                                fontSize = 32.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = GoldBright
-                            )
-                            if (iqamahDelay > 0) {
-                                val iqTime = L10n.formatTime12h(nextInfo.nextPrayerMillis + iqamahDelay * 60_000L, prefs.timezoneId, lang)
-                                Text(
-                                    text = L10n.pick(lang, "الإقامة: $iqTime (+$iqamahDelay د)", "Iqamah: $iqTime (+${iqamahDelay}m)"),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color(0xFF9AE6B4)
-                                )
-                            }
-                        }
-
-                        // Quick glass pill for Morning, Evening & Tahajjud reminders with custom sounds
-                        Column(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(18.dp))
-                                .background(Color(0x47FFFFFF))
-                                .border(0.9.dp, GoldBright.copy(alpha = 0.55f), RoundedCornerShape(18.dp))
-                                .clickable(onClick = onOpenSettings)
-                                .padding(horizontal = 10.dp, vertical = 7.dp)
-                                .testTag("home_tahajjud_reminders_shortcut"),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.NightsStay,
-                                contentDescription = null,
-                                tint = GoldBright,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = L10n.pick(lang, "التهجد والأذكار", "Tahajjud Alerts", "Tahajjud"),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
-                            )
-                            Text(
-                                text = String.format(java.util.Locale.US, "%02d:%02d", prefs.tahajjudReminderHour, prefs.tahajjudReminderMinute),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GoldBright
-                            )
-                        }
-                    }
-
-                    LinearProgressIndicator(
-                        progress = { nextInfo.progress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(7.dp)
-                            .clip(RoundedCornerShape(7.dp)),
-                        color = GoldBright,
-                        trackColor = Color.White.copy(alpha = 0.24f)
-                    )
-                }
-            }
+            HeroPrayerGlassCard(
+                nextInfo = nextInfo,
+                timezoneId = prefs.timezoneId,
+                iqamahDelayMinutes = iqamahDelay,
+                tahajjudHour = prefs.tahajjudReminderHour,
+                tahajjudMinute = prefs.tahajjudReminderMinute,
+                lang = lang,
+                onOpenPrayers = onOpenPrayers,
+                onOpenTahajjudReminders = onOpenSettings
+            )
         }
 
         // 4. Daily 6-Prayer Horizontal Strip
