@@ -358,6 +358,20 @@ object L10n {
         "Verified Hadiths with Grading, Notes (AR/EN/UZ)" to "Sahih hadislar, daraja va sharhlar (O'zbekcha)",
         "Haramain" to "Haramayn",
         "Quran Search" to "Qur'on izlash",
-        "Live Hadith" to "Hadislar"
+        "Live Hadith" to "Hadislar",
+
+        // Realistic 3D Misbaha, Quran I'rab & Sarf, Crescent Observatory & Global Ummah Pulse
+        "Realistic 3D Misbaha" to "Haqiqiy 3D Tasbeh",
+        "20 Luxury Bead Colors" to "20 ta hashamatli munchoq rangi",
+        "Step Back" to "Orqaga qaytarish",
+        "Quran I'rab & Sarf" to "Qur'on E'robi va Sarfi",
+        "Word-by-Word Grammatical I'rab & Morphology" to "114 sura uchun so'zma-so'z e'rob va sarf tahlili",
+        "I'rab & Sarf" to "E'rob va Sarf",
+        "Crescent Observatory" to "Hilol va Oy rasadxonasi",
+        "Live 3D Moon, 28 Lunar Mansions & Sighting" to "Jonli 3D Oy, 28 oy manzili va hilol ko'rinishi",
+        "Crescent Lab" to "Hilol rasadxonasi",
+        "Global Adhan & Qira'at" to "Ummat Azoni va Noyob Qiroatlar",
+        "12 Islamic Cities Live Adhan + Rare Qira'at Vault" to "12 islom shahri jonli azoni + Varsh, Qolun va Mujavvad",
+        "Ummah Pulse" to "Ummat nafas"
     )
 }

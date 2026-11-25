@@ -37,9 +37,11 @@ import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Spellcheck
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.VolunteerActivism
 import androidx.compose.material3.Icon
@@ -112,6 +114,9 @@ fun EcosystemHubScreen(
     onOpenHaramainLive: () -> Unit = {},
     onOpenGlobalQuranSearch: () -> Unit = {},
     onOpenLiveHadith: () -> Unit = {},
+    onOpenQuranIrabSarf: () -> Unit = {},
+    onOpenCrescentObservatory: () -> Unit = {},
+    onOpenGlobalUmmahPulse: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -256,6 +261,21 @@ fun EcosystemHubScreen(
             "موسوعة الحديث النبوي الحية", "Live Hadith Encyclopedia",
             "آلاف الأحاديث الصحيحة بالدرجة والشرح والفوائد", "Verified Hadiths with Grading, Notes (AR/EN/UZ)",
             Icons.Rounded.MenuBook, EmeraldPrimary, "hub_live_hadith", onOpenLiveHadith
+        ),
+        EcosystemModuleItem(
+            "إعراب وصرف القرآن", "Quran I'rab & Sarf",
+            "تحليل إعرابي وصرفي كلمة بكلمة لـ ١١٤ سورة", "Word-by-Word Grammatical I'rab & Morphology",
+            Icons.Rounded.Spellcheck, GoldBright, "hub_quran_irab_sarf", onOpenQuranIrabSarf
+        ),
+        EcosystemModuleItem(
+            "مرصد الهلال والقمر الحي", "Crescent Observatory",
+            "عمر الهلال والمنازل الـ٢٨ ورؤية السماء وصلاة الكسوف", "Live 3D Moon, 28 Lunar Mansions & Sighting",
+            Icons.Rounded.NightsStay, Color(0xFF38BDF8), "hub_crescent_observatory", onOpenCrescentObservatory
+        ),
+        EcosystemModuleItem(
+            "نبض الأذان والقراءات النادرة", "Global Adhan & Qira'at",
+            "مواقيت ١٢ عاصمة إسلامية حية + ورش وقالون والدوري والمجوّد", "12 Islamic Cities Live Adhan + Rare Qira'at Vault",
+            Icons.Rounded.Public, Color(0xFF2FC291), "hub_global_ummah_pulse", onOpenGlobalUmmahPulse
         )
     )
 

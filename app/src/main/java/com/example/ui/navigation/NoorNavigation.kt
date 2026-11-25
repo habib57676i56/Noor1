@@ -99,8 +99,10 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.StatsScreen
 import com.example.ui.screens.TasbihScreen
 import com.example.ui.screens.ecosystem.AsmaUlHusnaScreen
+import com.example.ui.screens.ecosystem.CrescentObservatoryScreen
 import com.example.ui.screens.ecosystem.EcosystemHubScreen
 import com.example.ui.screens.ecosystem.GlobalQuranSearchScreen
+import com.example.ui.screens.ecosystem.GlobalUmmahPulseScreen
 import com.example.ui.screens.ecosystem.HalaqatScreen
 import com.example.ui.screens.ecosystem.HaramainLiveScreen
 import com.example.ui.screens.ecosystem.HifzAiScreen
@@ -120,6 +122,7 @@ import com.example.ui.screens.ecosystem.NoorVideosScreen
 import com.example.ui.screens.ecosystem.NoorZakatScreen
 import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
 import com.example.ui.screens.ecosystem.QadaTrackerScreen
+import com.example.ui.screens.ecosystem.QuranIrabSarfScreen
 import com.example.ui.screens.ecosystem.TajweedScreen
 import com.example.ui.screens.ecosystem.WorshipGuidesScreen
 import com.example.data.local.catalog.IslamicVideoCategory
@@ -182,6 +185,9 @@ object NoorRoutes {
     const val HARAMAIN_LIVE = "haramain_live"
     const val GLOBAL_QURAN_SEARCH = "global_quran_search"
     const val LIVE_HADITH = "live_hadith"
+    const val QURAN_IRAB_SARF = "quran_irab_sarf"
+    const val CRESCENT_OBSERVATORY = "crescent_observatory"
+    const val GLOBAL_UMMAH_PULSE = "global_ummah_pulse"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -489,7 +495,10 @@ fun NoorAppShell(
                                     onOpenCardDesigner = { navController.navigate(NoorRoutes.CARD_DESIGNER) },
                                     onOpenHaramainLive = { navController.navigate(NoorRoutes.HARAMAIN_LIVE) },
                                     onOpenGlobalQuranSearch = { navController.navigate(NoorRoutes.GLOBAL_QURAN_SEARCH) },
-                                    onOpenLiveHadith = { navController.navigate(NoorRoutes.LIVE_HADITH) }
+                                    onOpenLiveHadith = { navController.navigate(NoorRoutes.LIVE_HADITH) },
+                                    onOpenQuranIrabSarf = { navController.navigate(NoorRoutes.QURAN_IRAB_SARF) },
+                                    onOpenCrescentObservatory = { navController.navigate(NoorRoutes.CRESCENT_OBSERVATORY) },
+                                    onOpenGlobalUmmahPulse = { navController.navigate(NoorRoutes.GLOBAL_UMMAH_PULSE) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -686,6 +695,9 @@ fun NoorAppShell(
                                     onOpenHaramainLive = { navController.navigate(NoorRoutes.HARAMAIN_LIVE) },
                                     onOpenGlobalQuranSearch = { navController.navigate(NoorRoutes.GLOBAL_QURAN_SEARCH) },
                                     onOpenLiveHadith = { navController.navigate(NoorRoutes.LIVE_HADITH) },
+                                    onOpenQuranIrabSarf = { navController.navigate(NoorRoutes.QURAN_IRAB_SARF) },
+                                    onOpenCrescentObservatory = { navController.navigate(NoorRoutes.CRESCENT_OBSERVATORY) },
+                                    onOpenGlobalUmmahPulse = { navController.navigate(NoorRoutes.GLOBAL_UMMAH_PULSE) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -890,6 +902,25 @@ fun NoorAppShell(
                             }
                             composable(NoorRoutes.LIVE_HADITH) {
                                 LiveHadithEncyclopediaScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.QURAN_IRAB_SARF) {
+                                QuranIrabSarfScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.CRESCENT_OBSERVATORY) {
+                                CrescentObservatoryScreen(
+                                    latitude = prefs.latitude,
+                                    longitude = prefs.longitude,
+                                    cityLabel = L10n.pick(lang, prefs.cityNameAr, prefs.cityNameEn),
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.GLOBAL_UMMAH_PULSE) {
+                                GlobalUmmahPulseScreen(
                                     onBack = { navController.popBackStack() }
                                 )
                             }

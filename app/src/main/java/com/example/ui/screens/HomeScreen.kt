@@ -51,6 +51,8 @@ import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Psychology
+import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Spellcheck
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -144,7 +146,10 @@ fun HomeScreen(
     onOpenCardDesigner: () -> Unit = {},
     onOpenHaramainLive: () -> Unit = {},
     onOpenGlobalQuranSearch: () -> Unit = {},
-    onOpenLiveHadith: () -> Unit = {}
+    onOpenLiveHadith: () -> Unit = {},
+    onOpenQuranIrabSarf: () -> Unit = {},
+    onOpenCrescentObservatory: () -> Unit = {},
+    onOpenGlobalUmmahPulse: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -510,6 +515,15 @@ fun HomeScreen(
                     HomeEcoMiniTile(L10n.pick(lang, "بث الحرمين", "Haramain", "Haramayn"), Icons.Rounded.LiveTv, onOpenHaramainLive, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "الباحث القرآني", "Quran Search", "Qur'on izlash"), Icons.Rounded.TravelExplore, onOpenGlobalQuranSearch, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "موسوعة الحديث", "Live Hadith", "Hadislar"), Icons.Rounded.MenuBook, onOpenLiveHadith, Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeEcoMiniTile(L10n.pick(lang, "إعراب وصرف", "I'rab & Sarf", "E'rob va Sarf"), Icons.Rounded.Spellcheck, onOpenQuranIrabSarf, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "مرصد الهلال", "Crescent Lab", "Hilol rasadxonasi"), Icons.Rounded.NightsStay, onOpenCrescentObservatory, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "نبض الأمة", "Ummah Pulse", "Ummat nafas"), Icons.Rounded.Public, onOpenGlobalUmmahPulse, Modifier.weight(1f))
                 }
             }
         }

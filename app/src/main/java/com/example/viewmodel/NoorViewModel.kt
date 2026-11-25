@@ -1038,7 +1038,9 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // --- Electronic Tasbih & Custom Dhikr ---
-    fun incrementTasbih() {
+    fun incrementTasbih(
+        timbre: com.example.domain.tasbih.BeadMaterialTimbre = com.example.domain.tasbih.BeadMaterialTimbre.AMBER
+    ) {
         tasbihHydrated = true
         val prefs = preferences.value
         val nextCount = _liveTasbihCount.value + 1
@@ -1049,7 +1051,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             triggerHaptic(light = nextCount % target != 0)
         }
         if (prefs.tasbihSoundEnabled) {
-            playClickTone(isMilestone = nextCount % target == 0)
+            playClickTone(isMilestone = nextCount % target == 0, timbre = timbre, isReverse = false)
         }
 
         viewModelScope.launch {
@@ -1065,6 +1067,28 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                     target = target
                 )
             }
+        }
+    }
+
+    fun decrementTasbih(
+        timbre: com.example.domain.tasbih.BeadMaterialTimbre = com.example.domain.tasbih.BeadMaterialTimbre.AMBER
+    ) {
+        tasbihHydrated = true
+        val current = _liveTasbihCount.value
+        if (current <= 0) return
+        val prefs = preferences.value
+        val prevCount = (current - 1).coerceAtLeast(0)
+        _liveTasbihCount.value = prevCount
+
+        if (prefs.tasbihVibrationEnabled) {
+            triggerHaptic(light = true)
+        }
+        if (prefs.tasbihSoundEnabled) {
+            playClickTone(isMilestone = false, timbre = timbre, isReverse = true)
+        }
+
+        viewModelScope.launch {
+            repo.prefs.saveActiveTasbih(prefs.activeTasbihPresetId, prevCount, prefs.activeTasbihTarget)
         }
     }
 
@@ -1729,12 +1753,16 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun playClickTone(isMilestone: Boolean) {
+    private fun playClickTone(
+        isMilestone: Boolean,
+        timbre: com.example.domain.tasbih.BeadMaterialTimbre = com.example.domain.tasbih.BeadMaterialTimbre.AMBER,
+        isReverse: Boolean = false
+    ) {
         try {
-            val tone = ToneGenerator(AudioManager.STREAM_SYSTEM, 40)
-            tone.startTone(
-                if (isMilestone) ToneGenerator.TONE_PROP_ACK else ToneGenerator.TONE_PROP_BEEP,
-                if (isMilestone) 95 else 30
+            com.example.domain.tasbih.RealisticBeadSoundPlayer.playBeadClick(
+                timbre = timbre,
+                isReverse = isReverse,
+                isMilestone = isMilestone
             )
         } catch (_: Exception) {
         }

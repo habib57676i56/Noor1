@@ -405,4 +405,89 @@ object NoorLiveOnlineService {
             usdRate = safeRate
         )
     }
+
+    // ---------- 5. LIVE QURAN.COM V4 WORD-BY-WORD MORPHOLOGY TOKENS ----------
+
+    suspend fun fetchQuranWordByWord(surahNumber: Int, ayahNumber: Int): Result<QuranWordByWordVerse> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val url =
+                    "https://api.quran.com/api/v4/verses/by_key/$surahNumber:$ayahNumber?language=en&words=true&word_fields=text_uthmani,location&fields=text_uthmani"
+                val raw = getStringSync(url)
+                parseQuranComWordByWord(raw)
+            }
+        }
+
+    internal fun parseQuranComWordByWord(json: String): QuranWordByWordVerse {
+        val verse = JSONObject(json).getJSONObject("verse")
+        val fullText = verse.optString("text_uthmani", "")
+        val wordsArr = verse.optJSONArray("words")
+        val tokens = mutableListOf<QuranWordToken>()
+        if (wordsArr != null) {
+            var pos = 1
+            for (i in 0 until wordsArr.length()) {
+                val w = wordsArr.optJSONObject(i) ?: continue
+                if (w.optString("char_type_name", "word") != "word") continue
+                val uthmani = w.optString("text_uthmani", w.optString("text", ""))
+                val translit = w.optJSONObject("transliteration")?.optString("text").orEmpty()
+                val meaning = w.optJSONObject("translation")?.optString("text").orEmpty()
+                if (uthmani.isNotBlank()) {
+                    tokens += QuranWordToken(
+                        position = pos++,
+                        uthmaniWord = uthmani,
+                        transliteration = translit,
+                        meaningEn = meaning
+                    )
+                }
+            }
+        }
+        return QuranWordByWordVerse(fullUthmaniText = fullText, words = tokens)
+    }
+
+    // ---------- 6. LIVE SKY & CRESCENT SIGHTING WEATHER (Open-Meteo) ----------
+
+    suspend fun fetchSkySightingWeather(latitude: Double, longitude: Double): Result<SkySightingWeather> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val url =
+                    "https://api.open-meteo.com/v1/forecast?latitude=$latitude&longitude=$longitude&current=temperature_2m,cloud_cover,relative_humidity_2m&daily=sunrise,sunset&timezone=auto&forecast_days=1"
+                val raw = getStringSync(url)
+                parseSkySightingWeather(raw)
+            }
+        }
+
+    internal fun parseSkySightingWeather(json: String): SkySightingWeather {
+        val root = JSONObject(json)
+        val current = root.getJSONObject("current")
+        val daily = root.optJSONObject("daily")
+        val sunrise = daily?.optJSONArray("sunrise")?.optString(0).orEmpty().substringAfter("T", "")
+        val sunset = daily?.optJSONArray("sunset")?.optString(0).orEmpty().substringAfter("T", "")
+        return SkySightingWeather(
+            temperatureC = current.optDouble("temperature_2m", 0.0),
+            cloudCoverPercent = current.optInt("cloud_cover", 0).coerceIn(0, 100),
+            humidityPercent = current.optInt("relative_humidity_2m", 0),
+            sunriseLocal = sunrise,
+            sunsetLocal = sunset
+        )
+    }
 }
+
+data class QuranWordToken(
+    val position: Int,
+    val uthmaniWord: String,
+    val transliteration: String,
+    val meaningEn: String
+)
+
+data class QuranWordByWordVerse(
+    val fullUthmaniText: String,
+    val words: List<QuranWordToken>
+)
+
+data class SkySightingWeather(
+    val temperatureC: Double,
+    val cloudCoverPercent: Int,
+    val humidityPercent: Int,
+    val sunriseLocal: String,
+    val sunsetLocal: String
+)
