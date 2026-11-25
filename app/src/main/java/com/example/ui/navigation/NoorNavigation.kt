@@ -99,6 +99,7 @@ import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.StatsScreen
 import com.example.ui.screens.TasbihScreen
 import com.example.ui.screens.ecosystem.AsmaUlHusnaScreen
+import com.example.ui.screens.ecosystem.CosmicQiblaGlobeScreen
 import com.example.ui.screens.ecosystem.CrescentObservatoryScreen
 import com.example.ui.screens.ecosystem.EcosystemHubScreen
 import com.example.ui.screens.ecosystem.GlobalQuranSearchScreen
@@ -123,8 +124,10 @@ import com.example.ui.screens.ecosystem.NoorZakatScreen
 import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
 import com.example.ui.screens.ecosystem.QadaTrackerScreen
 import com.example.ui.screens.ecosystem.QuranIrabSarfScreen
+import com.example.ui.screens.ecosystem.QuranMiraclesAndParablesScreen
 import com.example.ui.screens.ecosystem.QuranMutashabihatScreen
 import com.example.ui.screens.ecosystem.QuranRootAndQiraatUniverseScreen
+import com.example.ui.screens.ecosystem.QuranicSoulRemedyScreen
 import com.example.ui.screens.ecosystem.SeerahChronicleAtlasScreen
 import com.example.ui.screens.ecosystem.TajweedScreen
 import com.example.ui.screens.ecosystem.WorshipGuidesScreen
@@ -194,6 +197,9 @@ object NoorRoutes {
     const val QURAN_MUTASHABIHAT = "quran_mutashabihat"
     const val SEERAH_ATLAS = "seerah_atlas"
     const val QURAN_UNIVERSE = "quran_root_qiraat_universe"
+    const val COSMIC_QIBLA_GLOBE = "cosmic_qibla_globe"
+    const val QURAN_SOUL_REMEDY = "quran_soul_remedy"
+    const val QURAN_MIRACLES_PROPHETS = "quran_miracles_prophets"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -507,7 +513,10 @@ fun NoorAppShell(
                                     onOpenGlobalUmmahPulse = { navController.navigate(NoorRoutes.GLOBAL_UMMAH_PULSE) },
                                     onOpenMutashabihat = { navController.navigate(NoorRoutes.QURAN_MUTASHABIHAT) },
                                     onOpenSeerahAtlas = { navController.navigate(NoorRoutes.SEERAH_ATLAS) },
-                                    onOpenQuranUniverse = { navController.navigate(NoorRoutes.QURAN_UNIVERSE) }
+                                    onOpenQuranUniverse = { navController.navigate(NoorRoutes.QURAN_UNIVERSE) },
+                                    onOpenCosmicGlobe = { navController.navigate(NoorRoutes.COSMIC_QIBLA_GLOBE) },
+                                    onOpenSoulRemedy = { navController.navigate(NoorRoutes.QURAN_SOUL_REMEDY) },
+                                    onOpenMiraclesProphets = { navController.navigate(NoorRoutes.QURAN_MIRACLES_PROPHETS) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -710,6 +719,9 @@ fun NoorAppShell(
                                     onOpenMutashabihat = { navController.navigate(NoorRoutes.QURAN_MUTASHABIHAT) },
                                     onOpenSeerahAtlas = { navController.navigate(NoorRoutes.SEERAH_ATLAS) },
                                     onOpenQuranUniverse = { navController.navigate(NoorRoutes.QURAN_UNIVERSE) },
+                                    onOpenCosmicGlobe = { navController.navigate(NoorRoutes.COSMIC_QIBLA_GLOBE) },
+                                    onOpenSoulRemedy = { navController.navigate(NoorRoutes.QURAN_SOUL_REMEDY) },
+                                    onOpenMiraclesProphets = { navController.navigate(NoorRoutes.QURAN_MIRACLES_PROPHETS) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -952,6 +964,26 @@ fun NoorAppShell(
                             }
                             composable(NoorRoutes.QURAN_UNIVERSE) {
                                 QuranRootAndQiraatUniverseScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.COSMIC_QIBLA_GLOBE) {
+                                CosmicQiblaGlobeScreen(
+                                    userLatitude = prefs.latitude,
+                                    userLongitude = prefs.longitude,
+                                    userCityLabel = L10n.pick(lang, prefs.cityNameAr, prefs.cityNameEn),
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.QURAN_SOUL_REMEDY) {
+                                QuranicSoulRemedyScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.QURAN_MIRACLES_PROPHETS) {
+                                QuranMiraclesAndParablesScreen(
                                     onBack = { navController.popBackStack() },
                                     onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
                                 )

@@ -27,10 +27,12 @@ import androidx.compose.material.icons.rounded.ChildCare
 import androidx.compose.material.icons.rounded.CompareArrows
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.EventRepeat
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HistoryEdu
 import androidx.compose.material.icons.rounded.Hub
+import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.MenuBook
@@ -44,6 +46,7 @@ import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.material.icons.rounded.Radio
 import androidx.compose.material.icons.rounded.RecordVoiceOver
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Spellcheck
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material.icons.rounded.VolunteerActivism
@@ -123,6 +126,9 @@ fun EcosystemHubScreen(
     onOpenMutashabihat: () -> Unit = {},
     onOpenSeerahAtlas: () -> Unit = {},
     onOpenQuranUniverse: () -> Unit = {},
+    onOpenCosmicGlobe: () -> Unit = {},
+    onOpenSoulRemedy: () -> Unit = {},
+    onOpenMiraclesProphets: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -253,6 +259,21 @@ fun EcosystemHubScreen(
     )
 
     val liveOnlineFeatures = listOf(
+        EcosystemModuleItem(
+            "الكرة الأرضية ٣D والقبلة", "3D Earth & Qibla Globe",
+            "كرة أرضية ٣D تفاعلية مع الليل والنهار وقوس القبلة الذهبي", "Interactive 3D Earth, Live Day/Night & Geodesic Qibla Arc",
+            Icons.Rounded.Language, Color(0xFF38BDF8), "hub_cosmic_qibla_globe", onOpenCosmicGlobe
+        ),
+        EcosystemModuleItem(
+            "دواء القلوب من القرآن", "Quranic Soul Remedy",
+            "وصفات إيمانية بالصوت الحي وجلسة السكينة والتنفس بالتسبيح", "Emotional Quranic Prescriptions, Live Audio & Dhikr Halo",
+            Icons.Rounded.Favorite, Color(0xFFF472B6), "hub_quran_soul_remedy", onOpenSoulRemedy
+        ),
+        EcosystemModuleItem(
+            "الآيات الكونية والأنبياء ٢٥", "Cosmic Signs & 25 Prophets",
+            "الإعجاز الكوني والأمثال القرآنية وأطلس الأنبياء الـ٢٥ بالصوت", "Cosmic Signs, Parables & Complete 25 Prophets Atlas",
+            Icons.Rounded.Science, GoldBright, "hub_quran_miracles_prophets", onOpenMiraclesProphets
+        ),
         EcosystemModuleItem(
             "مجرة القرآن والقراءات العشر", "Quran Root & Qira'at Universe",
             "مجرة الجذور الحية (٦٢٣٦ آية) + القراءات المتواترة صوتاً + السند الذهبي", "Living Root Galaxy (6,236 Ayahs) + 10 Qira'at + Sanad",

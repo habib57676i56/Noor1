@@ -386,6 +386,15 @@ object L10n {
         "Seerah Atlas" to "Siyrat atlasi",
         "Quran Root & Qira'at Universe" to "Qur'on ildizlari va Qiroatlar",
         "Living Root Galaxy (6,236 Ayahs) + 10 Qira'at + Sanad" to "Jonli ildiz galaktikasi (6236 oyat) + 10 Qiroat + Oltin Sanad",
-        "Root Galaxy" to "Ildiz galaktikasi"
+        "Root Galaxy" to "Ildiz galaktikasi",
+        "3D Earth & Qibla Globe" to "3D Yer shari va Qibla yoyi",
+        "Interactive 3D Earth, Live Day/Night & Geodesic Qibla Arc" to "Interaktiv 3D Yer, jonli kun-tun va oltin Qibla yoyi",
+        "3D Globe" to "3D Globus",
+        "Quranic Soul Remedy" to "Qur'ondan qalb shifosi",
+        "Emotional Quranic Prescriptions, Live Audio & Dhikr Halo" to "Holatingizga mos oyatlar, jonli tilovat va zikr nafas halqasi",
+        "Soul Remedy" to "Qalb shifosi",
+        "Cosmic Signs & 25 Prophets" to "Koinot mo'jizalari va 25 Payg'ambar",
+        "Cosmic Signs, Parables & Complete 25 Prophets Atlas" to "Ilmiy oyatlar, Qur'on masallari va 25 payg'ambar atlasi",
+        "25 Prophets" to "25 Payg'ambar"
     )
 }

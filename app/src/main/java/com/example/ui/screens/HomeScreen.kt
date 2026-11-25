@@ -57,13 +57,16 @@ import androidx.compose.material.icons.rounded.WbSunny
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.CompareArrows
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.HistoryEdu
 import androidx.compose.material.icons.rounded.Hub
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Spellcheck
 import androidx.compose.material.icons.rounded.TravelExplore
 import androidx.compose.material3.AlertDialog
@@ -166,7 +169,10 @@ fun HomeScreen(
     onOpenGlobalUmmahPulse: () -> Unit = {},
     onOpenMutashabihat: () -> Unit = {},
     onOpenSeerahAtlas: () -> Unit = {},
-    onOpenQuranUniverse: () -> Unit = {}
+    onOpenQuranUniverse: () -> Unit = {},
+    onOpenCosmicGlobe: () -> Unit = {},
+    onOpenSoulRemedy: () -> Unit = {},
+    onOpenMiraclesProphets: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -598,6 +604,15 @@ fun HomeScreen(
                             HomeEcoMiniTile(L10n.pick(lang, "متشابهات القرآن", "Mutashabihat", "Mutashobihot"), Icons.Rounded.CompareArrows, onOpenMutashabihat, Modifier.weight(1f))
                             HomeEcoMiniTile(L10n.pick(lang, "أطلس السيرة", "Seerah Atlas", "Siyrat atlasi"), Icons.Rounded.HistoryEdu, onOpenSeerahAtlas, Modifier.weight(1f))
                         }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            HomeEcoMiniTile(L10n.pick(lang, "الكرة ٣D للقبلة", "3D Globe", "3D Globus"), Icons.Rounded.Language, onOpenCosmicGlobe, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "دواء القلوب", "Soul Remedy", "Qalb shifosi"), Icons.Rounded.Favorite, onOpenSoulRemedy, Modifier.weight(1f))
+                            HomeEcoMiniTile(L10n.pick(lang, "الإعجاز والأنبياء", "25 Prophets", "25 Payg'ambar"), Icons.Rounded.Science, onOpenMiraclesProphets, Modifier.weight(1f))
+                        }
                     }
                 }
 
@@ -619,7 +634,7 @@ fun HomeScreen(
                         text = if (ecosystemExpanded) {
                             L10n.pick(lang, "طيّ المنظومة", "Show Less", "Yig'ish")
                         } else {
-                            L10n.pick(lang, "عرض المزيد من منظومة نور (١٧ أداة إضافية)", "Show More NOOR Tools (17+)", "Ko'proq bo'limlarni ko'rish (17+)")
+                            L10n.pick(lang, "عرض المزيد من منظومة نور (٢٠ أداة إضافية)", "Show More NOOR Tools (20+)", "Ko'proq bo'limlarni ko'rish (20+)")
                         },
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
