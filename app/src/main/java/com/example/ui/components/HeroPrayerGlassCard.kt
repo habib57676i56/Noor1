@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,20 +40,23 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.domain.model.AppLanguage
 import com.example.domain.model.NextPrayerInfo
 import com.example.domain.model.PrayerName
 import com.example.ui.i18n.L10n
+import com.example.ui.theme.EmeraldDeep
+import com.example.ui.theme.EmeraldSoft
 import com.example.ui.theme.GoldBright
 import com.example.ui.theme.GoldPrimary
 import java.util.Locale
@@ -61,74 +65,11 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
-private data class CelestialHeroPalette(
-    val skyTop: Color,
-    val skyMid: Color,
-    val skyBottom: Color,
-    val auroraPrimary: Color,
-    val auroraSecondary: Color,
-    val accentGlow: Color,
-    val mosqueTintTop: Color,
-    val mosqueTintBottom: Color,
-    val shadowTint: Color,
-    val isNightSky: Boolean
-)
-
-private fun paletteForPrayer(prayer: PrayerName): CelestialHeroPalette = when (prayer) {
-    PrayerName.FAJR, PrayerName.ISHA -> CelestialHeroPalette(
-        skyTop = Color(0xFF071633),
-        skyMid = Color(0xFF0C2E47),
-        skyBottom = Color(0xFF13505E),
-        auroraPrimary = Color(0x6B29E3C8),
-        auroraSecondary = Color(0x52F9D98C),
-        accentGlow = Color(0xFF6FF7E0),
-        mosqueTintTop = Color(0x38FFE7A6),
-        mosqueTintBottom = Color(0x16071633),
-        shadowTint = Color(0xFF0B2E47),
-        isNightSky = true
-    )
-    PrayerName.MAGHRIB -> CelestialHeroPalette(
-        skyTop = Color(0xFF18143E),
-        skyMid = Color(0xFF472559),
-        skyBottom = Color(0xFF9C4E52),
-        auroraPrimary = Color(0x66FFB36B),
-        auroraSecondary = Color(0x54D87EFF),
-        accentGlow = Color(0xFFFFD89B),
-        mosqueTintTop = Color(0x42FFD996),
-        mosqueTintBottom = Color(0x1E18143E),
-        shadowTint = Color(0xFF472559),
-        isNightSky = true
-    )
-    PrayerName.ASR -> CelestialHeroPalette(
-        skyTop = Color(0xFF0B2C42),
-        skyMid = Color(0xFF175563),
-        skyBottom = Color(0xFF7B5C31),
-        auroraPrimary = Color(0x66FFD27A),
-        auroraSecondary = Color(0x4A38D9C0),
-        accentGlow = Color(0xFFFFE39E),
-        mosqueTintTop = Color(0x3DFFE5A0),
-        mosqueTintBottom = Color(0x180B2C42),
-        shadowTint = Color(0xFF175563),
-        isNightSky = false
-    )
-    PrayerName.SUNRISE, PrayerName.DHUHR -> CelestialHeroPalette(
-        skyTop = Color(0xFF093152),
-        skyMid = Color(0xFF0F6472),
-        skyBottom = Color(0xFF1B9688),
-        auroraPrimary = Color(0x66FFE39A),
-        auroraSecondary = Color(0x544AF2D8),
-        accentGlow = Color(0xFF9AFCEB),
-        mosqueTintTop = Color(0x3DFFF0BC),
-        mosqueTintBottom = Color(0x18093152),
-        shadowTint = Color(0xFF0F6472),
-        isNightSky = false
-    )
-}
-
 /**
- * Luxury Celestial Liquid Glass Next-Prayer Hero Card featuring a
- * luminous Orbital Circular Progress Halo (watch-face dial with glowing orb tip),
- * prayer-aware living sky, mosque silhouette, metallic gold countdown, and Tahajjud shortcut.
+ * Luxury Emerald & Gold Liquid Glass Next-Prayer Hero Card.
+ * Preserves the iconic deep-emerald Islamic geometric golden-ray hero background
+ * in full vivid clarity, paired with a luminous Orbital Circular Progress Dial,
+ * metallic gold countdown, frosted emerald-gold pills, and quick Tahajjud shortcut.
  */
 @Composable
 fun HeroPrayerGlassCard(
@@ -142,18 +83,17 @@ fun HeroPrayerGlassCard(
     onOpenTahajjudReminders: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val palette = paletteForPrayer(nextInfo.nextPrayer)
-    val heroShape = RoundedCornerShape(32.dp)
+    val heroShape = RoundedCornerShape(30.dp)
 
-    val infiniteTransition = rememberInfiniteTransition(label = "hero_celestial_shimmer")
+    val infiniteTransition = rememberInfiniteTransition(label = "hero_emerald_shimmer")
     val shimmerPhase by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 5200, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 4800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "aurora_pulse"
+        label = "gold_glow_pulse"
     )
 
     Box(
@@ -161,114 +101,74 @@ fun HeroPrayerGlassCard(
             .fillMaxWidth()
             .height(224.dp)
             .shadow(
-                elevation = 18.dp,
+                elevation = 16.dp,
                 shape = heroShape,
-                ambientColor = palette.shadowTint.copy(alpha = 0.55f),
-                spotColor = palette.shadowTint.copy(alpha = 0.65f),
+                ambientColor = EmeraldDeep.copy(alpha = 0.55f),
+                spotColor = EmeraldDeep.copy(alpha = 0.65f),
                 clip = false
             )
             .clip(heroShape)
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(palette.skyTop, palette.skyMid, palette.skyBottom),
-                    start = Offset(0f, 0f),
-                    end = Offset(1100f, 700f)
-                )
-            )
             .clickable(onClick = onOpenPrayers)
             .testTag("hero_next_prayer_card")
     ) {
-        // Layered Celestial Liquid Glass Canvas Artwork
+        // 1. Original signature Royal Emerald & Golden Sunbeam Islamic Geometric Background (vivid, unobscured)
+        Image(
+            painter = painterResource(id = R.drawable.img_noor_hero_bg_1795289370813),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // 2. Very light edge-depth vignette + subtle animated golden aura so artwork stays crisp and text pops
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
-
-            // 1. Living celestial aurora orbs
+            drawRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0x14031711),
+                        Color(0x24041A13),
+                        Color(0x52020F0B)
+                    )
+                )
+            )
+            // Soft breathing golden light glow enhancing the upper-right sunbeam
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        palette.auroraPrimary.copy(alpha = 0.34f + shimmerPhase * 0.14f),
+                        GoldBright.copy(alpha = 0.10f + shimmerPhase * 0.08f),
                         Color.Transparent
                     ),
-                    center = Offset(w * (0.20f + shimmerPhase * 0.04f), h * 0.14f),
-                    radius = w * 0.72f
-                )
-            )
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(
-                        palette.auroraSecondary.copy(alpha = 0.30f + (1f - shimmerPhase) * 0.12f),
-                        Color.Transparent
-                    ),
-                    center = Offset(w * 0.84f, h * 0.24f),
-                    radius = w * 0.66f
-                )
-            )
-
-            // 2. Subtle Islamic Rub el Hizb luminous geometric watermark
-            drawRubElHizb(
-                cx = w * 0.50f,
-                cy = h * 0.48f,
-                radius = h * 0.44f,
-                color = GoldBright.copy(alpha = 0.07f + shimmerPhase * 0.03f),
-                strokeWidthPx = 1.dp.toPx()
-            )
-
-            // 3. Celestial sky details: twinkling stars OR soft golden sunbeams
-            if (palette.isNightSky) {
-                drawCelestialCrescentAndStars(w, h, shimmerPhase)
-            } else {
-                drawRadiantSunbeams(w, h, shimmerPhase)
-            }
-
-            // 4. Illuminated Royal Mosque Silhouette along the lower horizon
-            drawIlluminatedMosqueHorizon(
-                w = w,
-                h = h,
-                topColor = palette.mosqueTintTop,
-                bottomColor = palette.mosqueTintBottom
-            )
-
-            // 5. Crisp Liquid Glass diagonal crystal specular reflection
-            drawRect(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.20f),
-                        Color.White.copy(alpha = 0.05f),
-                        Color.Transparent
-                    ),
-                    start = Offset(w * 0.14f, 0f),
-                    end = Offset(w * 0.60f, h * 0.48f)
+                    center = Offset(size.width * 0.88f, size.height * 0.12f),
+                    radius = size.width * 0.58f
                 )
             )
         }
 
-        // Prismatic Liquid Glass outer rim border
+        // 3. Prismatic Liquid Gold & Emerald outer rim border
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .border(
-                    width = 1.5.dp,
+                    width = 1.4.dp,
                     brush = Brush.linearGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.78f),
-                            GoldBright.copy(alpha = 0.90f),
-                            palette.accentGlow.copy(alpha = 0.55f),
-                            GoldPrimary.copy(alpha = 0.42f)
+                            GoldBright.copy(alpha = 0.92f),
+                            Color.White.copy(alpha = 0.45f),
+                            EmeraldSoft.copy(alpha = 0.45f),
+                            GoldPrimary.copy(alpha = 0.55f)
                         )
                     ),
                     shape = heroShape
                 )
         )
 
-        // Foreground Content Layout
+        // 4. Foreground Content Layout
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // Top Row: Crystal Glass "Next Prayer" badge + Sleek Tahajjud & Adhkar Shortcut Pill
+            // Top Row: Crystal Emerald-Gold "Next Prayer" badge + Sleek Tahajjud Shortcut Pill
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -280,13 +180,13 @@ fun HeroPrayerGlassCard(
                         .clip(RoundedCornerShape(50))
                         .background(
                             Brush.horizontalGradient(
-                                listOf(Color(0x36FFFFFF), Color(0x1CFFFFFF))
+                                listOf(Color(0x52082A1F), Color(0x360C3D2E))
                             )
                         )
                         .border(
                             1.dp,
                             Brush.linearGradient(
-                                listOf(Color.White.copy(alpha = 0.65f), GoldBright.copy(alpha = 0.45f))
+                                listOf(GoldBright.copy(alpha = 0.72f), Color.White.copy(alpha = 0.35f))
                             ),
                             RoundedCornerShape(50)
                         )
@@ -314,13 +214,13 @@ fun HeroPrayerGlassCard(
                         .clip(RoundedCornerShape(50))
                         .background(
                             Brush.horizontalGradient(
-                                listOf(Color(0x47F9E5AE), Color(0x280E3548))
+                                listOf(Color(0x47E2BE6E), Color(0x4D07241B))
                             )
                         )
                         .border(
                             1.dp,
                             Brush.linearGradient(
-                                listOf(GoldBright.copy(alpha = 0.85f), Color.White.copy(alpha = 0.42f))
+                                listOf(GoldBright.copy(alpha = 0.85f), Color.White.copy(alpha = 0.38f))
                             ),
                             RoundedCornerShape(50)
                         )
@@ -351,7 +251,7 @@ fun HeroPrayerGlassCard(
                 }
             }
 
-            // Main Centerpiece Row: Prayer Typography + Glowing Celestial Orbital Progress Ring
+            // Main Centerpiece Row: Prayer Typography + Glowing Emerald-Gold Orbital Progress Circle
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -399,8 +299,8 @@ fun HeroPrayerGlassCard(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(50))
-                                .background(Color(0x33FFFFFF))
-                                .border(0.85.dp, GoldBright.copy(alpha = 0.55f), RoundedCornerShape(50))
+                                .background(Color(0x47062319))
+                                .border(0.9.dp, GoldBright.copy(alpha = 0.60f), RoundedCornerShape(50))
                                 .padding(horizontal = 10.dp, vertical = 4.dp)
                         ) {
                             Icon(
@@ -433,7 +333,7 @@ fun HeroPrayerGlassCard(
                                 ),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.SemiBold,
-                                color = palette.accentGlow,
+                                color = EmeraldSoft,
                                 maxLines = 1
                             )
                         }
@@ -442,11 +342,11 @@ fun HeroPrayerGlassCard(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Glowing Celestial Orbital Progress Circle (replaces linear progress bar)
+                // Glowing Emerald & Gold Orbital Progress Circle
                 CelestialOrbitalProgressRing(
                     progress = nextInfo.progress,
                     prayer = nextInfo.nextPrayer,
-                    accentColor = palette.accentGlow,
+                    accentColor = EmeraldSoft,
                     shimmerPhase = shimmerPhase,
                     lang = lang,
                     modifier = Modifier.size(124.dp)
@@ -457,7 +357,7 @@ fun HeroPrayerGlassCard(
 }
 
 /**
- * Luminous Celestial Circular Progress Dial with frosted glass medallion core,
+ * Luminous Emerald & Gold Circular Progress Dial with frosted glass medallion core,
  * 12 subtle celestial dial markers, glowing gold-to-emerald sweep arc, and orbiting pearl-star tip.
  */
 @Composable
@@ -484,13 +384,13 @@ private fun CelestialOrbitalProgressRing(
             val strokePx = 7.5.dp.toPx()
             val outerGlowRadius = size.minDimension / 2f - strokePx * 0.9f
 
-            // 1. Frosted liquid glass circular medallion interior
+            // 1. Frosted liquid emerald-glass circular medallion interior
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        Color(0x47FFFFFF),
-                        Color(0x360C2E47),
-                        Color(0x52061529)
+                        Color(0x45184D3C),
+                        Color(0x5208261C),
+                        Color(0x6B03140E)
                     ),
                     center = Offset(cx - outerGlowRadius * 0.25f, cy - outerGlowRadius * 0.25f),
                     radius = outerGlowRadius * 1.35f
@@ -499,16 +399,16 @@ private fun CelestialOrbitalProgressRing(
                 center = Offset(cx, cy)
             )
 
-            // 2. Subtle inner Rub el Hizb star ornament inside the dial
+            // 2. Subtle inner Rub el Hizb golden star ornament inside the dial
             drawRubElHizb(
                 cx = cx,
                 cy = cy,
                 radius = outerGlowRadius * 0.62f,
-                color = GoldBright.copy(alpha = 0.14f + shimmerPhase * 0.06f),
+                color = GoldBright.copy(alpha = 0.16f + shimmerPhase * 0.06f),
                 strokeWidthPx = 0.85.dp.toPx()
             )
 
-            // 3. Twelve delicate golden celestial watch-face ticks around inner rim
+            // 3. Twelve delicate golden watch-face ticks around inner rim
             val tickOuter = outerGlowRadius - strokePx * 0.72f
             val tickInner = tickOuter - 4.dp.toPx()
             for (i in 0 until 12) {
@@ -523,7 +423,7 @@ private fun CelestialOrbitalProgressRing(
                     cy + (tickOuter * sin(angleRad)).toFloat()
                 )
                 drawLine(
-                    color = if (isCardinal) GoldBright.copy(alpha = 0.65f) else Color.White.copy(alpha = 0.28f),
+                    color = if (isCardinal) GoldBright.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.26f),
                     start = start,
                     end = end,
                     strokeWidth = if (isCardinal) 1.5.dp.toPx() else 1.dp.toPx(),
@@ -545,10 +445,10 @@ private fun CelestialOrbitalProgressRing(
                 style = Stroke(width = strokePx, cap = StrokeCap.Round)
             )
 
-            // 5. Soft radiant outer bloom behind active progress arc
+            // 5. Soft radiant golden bloom behind active progress arc
             val sweepAngle = 360f * clamped
             drawArc(
-                color = GoldBright.copy(alpha = 0.24f + shimmerPhase * 0.10f),
+                color = GoldBright.copy(alpha = 0.26f + shimmerPhase * 0.10f),
                 startAngle = -90f,
                 sweepAngle = sweepAngle,
                 useCenter = false,
@@ -557,7 +457,7 @@ private fun CelestialOrbitalProgressRing(
                 style = Stroke(width = strokePx + 5.dp.toPx(), cap = StrokeCap.Round)
             )
 
-            // 6. Luminous liquid-gold & celestial turquoise active progress arc
+            // 6. Luminous liquid-gold & emerald active progress arc
             drawArc(
                 brush = Brush.sweepGradient(
                     0.0f to accentColor,
@@ -581,7 +481,7 @@ private fun CelestialOrbitalProgressRing(
 
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(Color(0xE6FFF8DF), GoldBright.copy(alpha = 0.35f), Color.Transparent),
+                    colors = listOf(Color(0xE6FFF8DF), GoldBright.copy(alpha = 0.38f), Color.Transparent),
                     center = Offset(tipX, tipY),
                     radius = 10.dp.toPx()
                 ),
@@ -604,8 +504,8 @@ private fun CelestialOrbitalProgressRing(
                 modifier = Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(GoldBright.copy(alpha = 0.18f))
-                    .border(0.7.dp, GoldBright.copy(alpha = 0.55f), CircleShape),
+                    .background(GoldBright.copy(alpha = 0.20f))
+                    .border(0.75.dp, GoldBright.copy(alpha = 0.62f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -630,145 +530,9 @@ private fun CelestialOrbitalProgressRing(
             Text(
                 text = L10n.pick(lang, "تقدم الوقت", "Elapsed", "Vaqt"),
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-                color = Color.White.copy(alpha = 0.80f),
+                color = Color.White.copy(alpha = 0.84f),
                 maxLines = 1
             )
         }
-    }
-}
-
-private fun DrawScope.drawCelestialCrescentAndStars(w: Float, h: Float, shimmer: Float) {
-    val moonX = w * 0.44f
-    val moonY = h * 0.24f
-    val moonR = 16.dp.toPx()
-    drawCircle(
-        brush = Brush.radialGradient(
-            colors = listOf(GoldBright.copy(alpha = 0.24f + shimmer * 0.10f), Color.Transparent),
-            center = Offset(moonX, moonY),
-            radius = moonR * 3.4f
-        ),
-        radius = moonR * 3.4f,
-        center = Offset(moonX, moonY)
-    )
-
-    val stars = listOf(
-        Triple(0.32f, 0.20f, 3.8f),
-        Triple(0.56f, 0.16f, 4.6f),
-        Triple(0.64f, 0.30f, 3.0f),
-        Triple(0.38f, 0.37f, 2.6f),
-        Triple(0.24f, 0.32f, 3.2f),
-        Triple(0.75f, 0.15f, 2.8f)
-    )
-    stars.forEachIndexed { idx, (fx, fy, sizeDp) ->
-        val twinkle = if (idx % 2 == 0) 0.45f + shimmer * 0.50f else 0.90f - shimmer * 0.45f
-        val sx = w * fx
-        val sy = h * fy
-        val r = sizeDp.dp.toPx()
-        val starPath = Path().apply {
-            moveTo(sx, sy - r)
-            quadraticTo(sx, sy, sx + r, sy)
-            quadraticTo(sx, sy, sx, sy + r)
-            quadraticTo(sx, sy, sx - r, sy)
-            quadraticTo(sx, sy, sx, sy - r)
-            close()
-        }
-        drawPath(starPath, color = Color(0xFFFFF5D1).copy(alpha = twinkle))
-    }
-}
-
-private fun DrawScope.drawRadiantSunbeams(w: Float, h: Float, shimmer: Float) {
-    val origin = Offset(w * 0.48f, -h * 0.12f)
-    val beamAngles = listOf(58.0, 74.0, 92.0, 110.0, 126.0)
-    beamAngles.forEachIndexed { idx, deg ->
-        val rad = deg * PI / 180.0
-        val spread = 5.5 * PI / 180.0
-        val length = w * 0.95f
-        val p1 = Offset(
-            origin.x + (length * cos(rad - spread)).toFloat(),
-            origin.y + (length * sin(rad - spread)).toFloat()
-        )
-        val p2 = Offset(
-            origin.x + (length * cos(rad + spread)).toFloat(),
-            origin.y + (length * sin(rad + spread)).toFloat()
-        )
-        val rayPath = Path().apply {
-            moveTo(origin.x, origin.y)
-            lineTo(p1.x, p1.y)
-            lineTo(p2.x, p2.y)
-            close()
-        }
-        val alpha = (0.045f + if (idx % 2 == 0) shimmer * 0.03f else (1f - shimmer) * 0.025f)
-        drawPath(
-            path = rayPath,
-            brush = Brush.verticalGradient(
-                colors = listOf(Color(0xFFFFF4CC).copy(alpha = alpha), Color.Transparent)
-            )
-        )
-    }
-}
-
-private fun DrawScope.drawIlluminatedMosqueHorizon(
-    w: Float,
-    h: Float,
-    topColor: Color,
-    bottomColor: Color
-) {
-    val base = h
-    val mosqueHeight = h * 0.40f
-    val brush = Brush.verticalGradient(
-        colors = listOf(topColor, bottomColor),
-        startY = base - mosqueHeight,
-        endY = base
-    )
-
-    val cx = w * 0.50f
-    val domeR = w * 0.115f
-    val domePath = Path().apply {
-        moveTo(cx - domeR, base)
-        lineTo(cx - domeR, base - mosqueHeight * 0.34f)
-        cubicTo(
-            cx - domeR, base - mosqueHeight * 0.76f,
-            cx - domeR * 0.24f, base - mosqueHeight * 0.90f,
-            cx, base - mosqueHeight
-        )
-        cubicTo(
-            cx + domeR * 0.24f, base - mosqueHeight * 0.90f,
-            cx + domeR, base - mosqueHeight * 0.76f,
-            cx + domeR, base - mosqueHeight * 0.34f
-        )
-        lineTo(cx + domeR, base)
-        close()
-    }
-    drawPath(domePath, brush = brush)
-
-    listOf(0.32f, 0.68f).forEach { frac ->
-        val sx = w * frac
-        val sr = w * 0.068f
-        val sidePath = Path().apply {
-            moveTo(sx - sr, base)
-            lineTo(sx - sr, base - mosqueHeight * 0.26f)
-            cubicTo(sx - sr, base - mosqueHeight * 0.56f, sx, base - mosqueHeight * 0.68f, sx, base - mosqueHeight * 0.70f)
-            cubicTo(sx, base - mosqueHeight * 0.68f, sx + sr, base - mosqueHeight * 0.56f, sx + sr, base - mosqueHeight * 0.26f)
-            lineTo(sx + sr, base)
-            close()
-        }
-        drawPath(sidePath, brush = brush)
-    }
-
-    listOf(0.20f, 0.80f).forEach { frac ->
-        val mx = w * frac
-        val mw = w * 0.018f
-        drawRect(
-            brush = brush,
-            topLeft = Offset(mx - mw / 2f, base - mosqueHeight * 0.80f),
-            size = Size(mw, mosqueHeight * 0.80f)
-        )
-        val spire = Path().apply {
-            moveTo(mx - mw * 0.9f, base - mosqueHeight * 0.78f)
-            lineTo(mx, base - mosqueHeight * 0.99f)
-            lineTo(mx + mw * 0.9f, base - mosqueHeight * 0.78f)
-            close()
-        }
-        drawPath(spire, brush = brush)
     }
 }
