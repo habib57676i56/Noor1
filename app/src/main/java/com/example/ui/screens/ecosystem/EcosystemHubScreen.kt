@@ -25,6 +25,8 @@ import androidx.compose.material.icons.rounded.Book
 import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.ChildCare
 import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.EventRepeat
+import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.MenuBook
@@ -32,6 +34,7 @@ import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.OndemandVideo
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.material.icons.rounded.Radio
@@ -101,6 +104,9 @@ fun EcosystemHubScreen(
     onOpenZakat: () -> Unit = {},
     onOpenAsmaUlHusna: () -> Unit = {},
     onOpenWorshipGuides: () -> Unit = {},
+    onOpenQadaTracker: () -> Unit = {},
+    onOpenMirath: () -> Unit = {},
+    onOpenCardDesigner: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -212,6 +218,21 @@ fun EcosystemHubScreen(
             "دليل الوضوء والعمرة والرقية", "Wudu, Umrah & Ruqyah",
             "خطوات الوضوء ومناسك العمرة والرقية الشرعية", "Step-by-Step Wudu, Umrah Rituals & Ruqyah",
             Icons.Rounded.Mosque, Color(0xFF1A9A6F), "hub_worship_guides", onOpenWorshipGuides
+        ),
+        EcosystemModuleItem(
+            "متابع قضاء الصلوات", "Missed Prayers (Qada)",
+            "حساب الفوائت وتتبع القضاء اليومي بخطة منظمة", "Track & Complete Missed Prayers Daily",
+            Icons.Rounded.EventRepeat, EmeraldPrimary, "hub_qada_tracker", onOpenQadaTracker
+        ),
+        EcosystemModuleItem(
+            "حاسبة المواريث الشرعية", "Inheritance (Mirath)",
+            "توزيع التركة وفق الفروض والعصبة والحجب والعول", "Shariah Estate Shares, Awl, Radd & Blocking",
+            Icons.Rounded.Gavel, GoldPrimary, "hub_mirath", onOpenMirath
+        ),
+        EcosystemModuleItem(
+            "مصمم البطاقات الإسلامية", "Islamic Card Designer",
+            "صمّم بطاقات آيات وأدعية وتهاني وشاركها كصورة", "Create & Share Luxury Ayah & Dua Cards",
+            Icons.Rounded.Palette, Color(0xFF2FC291), "hub_card_designer", onOpenCardDesigner
         )
     )
 

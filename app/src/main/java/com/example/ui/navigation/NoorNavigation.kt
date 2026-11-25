@@ -102,8 +102,10 @@ import com.example.ui.screens.ecosystem.AsmaUlHusnaScreen
 import com.example.ui.screens.ecosystem.EcosystemHubScreen
 import com.example.ui.screens.ecosystem.HalaqatScreen
 import com.example.ui.screens.ecosystem.HifzAiScreen
+import com.example.ui.screens.ecosystem.IslamicCardDesignerScreen
 import com.example.ui.screens.ecosystem.IslamicLibraryScreen
 import com.example.ui.screens.ecosystem.KhatmAndWorshipScreen
+import com.example.ui.screens.ecosystem.MirathCalculatorScreen
 import com.example.ui.screens.ecosystem.NoorDuaaScreen
 import com.example.ui.screens.ecosystem.NoorKidsScreen
 import com.example.ui.screens.ecosystem.NoorLocalAiScreen
@@ -114,6 +116,7 @@ import com.example.ui.screens.ecosystem.NoorTafseerExplorerScreen
 import com.example.ui.screens.ecosystem.NoorVideosScreen
 import com.example.ui.screens.ecosystem.NoorZakatScreen
 import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
+import com.example.ui.screens.ecosystem.QadaTrackerScreen
 import com.example.ui.screens.ecosystem.TajweedScreen
 import com.example.ui.screens.ecosystem.WorshipGuidesScreen
 import com.example.data.local.catalog.IslamicVideoCategory
@@ -170,6 +173,9 @@ object NoorRoutes {
     const val ZAKAT = "zakat"
     const val ASMA_UL_HUSNA = "asma_ul_husna"
     const val WORSHIP_GUIDES = "worship_guides"
+    const val QADA_TRACKER = "qada_tracker"
+    const val MIRATH = "mirath"
+    const val CARD_DESIGNER = "card_designer"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -471,7 +477,10 @@ fun NoorAppShell(
                                     onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) },
                                     onOpenZakat = { navController.navigate(NoorRoutes.ZAKAT) },
                                     onOpenAsmaUlHusna = { navController.navigate(NoorRoutes.ASMA_UL_HUSNA) },
-                                    onOpenWorshipGuides = { navController.navigate(NoorRoutes.WORSHIP_GUIDES) }
+                                    onOpenWorshipGuides = { navController.navigate(NoorRoutes.WORSHIP_GUIDES) },
+                                    onOpenQadaTracker = { navController.navigate(NoorRoutes.QADA_TRACKER) },
+                                    onOpenMirath = { navController.navigate(NoorRoutes.MIRATH) },
+                                    onOpenCardDesigner = { navController.navigate(NoorRoutes.CARD_DESIGNER) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -662,6 +671,9 @@ fun NoorAppShell(
                                     onOpenZakat = { navController.navigate(NoorRoutes.ZAKAT) },
                                     onOpenAsmaUlHusna = { navController.navigate(NoorRoutes.ASMA_UL_HUSNA) },
                                     onOpenWorshipGuides = { navController.navigate(NoorRoutes.WORSHIP_GUIDES) },
+                                    onOpenQadaTracker = { navController.navigate(NoorRoutes.QADA_TRACKER) },
+                                    onOpenMirath = { navController.navigate(NoorRoutes.MIRATH) },
+                                    onOpenCardDesigner = { navController.navigate(NoorRoutes.CARD_DESIGNER) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -835,6 +847,21 @@ fun NoorAppShell(
                             }
                             composable(NoorRoutes.WORSHIP_GUIDES) {
                                 WorshipGuidesScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.QADA_TRACKER) {
+                                QadaTrackerScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.MIRATH) {
+                                MirathCalculatorScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.CARD_DESIGNER) {
+                                IslamicCardDesignerScreen(
                                     onBack = { navController.popBackStack() }
                                 )
                             }

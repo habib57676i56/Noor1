@@ -335,6 +335,17 @@ object L10n {
         "Step-by-Step Wudu, Umrah Rituals & Ruqyah" to "Bosqichma-bosqich tahorat, Umra va Ruqya",
         "Zakat" to "Zakot",
         "99 Names" to "99 Ism",
-        "Guides" to "Qo'llanma"
+        "Guides" to "Qo'llanma",
+
+        // Qada Tracker, Mirath Calculator & Islamic Card Designer
+        "Missed Prayers (Qada)" to "Qazo namozlar kuzatuvchisi",
+        "Track & Complete Missed Prayers Daily" to "Qazo namozlarni har kuni kuzatib o'qing",
+        "Inheritance (Mirath)" to "Meros taqsimoti (Meros)",
+        "Shariah Estate Shares, Awl, Radd & Blocking" to "Shariat ulushlari, Avl, Radd va Hijob",
+        "Islamic Card Designer" to "Islomiy kartochka dizayneri",
+        "Create & Share Luxury Ayah & Dua Cards" to "Oyat va duo kartochkalarini yarating va ulashing",
+        "Qada" to "Qazo",
+        "Mirath" to "Meros",
+        "Cards" to "Kartalar"
     )
 }

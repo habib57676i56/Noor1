@@ -27,7 +27,9 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.DashboardCustomize
+import androidx.compose.material.icons.rounded.EventRepeat
 import androidx.compose.material.icons.rounded.Explore
+import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material.icons.rounded.LocationOn
@@ -36,6 +38,7 @@ import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.OndemandVideo
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Settings
@@ -133,7 +136,10 @@ fun HomeScreen(
     onOpenOfflineAdmin: () -> Unit = {},
     onOpenZakat: () -> Unit = {},
     onOpenAsmaUlHusna: () -> Unit = {},
-    onOpenWorshipGuides: () -> Unit = {}
+    onOpenWorshipGuides: () -> Unit = {},
+    onOpenQadaTracker: () -> Unit = {},
+    onOpenMirath: () -> Unit = {},
+    onOpenCardDesigner: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -481,6 +487,15 @@ fun HomeScreen(
                     HomeEcoMiniTile(L10n.pick(lang, "حاسبة الزكاة", "Zakat", "Zakot"), Icons.Rounded.Calculate, onOpenZakat, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "أسماء الله", "99 Names", "99 Ism"), Icons.Rounded.AutoAwesome, onOpenAsmaUlHusna, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "الوضوء والعمرة", "Guides", "Qo'llanma"), Icons.Rounded.Mosque, onOpenWorshipGuides, Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeEcoMiniTile(L10n.pick(lang, "قضاء الصلوات", "Qada", "Qazo"), Icons.Rounded.EventRepeat, onOpenQadaTracker, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "المواريث", "Mirath", "Meros"), Icons.Rounded.Gavel, onOpenMirath, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "بطاقات آيات", "Cards", "Kartalar"), Icons.Rounded.Palette, onOpenCardDesigner, Modifier.weight(1f))
                 }
             }
         }
