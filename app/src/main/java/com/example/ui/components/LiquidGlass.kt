@@ -1,5 +1,11 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -36,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -103,42 +110,59 @@ fun IslamicGeometricBackground(
     val orbAccent = noorColors.glassOrbAccent
     val lowerJade = if (noorColors.isDark) LiquidAuroraJade else Color(0x1E0E7C5D)
 
+    val ambientTransition = rememberInfiniteTransition(label = "noor_living_atmosphere")
+    val auroraPhase by ambientTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = (2.0 * PI).toFloat(),
+        animationSpec = infiniteRepeatable(tween(24000, easing = LinearEasing), RepeatMode.Restart),
+        label = "aurora_drift_phase"
+    )
+    val moteProgress by ambientTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(18000, easing = LinearEasing), RepeatMode.Restart),
+        label = "starlight_motes"
+    )
+
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(baseGradient)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            // Top-left radiant emerald liquid orb
+            val driftX = sin(auroraPhase.toDouble()).toFloat() * size.width * 0.06f
+            val driftY = cos(auroraPhase.toDouble()).toFloat() * size.height * 0.04f
+
+            // Top-left radiant emerald liquid orb (living drift)
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(orbPrimary, Color.Transparent),
-                    center = Offset(size.width * 0.18f, size.height * 0.08f),
-                    radius = size.width * 0.92f
+                    center = Offset(size.width * 0.18f + driftX, size.height * 0.08f + driftY),
+                    radius = size.width * 0.94f
                 )
             )
             // Top-right warm champagne-gold refraction orb
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(orbSecondary, Color.Transparent),
-                    center = Offset(size.width * 0.88f, size.height * 0.16f),
-                    radius = size.width * 0.78f
+                    center = Offset(size.width * 0.88f - driftX, size.height * 0.16f - driftY * 0.8f),
+                    radius = size.width * 0.80f
                 )
             )
             // Mid-left liquid cyan prism glow for frosted glass depth
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(orbAccent, Color.Transparent),
-                    center = Offset(size.width * 0.10f, size.height * 0.56f),
-                    radius = size.width * 0.75f
+                    center = Offset(size.width * 0.10f - driftX * 0.7f, size.height * 0.56f + driftY),
+                    radius = size.width * 0.78f
                 )
             )
             // Bottom-right luminous jade pool under the floating dock
             drawRect(
                 brush = Brush.radialGradient(
                     colors = listOf(lowerJade, Color.Transparent),
-                    center = Offset(size.width * 0.82f, size.height * 0.88f),
-                    radius = size.width * 0.85f
+                    center = Offset(size.width * 0.82f + driftX * 0.8f, size.height * 0.88f - driftY * 0.6f),
+                    radius = size.width * 0.88f
                 )
             )
 
@@ -153,6 +177,55 @@ fun IslamicGeometricBackground(
                     val cx = c * cellSize + if (r % 2 == 1) cellSize * 0.5f else 0f
                     val cy = r * cellSize * 0.88f
                     drawRubElHizb(cx, cy, radius, patternColor, 0.85.dp.toPx())
+                }
+            }
+
+            // Floating Golden Noor Starlight Motes (delicate rising embers & 4-point sparkles)
+            val moteCount = 20
+            val moteGold = if (noorColors.isDark) GoldBright else GoldPrimary
+            val moteJade = if (noorColors.isDark) EmeraldBright else EmeraldPrimary
+            for (i in 0 until moteCount) {
+                val seedX = ((i * 73 + 19) % 97) / 97f
+                val seedY = ((i * 41 + 11) % 89) / 89f
+                val speed = 0.65f + (i % 4) * 0.22f
+                val yNorm = ((seedY - moteProgress * speed) % 1f + 1f) % 1f
+                val sway = sin((auroraPhase * 1.4f + i * 0.9f).toDouble()).toFloat() * 14.dp.toPx()
+                val mx = seedX * size.width + sway
+                val my = yNorm * size.height
+                val twinkle = (0.35f + 0.65f * ((sin((auroraPhase * 2.5f + i * 1.7f).toDouble()) + 1.0) / 2.0)).toFloat()
+                val baseAlpha = (if (noorColors.isDark) 0.42f else 0.24f) * twinkle
+                val moteColor = if (i % 3 == 0) moteJade else moteGold
+                val r = (1.5f + (i % 3) * 1.1f).dp.toPx()
+
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(moteColor.copy(alpha = baseAlpha), Color.Transparent),
+                        center = Offset(mx, my),
+                        radius = r * 3.4f
+                    ),
+                    radius = r * 3.4f,
+                    center = Offset(mx, my)
+                )
+                drawCircle(
+                    color = moteColor.copy(alpha = (baseAlpha * 1.45f).coerceAtMost(0.85f)),
+                    radius = r * 0.72f,
+                    center = Offset(mx, my)
+                )
+                // 4-point star glint on hero motes
+                if (i % 4 == 0 && twinkle > 0.72f) {
+                    val rayLen = r * 3.0f * twinkle
+                    drawLine(
+                        color = moteColor.copy(alpha = baseAlpha * 0.85f),
+                        start = Offset(mx - rayLen, my),
+                        end = Offset(mx + rayLen, my),
+                        strokeWidth = 0.8.dp.toPx()
+                    )
+                    drawLine(
+                        color = moteColor.copy(alpha = baseAlpha * 0.85f),
+                        start = Offset(mx, my - rayLen),
+                        end = Offset(mx, my + rayLen),
+                        strokeWidth = 0.8.dp.toPx()
+                    )
                 }
             }
         }

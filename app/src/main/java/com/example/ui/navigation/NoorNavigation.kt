@@ -107,8 +107,10 @@ import com.example.ui.screens.ecosystem.GlobalUmmahPulseScreen
 import com.example.ui.screens.ecosystem.HalaqatScreen
 import com.example.ui.screens.ecosystem.HaramainLiveScreen
 import com.example.ui.screens.ecosystem.HifzAiScreen
+import com.example.ui.screens.ecosystem.IslamicAstrolabeScreen
 import com.example.ui.screens.ecosystem.IslamicCardDesignerScreen
 import com.example.ui.screens.ecosystem.IslamicLibraryScreen
+import com.example.ui.screens.ecosystem.IslamicSanctuaryAudioScreen
 import com.example.ui.screens.ecosystem.KhatmAndWorshipScreen
 import com.example.ui.screens.ecosystem.LiveHadithEncyclopediaScreen
 import com.example.ui.screens.ecosystem.MirathCalculatorScreen
@@ -123,6 +125,7 @@ import com.example.ui.screens.ecosystem.NoorVideosScreen
 import com.example.ui.screens.ecosystem.NoorZakatScreen
 import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
 import com.example.ui.screens.ecosystem.QadaTrackerScreen
+import com.example.ui.screens.ecosystem.QuranCalligraphyStudioScreen
 import com.example.ui.screens.ecosystem.QuranIrabSarfScreen
 import com.example.ui.screens.ecosystem.QuranMiraclesAndParablesScreen
 import com.example.ui.screens.ecosystem.QuranMutashabihatScreen
@@ -200,6 +203,9 @@ object NoorRoutes {
     const val COSMIC_QIBLA_GLOBE = "cosmic_qibla_globe"
     const val QURAN_SOUL_REMEDY = "quran_soul_remedy"
     const val QURAN_MIRACLES_PROPHETS = "quran_miracles_prophets"
+    const val QURAN_CALLIGRAPHY_STUDIO = "quran_calligraphy_studio"
+    const val ISLAMIC_SANCTUARY_AUDIO = "islamic_sanctuary_audio"
+    const val ISLAMIC_ASTROLABE = "islamic_astrolabe"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -516,7 +522,10 @@ fun NoorAppShell(
                                     onOpenQuranUniverse = { navController.navigate(NoorRoutes.QURAN_UNIVERSE) },
                                     onOpenCosmicGlobe = { navController.navigate(NoorRoutes.COSMIC_QIBLA_GLOBE) },
                                     onOpenSoulRemedy = { navController.navigate(NoorRoutes.QURAN_SOUL_REMEDY) },
-                                    onOpenMiraclesProphets = { navController.navigate(NoorRoutes.QURAN_MIRACLES_PROPHETS) }
+                                    onOpenMiraclesProphets = { navController.navigate(NoorRoutes.QURAN_MIRACLES_PROPHETS) },
+                                    onOpenCalligraphyStudio = { navController.navigate(NoorRoutes.QURAN_CALLIGRAPHY_STUDIO) },
+                                    onOpenSanctuaryAudio = { navController.navigate(NoorRoutes.ISLAMIC_SANCTUARY_AUDIO) },
+                                    onOpenAstrolabe = { navController.navigate(NoorRoutes.ISLAMIC_ASTROLABE) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -722,6 +731,9 @@ fun NoorAppShell(
                                     onOpenCosmicGlobe = { navController.navigate(NoorRoutes.COSMIC_QIBLA_GLOBE) },
                                     onOpenSoulRemedy = { navController.navigate(NoorRoutes.QURAN_SOUL_REMEDY) },
                                     onOpenMiraclesProphets = { navController.navigate(NoorRoutes.QURAN_MIRACLES_PROPHETS) },
+                                    onOpenCalligraphyStudio = { navController.navigate(NoorRoutes.QURAN_CALLIGRAPHY_STUDIO) },
+                                    onOpenSanctuaryAudio = { navController.navigate(NoorRoutes.ISLAMIC_SANCTUARY_AUDIO) },
+                                    onOpenAstrolabe = { navController.navigate(NoorRoutes.ISLAMIC_ASTROLABE) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -986,6 +998,25 @@ fun NoorAppShell(
                                 QuranMiraclesAndParablesScreen(
                                     onBack = { navController.popBackStack() },
                                     onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.QURAN_CALLIGRAPHY_STUDIO) {
+                                QuranCalligraphyStudioScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.ISLAMIC_SANCTUARY_AUDIO) {
+                                IslamicSanctuaryAudioScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.ISLAMIC_ASTROLABE) {
+                                IslamicAstrolabeScreen(
+                                    userLatitude = prefs.latitude,
+                                    userLongitude = prefs.longitude,
+                                    userCityLabel = L10n.pick(lang, prefs.cityNameAr, prefs.cityNameEn),
+                                    onBack = { navController.popBackStack() }
                                 )
                             }
                         }

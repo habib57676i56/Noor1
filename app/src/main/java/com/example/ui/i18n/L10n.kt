@@ -395,6 +395,15 @@ object L10n {
         "Soul Remedy" to "Qalb shifosi",
         "Cosmic Signs & 25 Prophets" to "Koinot mo'jizalari va 25 Payg'ambar",
         "Cosmic Signs, Parables & Complete 25 Prophets Atlas" to "Ilmiy oyatlar, Qur'on masallari va 25 payg'ambar atlasi",
-        "25 Prophets" to "25 Payg'ambar"
+        "25 Prophets" to "25 Payg'ambar",
+        "Golden Calligraphy Studio" to "Zarhal Xattotlik Studiyasi",
+        "Touch Noor Sparks, 5 Gold-Leaf Themes, Live Audio & HD Art" to "Oltin nur uchqunlari, 5 zarhal palitra, jonli tilovat va HD saqlash",
+        "Calligraphy" to "Xattotlik",
+        "Islamic Acoustic Sanctuary" to "Sokinlik va Audio Voha",
+        "4-Layer Live Rain/Breeze/Stream Mixer + Sakinah Quran & Timer" to "4 qatlamli yomg'ir/shabada/suv mikseri + Qur'on tilovati va taymer",
+        "Sanctuary" to "Sokinlik",
+        "Golden Islamic Astrolabe" to "Oltin Islomiy Asturlob",
+        "Interactive Brass Astrolabe & 15 Historic Arabic Stars Live" to "Interaktiv oltin asturlob va 15 tarixiy arab yulduzlari jonli xaritasi",
+        "Astrolabe" to "Asturlob"
     )
 }

@@ -22,13 +22,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Book
+import androidx.compose.material.icons.rounded.Brush
 import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.ChildCare
 import androidx.compose.material.icons.rounded.CompareArrows
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.EventRepeat
+import androidx.compose.material.icons.rounded.Explore
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Gavel
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HistoryEdu
 import androidx.compose.material.icons.rounded.Hub
@@ -129,6 +132,9 @@ fun EcosystemHubScreen(
     onOpenCosmicGlobe: () -> Unit = {},
     onOpenSoulRemedy: () -> Unit = {},
     onOpenMiraclesProphets: () -> Unit = {},
+    onOpenCalligraphyStudio: () -> Unit = {},
+    onOpenSanctuaryAudio: () -> Unit = {},
+    onOpenAstrolabe: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -259,6 +265,21 @@ fun EcosystemHubScreen(
     )
 
     val liveOnlineFeatures = listOf(
+        EcosystemModuleItem(
+            "مرسم التذهيب والخط العربي ٣D", "Golden Calligraphy Studio",
+            "تأثيرات شرارات النور باللمس + ٥ لوحات تذهيب + تلاوة وحفظ HD", "Touch Noor Sparks, 5 Gold-Leaf Themes, Live Audio & HD Art",
+            Icons.Rounded.Brush, GoldBright, "hub_quran_calligraphy_studio", onOpenCalligraphyStudio
+        ),
+        EcosystemModuleItem(
+            "واحة السكينة والصوتيات الحية", "Islamic Acoustic Sanctuary",
+            "مازج مطر الحرم ونسيم الفجر والماء + تلاوات السكينة ومؤقت النوم", "4-Layer Live Rain/Breeze/Stream Mixer + Sakinah Quran & Timer",
+            Icons.Rounded.GraphicEq, Color(0xFF2DD4BF), "hub_islamic_sanctuary_audio", onOpenSanctuaryAudio
+        ),
+        EcosystemModuleItem(
+            "الأسطرلاب الإسلامي الذهبي", "Golden Islamic Astrolabe",
+            "خريطة السماء الحية و١٥ نجماً عربياً أصيلاً بحساب الزمن النجمي", "Interactive Brass Astrolabe & 15 Historic Arabic Stars Live",
+            Icons.Rounded.Explore, Color(0xFFF59E0B), "hub_islamic_astrolabe", onOpenAstrolabe
+        ),
         EcosystemModuleItem(
             "الكرة الأرضية ٣D والقبلة", "3D Earth & Qibla Globe",
             "كرة أرضية ٣D تفاعلية مع الليل والنهار وقوس القبلة الذهبي", "Interactive 3D Earth, Live Day/Night & Geodesic Qibla Arc",
