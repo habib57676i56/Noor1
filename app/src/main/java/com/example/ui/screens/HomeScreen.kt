@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Campaign
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -129,7 +130,10 @@ fun HomeScreen(
     onOpenLibrary: () -> Unit = {},
     onOpenKhatm: () -> Unit = {},
     onOpenVideos: () -> Unit = {},
-    onOpenOfflineAdmin: () -> Unit = {}
+    onOpenOfflineAdmin: () -> Unit = {},
+    onOpenZakat: () -> Unit = {},
+    onOpenAsmaUlHusna: () -> Unit = {},
+    onOpenWorshipGuides: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -468,6 +472,15 @@ fun HomeScreen(
                     HomeEcoMiniTile(L10n.pick(lang, "فيديوهات", "Videos"), Icons.Rounded.OndemandVideo, onOpenVideos, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "الختمة والصيام", "Khatm"), Icons.Rounded.NightsStay, onOpenKhatm, Modifier.weight(1f))
                     HomeEcoMiniTile(L10n.pick(lang, "الإدارة المحلية", "Local Admin"), Icons.Rounded.AdminPanelSettings, onOpenOfflineAdmin, Modifier.weight(1f))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    HomeEcoMiniTile(L10n.pick(lang, "حاسبة الزكاة", "Zakat", "Zakot"), Icons.Rounded.Calculate, onOpenZakat, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "أسماء الله", "99 Names", "99 Ism"), Icons.Rounded.AutoAwesome, onOpenAsmaUlHusna, Modifier.weight(1f))
+                    HomeEcoMiniTile(L10n.pick(lang, "الوضوء والعمرة", "Guides", "Qo'llanma"), Icons.Rounded.Mosque, onOpenWorshipGuides, Modifier.weight(1f))
                 }
             }
         }

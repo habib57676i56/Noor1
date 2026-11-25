@@ -323,6 +323,18 @@ object L10n {
         "Minute" to "Daqiqa",
         "Quick Presets" to "Tezkor vaqtlar",
         "Tahajjud Alerts" to "Tahajjud",
-        "Next Prayer" to "Keyingi namoz"
+        "Next Prayer" to "Keyingi namoz",
+
+        // Zakat Calculator, 99 Names of Allah & Wudu/Umrah/Ruqyah Guides
+        "Essential Daily Islamic Tools" to "Asosiy kundalik islomiy vositalar",
+        "Zakat Calculator" to "Zakot kalkulyatori",
+        "Wealth, Gold, Silver, Business & Zakat al-Fitr" to "Mol, oltin, kumush, savdo va Fitr zakoti",
+        "99 Names of Allah" to "Allohning 99 go'zal ismlari",
+        "All 99 Beautiful Names with Meanings & Search" to "Barcha 99 ism, ma'nolari va qidiruv",
+        "Wudu, Umrah & Ruqyah" to "Tahorat, Umra va Ruqya",
+        "Step-by-Step Wudu, Umrah Rituals & Ruqyah" to "Bosqichma-bosqich tahorat, Umra va Ruqya",
+        "Zakat" to "Zakot",
+        "99 Names" to "99 Ism",
+        "Guides" to "Qo'llanma"
     )
 }

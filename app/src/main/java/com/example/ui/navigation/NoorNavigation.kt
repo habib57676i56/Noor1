@@ -98,6 +98,7 @@ import com.example.ui.screens.QuranScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.screens.StatsScreen
 import com.example.ui.screens.TasbihScreen
+import com.example.ui.screens.ecosystem.AsmaUlHusnaScreen
 import com.example.ui.screens.ecosystem.EcosystemHubScreen
 import com.example.ui.screens.ecosystem.HalaqatScreen
 import com.example.ui.screens.ecosystem.HifzAiScreen
@@ -111,8 +112,10 @@ import com.example.ui.screens.ecosystem.NoorQuizScreen
 import com.example.ui.screens.ecosystem.NoorRadioScreen
 import com.example.ui.screens.ecosystem.NoorTafseerExplorerScreen
 import com.example.ui.screens.ecosystem.NoorVideosScreen
+import com.example.ui.screens.ecosystem.NoorZakatScreen
 import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
 import com.example.ui.screens.ecosystem.TajweedScreen
+import com.example.ui.screens.ecosystem.WorshipGuidesScreen
 import com.example.data.local.catalog.IslamicVideoCategory
 import com.example.ui.theme.EmeraldDeep
 import com.example.ui.theme.GoldBright
@@ -164,6 +167,9 @@ object NoorRoutes {
     const val DUAA = "duaa"
     const val RADIO = "radio"
     const val OFFLINE_ADMIN = "offline_admin"
+    const val ZAKAT = "zakat"
+    const val ASMA_UL_HUSNA = "asma_ul_husna"
+    const val WORSHIP_GUIDES = "worship_guides"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -462,7 +468,10 @@ fun NoorAppShell(
                                     onOpenLibrary = { navController.navigate(NoorRoutes.LIBRARY) },
                                     onOpenKhatm = { navController.navigate(NoorRoutes.KHATM) },
                                     onOpenVideos = { navController.navigate(NoorRoutes.VIDEOS) },
-                                    onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) }
+                                    onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) },
+                                    onOpenZakat = { navController.navigate(NoorRoutes.ZAKAT) },
+                                    onOpenAsmaUlHusna = { navController.navigate(NoorRoutes.ASMA_UL_HUSNA) },
+                                    onOpenWorshipGuides = { navController.navigate(NoorRoutes.WORSHIP_GUIDES) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -650,6 +659,9 @@ fun NoorAppShell(
                                     onOpenDuaa = { navController.navigate(NoorRoutes.DUAA) },
                                     onOpenRadio = { navController.navigate(NoorRoutes.RADIO) },
                                     onOpenOfflineAdmin = { navController.navigate(NoorRoutes.OFFLINE_ADMIN) },
+                                    onOpenZakat = { navController.navigate(NoorRoutes.ZAKAT) },
+                                    onOpenAsmaUlHusna = { navController.navigate(NoorRoutes.ASMA_UL_HUSNA) },
+                                    onOpenWorshipGuides = { navController.navigate(NoorRoutes.WORSHIP_GUIDES) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -808,6 +820,21 @@ fun NoorAppShell(
                             composable(NoorRoutes.OFFLINE_ADMIN) {
                                 OfflineSuperAdminScreen(
                                     viewModel = ecosystemViewModel,
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.ZAKAT) {
+                                NoorZakatScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.ASMA_UL_HUSNA) {
+                                AsmaUlHusnaScreen(
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.WORSHIP_GUIDES) {
+                                WorshipGuidesScreen(
                                     onBack = { navController.popBackStack() }
                                 )
                             }

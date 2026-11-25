@@ -22,12 +22,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Book
+import androidx.compose.material.icons.rounded.Calculate
 import androidx.compose.material.icons.rounded.ChildCare
 import androidx.compose.material.icons.rounded.EditNote
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Mosque
 import androidx.compose.material.icons.rounded.NightsStay
 import androidx.compose.material.icons.rounded.OndemandVideo
 import androidx.compose.material.icons.rounded.Psychology
@@ -96,6 +98,9 @@ fun EcosystemHubScreen(
     onOpenDuaa: () -> Unit,
     onOpenRadio: () -> Unit,
     onOpenOfflineAdmin: () -> Unit,
+    onOpenZakat: () -> Unit = {},
+    onOpenAsmaUlHusna: () -> Unit = {},
+    onOpenWorshipGuides: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -192,6 +197,24 @@ fun EcosystemHubScreen(
         )
     )
 
+    val essentialIslamicTools = listOf(
+        EcosystemModuleItem(
+            "حاسبة الزكاة", "Zakat Calculator",
+            "زكاة المال والذهب والفضة والتجارة وزكاة الفطر", "Wealth, Gold, Silver, Business & Zakat al-Fitr",
+            Icons.Rounded.Calculate, GoldPrimary, "hub_zakat", onOpenZakat
+        ),
+        EcosystemModuleItem(
+            "أسماء الله الحسنى", "99 Names of Allah",
+            "٩٩ اسماً مع المعاني والبحث والمشاركة", "All 99 Beautiful Names with Meanings & Search",
+            Icons.Rounded.AutoAwesome, EmeraldPrimary, "hub_asma_ul_husna", onOpenAsmaUlHusna
+        ),
+        EcosystemModuleItem(
+            "دليل الوضوء والعمرة والرقية", "Wudu, Umrah & Ruqyah",
+            "خطوات الوضوء ومناسك العمرة والرقية الشرعية", "Step-by-Step Wudu, Umrah Rituals & Ruqyah",
+            Icons.Rounded.Mosque, Color(0xFF1A9A6F), "hub_worship_guides", onOpenWorshipGuides
+        )
+    )
+
     Column(modifier = Modifier.fillMaxSize()) {
         NoorScreenHeader(
             title = L10n.pick(lang, "منظومة نور المتكاملة", "NOOR Islamic Ecosystem"),
@@ -254,6 +277,15 @@ fun EcosystemHubScreen(
                         onClick = onAdClick
                     )
                 }
+            }
+
+            item {
+                NoorSectionHeader(
+                    title = L10n.pick(lang, "الأدوات الإسلامية الأساسية (الزكاة، الأسماء، الأدلة)", "Essential Daily Islamic Tools")
+                )
+            }
+            item {
+                ModuleGrid(items = essentialIslamicTools)
             }
 
             item {
