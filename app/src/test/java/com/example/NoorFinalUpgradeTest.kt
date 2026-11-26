@@ -10,6 +10,7 @@ import com.example.ui.screens.ecosystem.AsbabAlNuzulCatalog
 import com.example.ui.screens.ecosystem.HifzSpacedRepetitionEngine
 import com.example.ui.screens.ecosystem.LunarAstronomyEngine
 import com.example.ui.screens.ecosystem.MakhrajZone
+import com.example.ui.screens.ecosystem.NasaMoonSatelliteMath
 import com.example.ui.screens.ecosystem.PropheticSundialEngine
 import com.example.ui.screens.ecosystem.QuranMaqamatCatalog
 import com.example.ui.screens.ecosystem.QuranWaqfCatalog
@@ -33,32 +34,57 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("3.6.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v3.6.0", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("3.7.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v3.7.0", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v3.6.0 passes default v3.6.0 gate, while older v3.5.0 / v3.4.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.6.0", defaultConfig))
+        // New build v3.7.0 passes default v3.7.0 gate, while older v3.6.0 / v3.5.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.7.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.6.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.5.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.4.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "3.6.0", the newly updated v3.6.0 (or v3.7.0) APK opens automatically
-        // while older v3.5.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.6.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.5.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.6.0", forcedWithMin))
+        // with minSupportedVersion = "3.7.0", the newly updated v3.7.0 (or v3.8.0) APK opens automatically
+        // while older v3.6.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.7.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.6.0", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("3.7.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.8.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 3.7.0 blocks 3.6.0 until user updates to 3.7.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.7.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.6.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.7.0", raisedConfig))
+        // Raising minSupportedVersion to 3.8.0 blocks 3.7.0 until user updates to 3.8.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.8.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.7.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.8.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("javascript:alert(1)"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("http://insecure.example"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("https://t.me/Noor_ui"))
+    }
+
+    @Test
+    fun nasaMoonSatelliteMath_buildsValidTrekWmtsAndDialAMoonUrls() {
+        assertEquals(2, NasaMoonSatelliteMath.trekCols(0))
+        assertEquals(1, NasaMoonSatelliteMath.trekRows(0))
+        assertEquals(4, NasaMoonSatelliteMath.trekCols(1))
+        assertEquals(2, NasaMoonSatelliteMath.trekRows(1))
+
+        val z0Left = NasaMoonSatelliteMath.nasaTrekTileUrl(0, 0, 0)
+        assertTrue(z0Left.startsWith("https://trek.nasa.gov/tiles/Moon/EQ/LRO_WAC_Mosaic_Global_303ppd_v02/"))
+        assertTrue(z0Left.endsWith("/0/0/0.jpg"))
+
+        val opmUrl = NasaMoonSatelliteMath.openPlanetaryTileUrl(2, 1, 1)
+        assertTrue(opmUrl.startsWith("https://cartocdn-gusc.global.ssl.fastly.net/opmbuilder/"))
+
+        val tychoTile = NasaMoonSatelliteMath.latLonToTrekTile(-43.3, -11.2, 2)
+        assertEquals(2, tychoTile.zoom)
+        assertTrue(tychoTile.col in 0 until 8)
+        assertTrue(tychoTile.row in 0 until 4)
+
+        val (iso, frameIdx) = NasaMoonSatelliteMath.buildNasaDialAMoonQuery(1780747200000L) // 2026-06-06T12:00 UTC
+        assertTrue(iso.matches(Regex("\\d{4}-\\d{2}-\\d{2}T\\d{2}:00")))
+        assertTrue(frameIdx in 1..8760)
+        assertTrue(NasaMoonSatelliteMath.directSvs2026FrameUrl(frameIdx).contains("/a005587/"))
     }
 
     @Test
