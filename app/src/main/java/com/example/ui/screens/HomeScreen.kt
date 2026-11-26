@@ -181,7 +181,9 @@ fun HomeScreen(
     onOpenAstrolabe: () -> Unit = {},
     onOpenMakharijLab: () -> Unit = {},
     onOpenMuhasabah: () -> Unit = {},
-    onOpenAsbabAlNuzul: () -> Unit = {}
+    onOpenAsbabAlNuzul: () -> Unit = {},
+    onOpenVoiceAnalyzer: () -> Unit = {},
+    onOpenMaqamatAcademy: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -644,6 +646,8 @@ fun HomeScreen(
                             add(Triple(L10n.pick(lang, "الأسطرلاب الحي", "Astrolabe", "Asturlob"), Icons.Rounded.Explore, onOpenAstrolabe))
                         }
                         add(Triple(L10n.pick(lang, "مختبر المخارج", "Makharij Lab", "Maxrajlar"), Icons.Rounded.RecordVoiceOver, onOpenMakharijLab))
+                        add(Triple(L10n.pick(lang, "ميزان المدود", "Voice Madd", "Mad tahlili"), Icons.Rounded.GraphicEq, onOpenVoiceAnalyzer))
+                        add(Triple(L10n.pick(lang, "المقامات الـ٧", "7 Maqamat", "7 Maqom"), Icons.Rounded.AutoAwesome, onOpenMaqamatAcademy))
                         add(Triple(L10n.pick(lang, "محاسبة القلب", "Heart Radar", "Qalb hisobi"), Icons.Rounded.Favorite, onOpenMuhasabah))
                         add(Triple(L10n.pick(lang, "أسباب النزول", "Asbab Nuzul", "Nuzul sababi"), Icons.Rounded.MenuBook, onOpenAsbabAlNuzul))
                     }

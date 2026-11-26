@@ -138,6 +138,8 @@ fun EcosystemHubScreen(
     onOpenMakharijLab: () -> Unit = {},
     onOpenMuhasabah: () -> Unit = {},
     onOpenAsbabAlNuzul: () -> Unit = {},
+    onOpenVoiceAnalyzer: () -> Unit = {},
+    onOpenMaqamatAcademy: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -269,8 +271,18 @@ fun EcosystemHubScreen(
 
     val liveOnlineFeatures = listOf(
         EcosystemModuleItem(
-            "مختبر مخارج الحروف والتجويد", "Makharij & Tajweed Lab",
-            "خريطة تشريحية تفاعلية لـ ٢٨ حرفاً + أحكام التجويد الملوّنة واختبار", "Interactive Vocal Tract Atlas (28 Letters), Color Tajweed & Quiz",
+            "ميزان المدود والتجويد الصوتي الحي", "Live Mic Tajweed & Madd",
+            "تحليل حقيقي بالميكروفون لحركات المدّ (٢، ٤–٥، ٦) والطيف الصوتي والنَّفَس", "Real Hardware Mic DSP for Madd Harakaat, Live Spectrum & Breath",
+            Icons.Rounded.Mic, Color(0xFF38BDF8), "hub_tajweed_voice_analyzer", onOpenVoiceAnalyzer
+        ),
+        EcosystemModuleItem(
+            "أكاديمية المقامات القرآنية الـ٧", "7 Quranic Maqamat Academy",
+            "سلم صوتي ميكروتوني حقيقي بربع التون + تلاوات قرآنية حية + اختبار الأذن", "Real Microtonal Scale Synth (Quarter-Tone), Live Recitations & Quiz",
+            Icons.Rounded.GraphicEq, GoldBright, "hub_quran_maqamat_academy", onOpenMaqamatAcademy
+        ),
+        EcosystemModuleItem(
+            "مختبر مخارج الحروف الحقيقي", "Real Anatomy Makharij Lab",
+            "صورة تشريحية حقيقية واضحة للأنف والفم واللسان والحلق لـ ٢٨ حرفاً + تجويد", "Real Anatomical Vocal Tract Photo (28 Letters), Color Tajweed & Quiz",
             Icons.Rounded.RecordVoiceOver, Color(0xFF34D399), "hub_tajweed_makharij_lab", onOpenMakharijLab
         ),
         EcosystemModuleItem(
@@ -299,8 +311,8 @@ fun EcosystemHubScreen(
             Icons.Rounded.Explore, Color(0xFFF59E0B), "hub_islamic_astrolabe", onOpenAstrolabe
         ),
         EcosystemModuleItem(
-            "الكرة الأرضية ٣D والقبلة", "3D Earth & Qibla Globe",
-            "كرة أرضية ٣D تفاعلية مع الليل والنهار وقوس القبلة الذهبي", "Interactive 3D Earth, Live Day/Night & Geodesic Qibla Arc",
+            "الكرة الأرضية ٣D والقبلة بالأقمار الصناعية", "Real 3D Satellite Earth & Qibla",
+            "كرة أرضية زرقاء حقيقية مع تقريب فائق للأماكن والكعبة وقوس القبلة الذهبي", "Real Blue Satellite 3D Earth, Deep Street Zoom & Golden Qibla Arc",
             Icons.Rounded.Language, Color(0xFF38BDF8), "hub_cosmic_qibla_globe", onOpenCosmicGlobe
         ),
         EcosystemModuleItem(

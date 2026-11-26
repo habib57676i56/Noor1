@@ -7,6 +7,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,6 +36,8 @@ import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Quiz
 import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.ZoomIn
+import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -51,14 +55,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
@@ -79,11 +86,11 @@ enum class MakhrajZone(
     val normX: Float,
     val normY: Float
 ) {
-    AL_JAWF("jawf", "الجوف", "Oral Cavity (Al-Jawf)", Color(0xFF38BDF8), 0.44f, 0.50f),
-    AL_HALQ("halq", "الحلق", "Throat (Al-Halq)", Color(0xFFF59E0B), 0.67f, 0.72f),
-    AL_LISAN("lisan", "اللسان", "Tongue (Al-Lisan)", Color(0xFF34D399), 0.43f, 0.57f),
-    ASH_SHAFATAN("shafatan", "الشفتان", "Lips (Ash-Shafatan)", Color(0xFFF472B6), 0.16f, 0.54f),
-    AL_KHAYSHUM("khayshum", "الخيشوم", "Nasal Passage (Al-Khayshum)", Color(0xFFA78BFA), 0.36f, 0.25f)
+    AL_JAWF("jawf", "الجوف", "Oral Cavity (Al-Jawf)", Color(0xFF38BDF8), 0.46f, 0.46f),
+    AL_HALQ("halq", "الحلق", "Throat (Al-Halq)", Color(0xFFF59E0B), 0.59f, 0.68f),
+    AL_LISAN("lisan", "اللسان", "Tongue (Al-Lisan)", Color(0xFF34D399), 0.43f, 0.51f),
+    ASH_SHAFATAN("shafatan", "الشفتان", "Lips (Ash-Shafatan)", Color(0xFFF472B6), 0.26f, 0.54f),
+    AL_KHAYSHUM("khayshum", "الخيشوم (الأنف)", "Nasal Cavity (Al-Khayshum)", Color(0xFFA78BFA), 0.41f, 0.28f)
 }
 
 data class ArabicLetterMakhraj(
@@ -131,34 +138,34 @@ data class MakharijQuizQuestion(
 
 object TajweedMakharijCatalog {
     val letters: List<ArabicLetterMakhraj> = listOf(
-        ArabicLetterMakhraj("أ", "الهمزة والألف", "Hamzah / Alif", MakhrajZone.AL_HALQ, "أقصى الحلق (والألف المدية من الجوف)", "Deepest Throat (Alif Madd from Al-Jawf)", 0.68f, 0.82f, listOf("جهر", "شدة", "استفال", "ترقيق"), listOf("Voiced", "Plosive", "Light"), "تخرج الهمزة بانطباق الوترين الصوتيين في أقصى الحلق دون تشديد مبالغ.", "Produced at the deepest throat cleanly without harsh glottal strain.", "اقْرَأْ بِاسْمِ رَبِّكَ الَّذِي خَلَقَ", "العلق: ١", 96),
-        ArabicLetterMakhraj("ب", "الباء", "Ba", MakhrajZone.ASH_SHAFATAN, "بانطباق الشفتين معاً", "Closing both lips together", 0.16f, 0.54f, listOf("جهر", "شدة", "قلقلة", "ترقيق"), listOf("Voiced", "Plosive", "Qalqalah", "Light"), "عند سكون الباء تُقلقل بوضوح دون إمالة لفتحة أو كسرة.", "When sukoon, apply clear Qalqalah bounce without adding a vowel.", "تَبَّتْ يَدَا أَبِي لَهَبٍ وَتَبَّ", "المسد: ١", 111),
-        ArabicLetterMakhraj("ت", "التاء", "Ta", MakhrajZone.AL_LISAN, "طرف اللسان وأصول الثنايا العليا", "Tip of tongue & upper gum ridge", 0.25f, 0.48f, listOf("همس", "شدة", "استفال", "ترقيق"), listOf("Whispered", "Plosive", "Light"), "يُظهر همس التاء برقة عند السكون والوقف دون مبالغة.", "Show gentle breath (Hams) when paused or carrying sukoon.", "إِذَا الشَّمْسُ كُوِّرَتْ", "التكوير: ١", 81),
-        ArabicLetterMakhraj("ث", "الثاء", "Tha", MakhrajZone.AL_LISAN, "طرف اللسان مع أطراف الثنايا العليا", "Tip of tongue with edges of upper teeth", 0.21f, 0.51f, listOf("همس", "رخاوة", "استفال", "ترقيق"), listOf("Whispered", "Fricative", "Light"), "أخرج طرف اللسان قليلاً بين الثنايا لئلا تلتبس بالسين.", "Extend the tongue tip slightly to upper incisors so it never sounds like Seen.", "فَأَمَّا مَن ثَقُلَتْ مَوَازِينُهُ", "القارعة: ٦", 101),
-        ArabicLetterMakhraj("ج", "الجيم", "Jeem", MakhrajZone.AL_LISAN, "وسط اللسان مع ما يحاذيه من الحنك الأعلى", "Middle of tongue with hard palate", 0.45f, 0.45f, listOf("جهر", "شدة", "قلقلة", "ترقيق"), listOf("Voiced", "Plosive", "Qalqalah", "Light"), "الجيم الفصيحة شديدة مجهورة لا يجري معها الهواء وتُقلقل ساكنة.", "Classical Jeem is fully blocked (not soft French J) with crisp Qalqalah when sukoon.", "وَالسَّمَاءِ ذَاتِ الْبُرُوجِ", "البروج: ١", 85),
-        ArabicLetterMakhraj("ح", "الحاء", "Ha (Throat)", MakhrajZone.AL_HALQ, "وسط الحلق", "Middle of the throat", 0.66f, 0.70f, listOf("همس", "رخاوة", "استفال", "ترقيق"), listOf("Whispered", "Fricative", "Light"), "تخرج بصوت صافٍ نقي من وسط الحلق بلا بحة الخاء.", "Pure breathy pharyngeal sound from the middle throat without scraping.", "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ", "الفاتحة: ٢", 1),
-        ArabicLetterMakhraj("خ", "الخاء", "Kha", MakhrajZone.AL_HALQ, "أدنى الحلق مما يلي الفم", "Upper throat nearest the mouth", 0.62f, 0.58f, listOf("همس", "رخاوة", "استعلاء", "تفخيم"), listOf("Whispered", "Fricative", "Heavy"), "حرف مفخّم مستعلٍ يخرج من أدنى الحلق دون تكلف الشخير.", "Elevated heavy letter from upper throat without harsh rasp.", "خَلَقَ الْإِنسَانَ مِنْ عَلَقٍ", "العلق: ٢", 96),
-        ArabicLetterMakhraj("د", "الدال", "Dal", MakhrajZone.AL_LISAN, "طرف اللسان وأصول الثنايا العليا", "Tip of tongue & upper gum ridge", 0.25f, 0.49f, listOf("جهر", "شدة", "قلقلة", "ترقيق"), listOf("Voiced", "Plosive", "Qalqalah", "Light"), "تُقلقل الدال الساكنة بوضوح وخاصة عند الوقف مثل (أَحَدْ).", "Give clear Qalqalah bounce on sukoon Dal, especially on stops like Ahad.", "قُلْ هُوَ اللَّهُ أَحَدٌ", "الإخلاص: ١", 112),
-        ArabicLetterMakhraj("ذ", "الذال", "Dhal", MakhrajZone.AL_LISAN, "طرف اللسان مع أطراف الثنايا العليا", "Tip of tongue & upper incisors edge", 0.21f, 0.52f, listOf("جهر", "رخاوة", "استفال", "ترقيق"), listOf("Voiced", "Fricative", "Light"), "حرف لثوي مرقق يجري معه الصوت بنعومة.", "Interdental voiced light letter with smooth airflow.", "ذَٰلِكَ الْكِتَابُ لَا رَيْبَ فِيهِ", "البقرة: ٢", 2),
-        ArabicLetterMakhraj("ر", "الراء", "Ra", MakhrajZone.AL_LISAN, "طرف اللسان مع ظهره قليلاً ولثة العليا", "Tip & slight top of tongue with upper gum", 0.29f, 0.46f, listOf("جهر", "توسط", "انحراف", "تكرير خفيف"), listOf("Voiced", "Moderate", "Avoid Trill"), "احذر من تكرير الراء عدة مرات؛ تُفخّم مع الفتح والضم وتُرقق مع الكسر.", "Avoid heavy rolling trill; heavy with Fatha/Damma, light with Kasra.", "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "الفاتحة: ١", 1),
-        ArabicLetterMakhraj("ز", "الزاي", "Zay", MakhrajZone.AL_LISAN, "طرف اللسان مع أسفل الصفحة الداخلية للثنايا السفلى", "Tip of tongue near lower incisors", 0.23f, 0.57f, listOf("جهر", "رخاوة", "صفير", "ترقيق"), listOf("Voiced", "Fricative", "Whistle"), "تتميز بصفة الصفير مع جهر واضح من غير إخراج اللسان.", "Distinct whistling sibilant with clear voicing and tongue kept inside.", "إِذَا زُلْزِلَتِ الْأَرْضُ زِلْزَالَهَا", "الزلزلة: ١", 99),
-        ArabicLetterMakhraj("س", "السين", "Seen", MakhrajZone.AL_LISAN, "طرف اللسان مع الثنايا السفلى", "Tip of tongue near lower teeth", 0.23f, 0.56f, listOf("همس", "رخاوة", "صفير", "ترقيق"), listOf("Whispered", "Fricative", "Whistle"), "صفير نقي مرقق لا يُفخم ولو جاور حرف استعلاء.", "Crisp light whistling sound; keep light even next to heavy letters.", "سَبِّحِ اسْمَ رَبِّكَ الْأَعْلَى", "الأعلى: ١", 87),
-        ArabicLetterMakhraj("ش", "الشين", "Sheen", MakhrajZone.AL_LISAN, "وسط اللسان مع الحنك الأعلى", "Middle of tongue with hard palate", 0.45f, 0.46f, listOf("همس", "رخاوة", "تفشٍّ", "ترقيق"), listOf("Whispered", "Fricative", "Tafashshi"), "تتميز بصفة التفشي أي انتشار الهواء داخل الفم بلطف.", "Uniquely has Tafashshi—gentle diffusion of air throughout the mouth.", "أَلَمْ نَشْرَحْ لَكَ صَدْرَكَ", "الشرح: ١", 94),
-        ArabicLetterMakhraj("ص", "الصاد", "Sad", MakhrajZone.AL_LISAN, "طرف اللسان مع الثنايا السفلى مع استعلاء أقصى اللسان", "Tongue tip at lower teeth + raised back tongue", 0.24f, 0.55f, listOf("همس", "رخاوة", "إطباق", "صفير", "تفخيم"), listOf("Heavy", "Emphatic", "Whistle"), "ارفع أقصى اللسان دون ضم الشفتين لتحقيق تفخيم الصاد النقي.", "Raise the back of the tongue without rounding the lips for pure heaviness.", "اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ", "الفاتحة: ٦", 1),
-        ArabicLetterMakhraj("ض", "الضاد", "Dad", MakhrajZone.AL_LISAN, "إحدى حافتي اللسان أو كلتاهما مع الأضراس العليا", "Side edge(s) of tongue against upper molars", 0.47f, 0.54f, listOf("جهر", "رخاوة", "إطباق", "استطالة", "تفخيم"), listOf("Heavy", "Istitalah", "Unique Arabic"), "أندر حرف في لغات العالم؛ يتميز بالاستطالة وجريان الصوت دون قلقلة.", "Unique to Arabic: uses lateral elongation (Istitalah) without bouncing Qalqalah.", "وَلَا الضَّالِّينَ", "الفاتحة: ٧", 1),
-        ArabicLetterMakhraj("ط", "الطاء", "Ta (Emphatic)", MakhrajZone.AL_LISAN, "طرف اللسان وأصول الثنايا العليا مع الإطباق", "Tongue tip at upper gum + full emphasis", 0.26f, 0.48f, listOf("جهر", "شدة", "إطباق", "قلقلة", "أقوى الحروف"), listOf("Strongest Letter", "Heavy", "Qalqalah"), "أقوى حروف الهجاء صفاتٍ؛ مفخّم مطبق يُقلقل بقوة عند السكون.", "Strongest Arabic letter in attributes; emphatic with resonant heavy Qalqalah.", "وَالتِّينِ وَالزَّيْتُونِ وَطُورِ سِينِينَ", "التين: ١-٢", 95),
-        ArabicLetterMakhraj("ظ", "الظاء", "Dha (Emphatic)", MakhrajZone.AL_LISAN, "طرف اللسان مع أطراف الثنايا العليا مع الإطباق", "Tongue tip at upper teeth edge + emphasis", 0.22f, 0.51f, listOf("جهر", "رخاوة", "إطباق", "تفخيم"), listOf("Voiced", "Heavy", "Emphatic"), "أخت الذال لكنها مفخّمة مطبقة مع استعلاء أقصى اللسان.", "The emphatic heavy counterpart of Dhal with raised back tongue.", "وَمَا اللَّهُ بِغَافِلٍ عَمَّا تَعْمَلُونَ", "البقرة: ٧٤", 2),
-        ArabicLetterMakhraj("ع", "العين", "Ayn", MakhrajZone.AL_HALQ, "وسط الحلق", "Middle of the throat", 0.66f, 0.69f, listOf("جهر", "توسط", "استفال", "ترقيق"), listOf("Voiced", "Moderate", "Light"), "حرف بيني متوسط لا ينقطع صوته فجأة ولا يجري طويلاً.", "Moderate pharyngeal letter from mid-throat—neither cut off nor overly prolonged.", "إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ", "الفاتحة: ٥", 1),
-        ArabicLetterMakhraj("غ", "الغين", "Ghayn", MakhrajZone.AL_HALQ, "أدنى الحلق", "Upper throat", 0.62f, 0.59f, listOf("جهر", "رخاوة", "استعلاء", "تفخيم"), listOf("Voiced", "Fricative", "Heavy"), "تخرج من أدنى الحلق بسلاسة مع التفخيم دون قلقلة عند السكون.", "Smooth voiced heavy sound from upper throat; avoid Qalqalah when sukoon.", "غَيْرِ الْمَغْضُوبِ عَلَيْهِمْ", "الفاتحة: ٧", 1),
-        ArabicLetterMakhraj("ف", "الفاء", "Fa", MakhrajZone.ASH_SHAFATAN, "باطن الشفة السفلى مع أطراف الثنايا العليا", "Inner lower lip with upper front teeth", 0.19f, 0.54f, listOf("همس", "رخاوة", "استفال", "ترقيق"), listOf("Whispered", "Fricative", "Light"), "يلامس طرف الثنايا العليا باطن الشفة السفلى مع جريان النفس.", "Upper teeth gently touch the inside of the lower lip with smooth airflow.", "قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ", "الفلق: ١", 113),
-        ArabicLetterMakhraj("ق", "القاف", "Qaf", MakhrajZone.AL_LISAN, "أقصى اللسان مع ما يحاذيه من الحنك اللحمي", "Deepest tongue against soft palate", 0.57f, 0.53f, listOf("جهر", "شدة", "استعلاء", "قلقلة", "تفخيم"), listOf("Heavy", "Plosive", "Qalqalah"), "تخرج من أقصى اللسان مع الحنك اللحمي وتُقلقل ساكنة بتفخيم واضح.", "Articulated deep against the soft palate; resonant Qalqalah when sukoon.", "ق ۚ وَالْقُرْآنِ الْمَجِيدِ", "ق: ١", 50),
-        ArabicLetterMakhraj("ك", "الكاف", "Kaf", MakhrajZone.AL_LISAN, "أقصى اللسان أسفل مخرج القاف مع الحنك العظمي واللحمي", "Back of tongue slightly forward of Qaf", 0.53f, 0.50f, listOf("همس", "شدة", "استفال", "ترقيق"), listOf("Whispered", "Plosive", "Light"), "مرققة دائماً ويظهر همسها اللطيف بعد فك الانحباس عند السكون.", "Always light; release a gentle puff of breath (Hams) after sukoon closure.", "إِنَّا أَعْطَيْنَاكَ الْكَوْثَرَ", "الكوثر: ١", 108),
-        ArabicLetterMakhraj("ل", "اللام", "Lam", MakhrajZone.AL_LISAN, "أدنى حافتي اللسان إلى منتهى طرفه مع لثة العليا", "Front edges of tongue to upper gum", 0.31f, 0.46f, listOf("جهر", "توسط", "انحراف", "ترقيق"), listOf("Voiced", "Moderate", "Broadest Makhraj"), "أوسع الحروف مخرجاً؛ تُرقق دائماً إلا في لفظ الجلالة بعد فتح أو ضم.", "Broadest articulation point; always light except in 'Allah' after Fatha/Damma.", "لَمْ يَلِدْ وَلَمْ يُولَدْ", "الإخلاص: ٣", 112),
-        ArabicLetterMakhraj("م", "الميم", "Meem", MakhrajZone.ASH_SHAFATAN, "الشفتان مع غنة من الخيشوم", "Both lips + nasal resonance (Ghunnah)", 0.16f, 0.52f, listOf("جهر", "توسط", "غنة من الخيشوم", "ترقيق"), listOf("Voiced", "Nasal Ghunnah", "Light"), "تجمع بين الشفتين والخيشوم؛ أكمل ما تكون غنتها إذا كانت مشددة.", "Combines lips and nasal passage; richest 2-count Ghunnah when doubled (Mushaddadah).", "عَمَّ يَتَسَاءَلُونَ", "النبأ: ١", 78),
-        ArabicLetterMakhraj("ن", "النون", "Noon", MakhrajZone.AL_KHAYSHUM, "طرف اللسان مع لثة العليا + الخيشوم للغنة", "Tongue tip at upper gum + Nasal Cavity", 0.36f, 0.25f, listOf("جهر", "توسط", "غنة من الخيشوم", "ترقيق"), listOf("Voiced", "Nasal Ghunnah", "Light"), "الخيشوم هو مخرج الغنة الملازمة للنون والميم، وتُمد حركتين في المشددة.", "Al-Khayshum produces the signature Ghunnah of Noon & Meem (2 counts when doubled).", "إِنَّا أَنزَلْنَاهُ فِي لَيْلَةِ الْقَدْرِ", "القدر: ١", 97),
-        ArabicLetterMakhraj("هـ", "الهاء", "Ha (Deep Throat)", MakhrajZone.AL_HALQ, "أقصى الحلق", "Deepest throat", 0.69f, 0.80f, listOf("همس", "رخاوة", "خفاء", "ترقيق"), listOf("Whispered", "Soft", "Light"), "حرف ضعيف يحتاج عناية ببيانه خاصة عند الوقف والسكون.", "Delicate deep-throat letter; articulate clearly so it does not fade at stops.", "وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ", "الملك: ١", 67),
-        ArabicLetterMakhraj("و", "الواو", "Waw", MakhrajZone.ASH_SHAFATAN, "بانضمام الشفتين للواو المتحركة (والمدية من الجوف)", "Rounding lips (Waw Madd from Al-Jawf)", 0.15f, 0.56f, listOf("جهر", "رخاوة", "استفال", "ترقيق"), listOf("Voiced", "Rounded Lips", "Light"), "تُضم الشفتان مع إبقاء فرجة صغيرة لمرور الصوت بنقاء.", "Round both lips forward leaving a small opening for clean flow.", "وَالضُّحَىٰ ۝ وَاللَّيْلِ إِذَا سَجَىٰ", "الضحى: ١-٢", 93),
-        ArabicLetterMakhraj("ي", "الياء", "Ya", MakhrajZone.AL_JAWF, "وسط اللسان للمتحركة واللينة، والجوف للياء المدية", "Al-Jawf for Madd Ya; mid-tongue for vowelized Ya", 0.44f, 0.50f, listOf("جهر", "رخاوة", "استفال", "ترقيق"), listOf("Voiced", "Al-Jawf Madd", "Light"), "حروف المد الثلاثة (ا و ي) تخرج من الجوف وتنتهي بانقطاع الهواء.", "The three Madd letters (Alif, Waw, Ya) resonate openly through Al-Jawf.", "يَا أَيُّهَا الَّذِينَ آمَنُوا", "البقرة: ١٥٣", 2)
+        ArabicLetterMakhraj("أ", "الهمزة والألف", "Hamzah / Alif", MakhrajZone.AL_HALQ, "أقصى الحلق (والألف المدية من الجوف)", "Deepest Throat (Alif Madd from Al-Jawf)", 0.57f, 0.84f, listOf("جهر", "شدة", "استفال", "ترقيق"), listOf("Voiced", "Plosive", "Light"), "تخرج الهمزة بانطباق الوترين الصوتيين في أقصى الحلق دون تشديد مبالغ.", "Produced at the deepest throat cleanly without harsh glottal strain.", "اقْرَأْ بِاسْمِ رَبِّكَ الَّذِي خَلَقَ", "العلق: ١", 96),
+        ArabicLetterMakhraj("ب", "الباء", "Ba", MakhrajZone.ASH_SHAFATAN, "بانطباق الشفتين معاً", "Closing both lips together", 0.26f, 0.54f, listOf("جهر", "شدة", "قلقلة", "ترقيق"), listOf("Voiced", "Plosive", "Qalqalah", "Light"), "عند سكون الباء تُقلقل بوضوح دون إمالة لفتحة أو كسرة.", "When sukoon, apply clear Qalqalah bounce without adding a vowel.", "تَبَّتْ يَدَا أَبِي لَهَبٍ وَتَبَّ", "المسد: ١", 111),
+        ArabicLetterMakhraj("ت", "التاء", "Ta", MakhrajZone.AL_LISAN, "طرف اللسان وأصول الثنايا العليا", "Tip of tongue & upper gum ridge", 0.33f, 0.49f, listOf("همس", "شدة", "استفال", "ترقيق"), listOf("Whispered", "Plosive", "Light"), "يُظهر همس التاء برقة عند السكون والوقف دون مبالغة.", "Show gentle breath (Hams) when paused or carrying sukoon.", "إِذَا الشَّمْسُ كُوِّرَتْ", "التكوير: ١", 81),
+        ArabicLetterMakhraj("ث", "الثاء", "Tha", MakhrajZone.AL_LISAN, "طرف اللسان مع أطراف الثنايا العليا", "Tip of tongue with edges of upper teeth", 0.31f, 0.52f, listOf("همس", "رخاوة", "استفال", "ترقيق"), listOf("Whispered", "Fricative", "Light"), "أخرج طرف اللسان قليلاً بين الثنايا لئلا تلتبس بالسين.", "Extend the tongue tip slightly to upper incisors so it never sounds like Seen.", "فَأَمَّا مَن ثَقُلَتْ مَوَازِينُهُ", "القارعة: ٦", 101),
+        ArabicLetterMakhraj("ج", "الجيم", "Jeem", MakhrajZone.AL_LISAN, "وسط اللسان مع ما يحاذيه من الحنك الأعلى", "Middle of tongue with hard palate", 0.43f, 0.48f, listOf("جهر", "شدة", "قلقلة", "ترقيق"), listOf("Voiced", "Plosive", "Qalqalah", "Light"), "الجيم الفصيحة شديدة مجهورة لا يجري معها الهواء وتُقلقل ساكنة.", "Classical Jeem is fully blocked (not soft French J) with crisp Qalqalah when sukoon.", "وَالسَّمَاءِ ذَاتِ الْبُرُوجِ", "البروج: ١", 85),
+        ArabicLetterMakhraj("ح", "الحاء", "Ha (Throat)", MakhrajZone.AL_HALQ, "وسط الحلق", "Middle of the throat", 0.59f, 0.68f, listOf("همس", "رخاوة", "استفال", "ترقيق"), listOf("Whispered", "Fricative", "Light"), "تخرج بصوت صافٍ نقي من وسط الحلق بلا بحة الخاء.", "Pure breathy pharyngeal sound from the middle throat without scraping.", "الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ", "الفاتحة: ٢", 1),
+        ArabicLetterMakhraj("خ", "الخاء", "Kha", MakhrajZone.AL_HALQ, "أدنى الحلق مما يلي الفم", "Upper throat nearest the mouth", 0.58f, 0.55f, listOf("همس", "رخاوة", "استعلاء", "تفخيم"), listOf("Whispered", "Fricative", "Heavy"), "حرف مفخّم مستعلٍ يخرج من أدنى الحلق دون تكلف الشخير.", "Elevated heavy letter from upper throat without harsh rasp.", "خَلَقَ الْإِنسَانَ مِنْ عَلَقٍ", "العلق: ٢", 96),
+        ArabicLetterMakhraj("د", "الدال", "Dal", MakhrajZone.AL_LISAN, "طرف اللسان وأصول الثنايا العليا", "Tip of tongue & upper gum ridge", 0.33f, 0.49f, listOf("جهر", "شدة", "قلقلة", "ترقيق"), listOf("Voiced", "Plosive", "Qalqalah", "Light"), "تُقلقل الدال الساكنة بوضوح وخاصة عند الوقف مثل (أَحَدْ).", "Give clear Qalqalah bounce on sukoon Dal, especially on stops like Ahad.", "قُلْ هُوَ اللَّهُ أَحَدٌ", "الإخلاص: ١", 112),
+        ArabicLetterMakhraj("ذ", "الذال", "Dhal", MakhrajZone.AL_LISAN, "طرف اللسان مع أطراف الثنايا العليا", "Tip of tongue & upper incisors edge", 0.31f, 0.52f, listOf("جهر", "رخاوة", "استفال", "ترقيق"), listOf("Voiced", "Fricative", "Light"), "حرف لثوي مرقق يجري معه الصوت بنعومة.", "Interdental voiced light letter with smooth airflow.", "ذَٰلِكَ الْكِتَابُ لَا رَيْبَ فِيهِ", "البقرة: ٢", 2),
+        ArabicLetterMakhraj("ر", "الراء", "Ra", MakhrajZone.AL_LISAN, "طرف اللسان مع ظهره قليلاً ولثة العليا", "Tip & slight top of tongue with upper gum", 0.36f, 0.48f, listOf("جهر", "توسط", "انحراف", "تكرير خفيف"), listOf("Voiced", "Moderate", "Avoid Trill"), "احذر من تكرير الراء عدة مرات؛ تُفخّم مع الفتح والضم وتُرقق مع الكسر.", "Avoid heavy rolling trill; heavy with Fatha/Damma, light with Kasra.", "بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ", "الفاتحة: ١", 1),
+        ArabicLetterMakhraj("ز", "الزاي", "Zay", MakhrajZone.AL_LISAN, "طرف اللسان مع أسفل الصفحة الداخلية للثنايا السفلى", "Tip of tongue near lower incisors", 0.33f, 0.57f, listOf("جهر", "رخاوة", "صفير", "ترقيق"), listOf("Voiced", "Fricative", "Whistle"), "تتميز بصفة الصفير مع جهر واضح من غير إخراج اللسان.", "Distinct whistling sibilant with clear voicing and tongue kept inside.", "إِذَا زُلْزِلَتِ الْأَرْضُ زِلْزَالَهَا", "الزلزلة: ١", 99),
+        ArabicLetterMakhraj("س", "السين", "Seen", MakhrajZone.AL_LISAN, "طرف اللسان مع الثنايا السفلى", "Tip of tongue near lower teeth", 0.33f, 0.57f, listOf("همس", "رخاوة", "صفير", "ترقيق"), listOf("Whispered", "Fricative", "Whistle"), "صفير نقي مرقق لا يُفخم ولو جاور حرف استعلاء.", "Crisp light whistling sound; keep light even next to heavy letters.", "سَبِّحِ اسْمَ رَبِّكَ الْأَعْلَى", "الأعلى: ١", 87),
+        ArabicLetterMakhraj("ش", "الشين", "Sheen", MakhrajZone.AL_LISAN, "وسط اللسان مع الحنك الأعلى", "Middle of tongue with hard palate", 0.43f, 0.48f, listOf("همس", "رخاوة", "تفشٍّ", "ترقيق"), listOf("Whispered", "Fricative", "Tafashshi"), "تتميز بصفة التفشي أي انتشار الهواء داخل الفم بلطف.", "Uniquely has Tafashshi—gentle diffusion of air throughout the mouth.", "أَلَمْ نَشْرَحْ لَكَ صَدْرَكَ", "الشرح: ١", 94),
+        ArabicLetterMakhraj("ص", "الصاد", "Sad", MakhrajZone.AL_LISAN, "طرف اللسان مع الثنايا السفلى مع استعلاء أقصى اللسان", "Tongue tip at lower teeth + raised back tongue", 0.34f, 0.56f, listOf("همس", "رخاوة", "إطباق", "صفير", "تفخيم"), listOf("Heavy", "Emphatic", "Whistle"), "ارفع أقصى اللسان دون ضم الشفتين لتحقيق تفخيم الصاد النقي.", "Raise the back of the tongue without rounding the lips for pure heaviness.", "اهْدِنَا الصِّرَاطَ الْمُسْتَقِيمَ", "الفاتحة: ٦", 1),
+        ArabicLetterMakhraj("ض", "الضاد", "Dad", MakhrajZone.AL_LISAN, "إحدى حافتي اللسان أو كلتاهما مع الأضراس العليا", "Side edge(s) of tongue against upper molars", 0.44f, 0.51f, listOf("جهر", "رخاوة", "إطباق", "استطالة", "تفخيم"), listOf("Heavy", "Istitalah", "Unique Arabic"), "أندر حرف في لغات العالم؛ يتميز بالاستطالة وجريان الصوت دون قلقلة.", "Unique to Arabic: uses lateral elongation (Istitalah) without bouncing Qalqalah.", "وَلَا الضَّالِّينَ", "الفاتحة: ٧", 1),
+        ArabicLetterMakhraj("ط", "الطاء", "Ta (Emphatic)", MakhrajZone.AL_LISAN, "طرف اللسان وأصول الثنايا العليا مع الإطباق", "Tongue tip at upper gum + full emphasis", 0.34f, 0.49f, listOf("جهر", "شدة", "إطباق", "قلقلة", "أقوى الحروف"), listOf("Strongest Letter", "Heavy", "Qalqalah"), "أقوى حروف الهجاء صفاتٍ؛ مفخّم مطبق يُقلقل بقوة عند السكون.", "Strongest Arabic letter in attributes; emphatic with resonant heavy Qalqalah.", "وَالتِّينِ وَالزَّيْتُونِ وَطُورِ سِينِينَ", "التين: ١-٢", 95),
+        ArabicLetterMakhraj("ظ", "الظاء", "Dha (Emphatic)", MakhrajZone.AL_LISAN, "طرف اللسان مع أطراف الثنايا العليا مع الإطباق", "Tongue tip at upper teeth edge + emphasis", 0.31f, 0.52f, listOf("جهر", "رخاوة", "إطباق", "تفخيم"), listOf("Voiced", "Heavy", "Emphatic"), "أخت الذال لكنها مفخّمة مطبقة مع استعلاء أقصى اللسان.", "The emphatic heavy counterpart of Dhal with raised back tongue.", "وَمَا اللَّهُ بِغَافِلٍ عَمَّا تَعْمَلُونَ", "البقرة: ٧٤", 2),
+        ArabicLetterMakhraj("ع", "العين", "Ayn", MakhrajZone.AL_HALQ, "وسط الحلق", "Middle of the throat", 0.59f, 0.68f, listOf("جهر", "توسط", "استفال", "ترقيق"), listOf("Voiced", "Moderate", "Light"), "حرف بيني متوسط لا ينقطع صوته فجأة ولا يجري طويلاً.", "Moderate pharyngeal letter from mid-throat—neither cut off nor overly prolonged.", "إِيَّاكَ نَعْبُدُ وَإِيَّاكَ نَسْتَعِينُ", "الفاتحة: ٥", 1),
+        ArabicLetterMakhraj("غ", "الغين", "Ghayn", MakhrajZone.AL_HALQ, "أدنى الحلق", "Upper throat", 0.58f, 0.55f, listOf("جهر", "رخاوة", "استعلاء", "تفخيم"), listOf("Voiced", "Fricative", "Heavy"), "تخرج من أدنى الحلق بسلاسة مع التفخيم دون قلقلة عند السكون.", "Smooth voiced heavy sound from upper throat; avoid Qalqalah when sukoon.", "غَيْرِ الْمَغْضُوبِ عَلَيْهِمْ", "الفاتحة: ٧", 1),
+        ArabicLetterMakhraj("ف", "الفاء", "Fa", MakhrajZone.ASH_SHAFATAN, "باطن الشفة السفلى مع أطراف الثنايا العليا", "Inner lower lip with upper front teeth", 0.30f, 0.54f, listOf("همس", "رخاوة", "استفال", "ترقيق"), listOf("Whispered", "Fricative", "Light"), "يلامس طرف الثنايا العليا باطن الشفة السفلى مع جريان النفس.", "Upper teeth gently touch the inside of the lower lip with smooth airflow.", "قُلْ أَعُوذُ بِرَبِّ الْفَلَقِ", "الفلق: ١", 113),
+        ArabicLetterMakhraj("ق", "القاف", "Qaf", MakhrajZone.AL_LISAN, "أقصى اللسان مع ما يحاذيه من الحنك اللحمي", "Deepest tongue against soft palate", 0.54f, 0.50f, listOf("جهر", "شدة", "استعلاء", "قلقلة", "تفخيم"), listOf("Heavy", "Plosive", "Qalqalah"), "تخرج من أقصى اللسان مع الحنك اللحمي وتُقلقل ساكنة بتفخيم واضح.", "Articulated deep against the soft palate; resonant Qalqalah when sukoon.", "ق ۚ وَالْقُرْآنِ الْمَجِيدِ", "ق: ١", 50),
+        ArabicLetterMakhraj("ك", "الكاف", "Kaf", MakhrajZone.AL_LISAN, "أقصى اللسان أسفل مخرج القاف مع الحنك العظمي واللحمي", "Back of tongue slightly forward of Qaf", 0.50f, 0.48f, listOf("همس", "شدة", "استفال", "ترقيق"), listOf("Whispered", "Plosive", "Light"), "مرققة دائماً ويظهر همسها اللطيف بعد فك الانحباس عند السكون.", "Always light; release a gentle puff of breath (Hams) after sukoon closure.", "إِنَّا أَعْطَيْنَاكَ الْكَوْثَرَ", "الكوثر: ١", 108),
+        ArabicLetterMakhraj("ل", "اللام", "Lam", MakhrajZone.AL_LISAN, "أدنى حافتي اللسان إلى منتهى طرفه مع لثة العليا", "Front edges of tongue to upper gum", 0.36f, 0.48f, listOf("جهر", "توسط", "انحراف", "ترقيق"), listOf("Voiced", "Moderate", "Broadest Makhraj"), "أوسع الحروف مخرجاً؛ تُرقق دائماً إلا في لفظ الجلالة بعد فتح أو ضم.", "Broadest articulation point; always light except in 'Allah' after Fatha/Damma.", "لَمْ يَلِدْ وَلَمْ يُولَدْ", "الإخلاص: ٣", 112),
+        ArabicLetterMakhraj("م", "الميم", "Meem", MakhrajZone.ASH_SHAFATAN, "الشفتان مع غنة من الخيشوم", "Both lips + nasal resonance (Ghunnah)", 0.26f, 0.54f, listOf("جهر", "توسط", "غنة من الخيشوم", "ترقيق"), listOf("Voiced", "Nasal Ghunnah", "Light"), "تجمع بين الشفتين والخيشوم؛ أكمل ما تكون غنتها إذا كانت مشددة.", "Combines lips and nasal passage; richest 2-count Ghunnah when doubled (Mushaddadah).", "عَمَّ يَتَسَاءَلُونَ", "النبأ: ١", 78),
+        ArabicLetterMakhraj("ن", "النون", "Noon", MakhrajZone.AL_KHAYSHUM, "طرف اللسان مع لثة العليا + الخيشوم للغنة", "Tongue tip at upper gum + Nasal Cavity", 0.41f, 0.28f, listOf("جهر", "توسط", "غنة من الخيشوم", "ترقيق"), listOf("Voiced", "Nasal Ghunnah", "Light"), "الخيشوم هو مخرج الغنة الملازمة للنون والميم، وتُمد حركتين في المشددة.", "Al-Khayshum produces the signature Ghunnah of Noon & Meem (2 counts when doubled).", "إِنَّا أَنزَلْنَاهُ فِي لَيْلَةِ الْقَدْرِ", "القدر: ١", 97),
+        ArabicLetterMakhraj("هـ", "الهاء", "Ha (Deep Throat)", MakhrajZone.AL_HALQ, "أقصى الحلق", "Deepest throat", 0.57f, 0.84f, listOf("همس", "رخاوة", "خفاء", "ترقيق"), listOf("Whispered", "Soft", "Light"), "حرف ضعيف يحتاج عناية ببيانه خاصة عند الوقف والسكون.", "Delicate deep-throat letter; articulate clearly so it does not fade at stops.", "وَهُوَ عَلَىٰ كُلِّ شَيْءٍ قَدِيرٌ", "الملك: ١", 67),
+        ArabicLetterMakhraj("و", "الواو", "Waw", MakhrajZone.ASH_SHAFATAN, "بانضمام الشفتين للواو المتحركة (والمدية من الجوف)", "Rounding lips (Waw Madd from Al-Jawf)", 0.26f, 0.54f, listOf("جهر", "رخاوة", "استفال", "ترقيق"), listOf("Voiced", "Rounded Lips", "Light"), "تُضم الشفتان مع إبقاء فرجة صغيرة لمرور الصوت بنقاء.", "Round both lips forward leaving a small opening for clean flow.", "وَالضُّحَىٰ ۝ وَاللَّيْلِ إِذَا سَجَىٰ", "الضحى: ١-٢", 93),
+        ArabicLetterMakhraj("ي", "الياء", "Ya", MakhrajZone.AL_JAWF, "وسط اللسان للمتحركة واللينة، والجوف للياء المدية", "Al-Jawf for Madd Ya; mid-tongue for vowelized Ya", 0.46f, 0.46f, listOf("جهر", "رخاوة", "استفال", "ترقيق"), listOf("Voiced", "Al-Jawf Madd", "Light"), "حروف المد الثلاثة (ا و ي) تخرج من الجوف وتنتهي بانقطاع الهواء.", "The three Madd letters (Alif, Waw, Ya) resonate openly through Al-Jawf.", "يَا أَيُّهَا الَّذِينَ آمَنُوا", "البقرة: ١٥٣", 2)
     )
 
     val rules: List<TajweedRuleCardData> = listOf(
@@ -227,9 +234,10 @@ fun TajweedMakharijLabScreen(
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
 
-    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Makharij Canvas, 1 = Rules Studio, 2 = Quiz
+    var selectedTab by remember { mutableIntStateOf(0) } // 0 = Makharij Real Anatomy, 1 = Rules Studio, 2 = Quiz
     var selectedZoneFilter by remember { mutableStateOf<MakhrajZone?>(null) }
     var selectedLetter by remember { mutableStateOf(TajweedMakharijCatalog.letters.first { it.letter == "ض" }) }
+    var zoomedIn by remember { mutableStateOf(false) }
 
     var quizIndex by remember { mutableIntStateOf(0) }
     var selectedOption by remember { mutableStateOf<Int?>(null) }
@@ -250,8 +258,8 @@ fun TajweedMakharijLabScreen(
             title = L10n.pick(lang, "مختبر المخارج والتجويد التفاعلي", "Makharij & Tajweed Master Lab"),
             subtitle = L10n.pick(
                 lang,
-                "خريطة تشريحية تفاعلية لـ ٢٨ حرفاً و٥ مخارج رئيسية وأحكام التجويد الملوّنة",
-                "Interactive Vocal Tract Atlas for 28 Letters, 5 Major Zones & Color-Coded Tajweed"
+                "صورة تشريحية حقيقية للأنف والفم واللسان والحلق · ٢٨ حرفاً وأحكام التجويد",
+                "Real Medical Sagittal Anatomy (Nose, Mouth, Tongue, Throat) · 28 Letters & Tajweed"
             ),
             onBack = onBack
         )
@@ -264,7 +272,7 @@ fun TajweedMakharijLabScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             LiquidGlassChip(
-                label = L10n.pick(lang, "خريطة المخارج", "Makharij Map"),
+                label = L10n.pick(lang, "التشريح الحقيقي", "Real Anatomy"),
                 selected = selectedTab == 0,
                 onClick = { selectedTab = 0 },
                 modifier = Modifier.weight(1f).testTag("makharij_tab_map")
@@ -290,7 +298,7 @@ fun TajweedMakharijLabScreen(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 110.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Anatomical Interactive Vocal Tract Diagram
+                    // Real Medical Anatomical Vocal Tract Diagram with Live Glowing Pin
                     item {
                         LiquidGlassCard(strong = true, goldBorder = true) {
                             Row(
@@ -298,9 +306,9 @@ fun TajweedMakharijLabScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = L10n.pick(lang, "المخرج التشريحي الحي", "Live Anatomical Point"),
+                                        text = L10n.pick(lang, "المخرج التشريحي الحقيقي", "Real Anatomical Point"),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = noorColors.goldAccent
@@ -315,39 +323,76 @@ fun TajweedMakharijLabScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Box(
-                                    modifier = Modifier
-                                        .size(54.dp)
-                                        .clip(CircleShape)
-                                        .background(selectedLetter.zone.color.copy(alpha = 0.22f))
-                                        .border(1.5.dp, selectedLetter.zone.color, CircleShape),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(
-                                        text = selectedLetter.letter,
-                                        fontFamily = AmiriFontFamily,
-                                        fontSize = 28.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White
-                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.08f))
+                                            .border(1.dp, GoldPrimary.copy(alpha = 0.5f), CircleShape)
+                                            .clickable { zoomedIn = !zoomedIn },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = if (zoomedIn) Icons.Rounded.ZoomOut else Icons.Rounded.ZoomIn,
+                                            contentDescription = L10n.pick(lang, "تكبير الصورة التشريحية", "Zoom Anatomy"),
+                                            tint = GoldBright,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(54.dp)
+                                            .clip(CircleShape)
+                                            .background(selectedLetter.zone.color.copy(alpha = 0.24f))
+                                            .border(1.8.dp, selectedLetter.zone.color, CircleShape),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = selectedLetter.letter,
+                                            fontFamily = AmiriFontFamily,
+                                            fontSize = 28.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
                                 }
                             }
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            VocalTractAnatomicalCanvas(
+                            RealVocalTractAnatomyView(
                                 activeLetter = selectedLetter,
+                                zoomedIn = zoomedIn,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(210.dp)
+                                    .aspectRatio(4f / 3f)
                                     .clip(RoundedCornerShape(18.dp))
-                                    .background(Color(0xFF04130F))
-                                    .border(1.dp, selectedLetter.zone.color.copy(alpha = 0.45f), RoundedCornerShape(18.dp))
+                                    .background(Color(0xFF061519))
+                                    .border(1.4.dp, selectedLetter.zone.color.copy(alpha = 0.65f), RoundedCornerShape(18.dp))
+                                    .clickable { zoomedIn = !zoomedIn }
                             )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // Clear Arabic/English Organ Key Strip so users immediately read every zone
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                OrganLegendDot(L10n.pick(lang, "الأنف/الخيشوم", "Nose"), MakhrajZone.AL_KHAYSHUM.color)
+                                OrganLegendDot(L10n.pick(lang, "الشفتان", "Lips"), MakhrajZone.ASH_SHAFATAN.color)
+                                OrganLegendDot(L10n.pick(lang, "اللسان", "Tongue"), MakhrajZone.AL_LISAN.color)
+                                OrganLegendDot(L10n.pick(lang, "الحلق", "Throat"), MakhrajZone.AL_HALQ.color)
+                                OrganLegendDot(L10n.pick(lang, "الجوف", "Cavity"), MakhrajZone.AL_JAWF.color)
+                            }
 
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            // Legend pills for the 5 Major Zones
+                            // Filter pills for the 5 Major Zones
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 item {
                                     LiquidGlassChip(
@@ -376,7 +421,7 @@ fun TajweedMakharijLabScreen(
                     item {
                         LiquidGlassCard {
                             Text(
-                                text = L10n.pick(lang, "اختر الحرف لمعاينة مخرجه وصفاته", "Tap any Arabic Letter to Inspect"),
+                                text = L10n.pick(lang, "اختر الحرف لتحديد مخرجه على الصورة التشريحية الحقيقية", "Tap any Arabic Letter to Pinpoint on Real Anatomy"),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = noorColors.goldAccent
@@ -749,116 +794,139 @@ fun TajweedMakharijLabScreen(
 }
 
 @Composable
-private fun VocalTractAnatomicalCanvas(
+private fun OrganLegendDot(label: String, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(CircleShape)
+                .background(color)
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White.copy(alpha = 0.85f),
+            fontSize = 10.sp
+        )
+    }
+}
+
+@Composable
+private fun RealVocalTractAnatomyView(
     activeLetter: ArabicLetterMakhraj,
+    zoomedIn: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val lang = LocalAppLanguage.current
     val transition = rememberInfiniteTransition(label = "makhraj_beacon")
     val pulse by transition.animateFloat(
-        initialValue = 0.65f,
-        targetValue = 1.45f,
+        initialValue = 0.68f,
+        targetValue = 1.55f,
         animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
+            animation = tween(durationMillis = 1150, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "beacon_pulse"
     )
 
-    Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
+    val zoomScale = if (zoomedIn) 1.55f else 1.0f
 
-        // Subtle anatomical grid
-        val gridColor = Color(0xFF1E4D3E).copy(alpha = 0.25f)
-        for (i in 1..7) {
-            val x = w * i / 8f
-            drawLine(gridColor, Offset(x, 0f), Offset(x, h), strokeWidth = 1f)
+    Box(modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = zoomScale
+                    scaleY = zoomScale
+                    if (zoomedIn) {
+                        translationX = (0.5f - activeLetter.pointX) * size.width * 0.65f
+                        translationY = (0.5f - activeLetter.pointY) * size.height * 0.65f
+                    }
+                }
+        ) {
+            Image(
+                painter = painterResource(id = R.drawable.img_makharij_vocal_tract),
+                contentDescription = L10n.pick(
+                    lang,
+                    "صورة تشريحية حقيقية لمخارج الحروف: الأنف والفم والأسنان واللسان والحلق",
+                    "Real medical anatomical cross-section of nose, lips, teeth, tongue, and throat"
+                ),
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize()
+            )
+
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+
+                // Reference pins for all 5 Major Anatomical Organs
+                MakhrajZone.entries.forEach { zone ->
+                    val pt = Offset(w * zone.normX, h * zone.normY)
+                    drawCircle(color = Color.Black.copy(alpha = 0.55f), radius = 9f, center = pt)
+                    drawCircle(color = zone.color.copy(alpha = 0.90f), radius = 5.5f, center = pt)
+                }
+
+                // Active Letter High-Precision Glowing Laser Target
+                val target = Offset(w * activeLetter.pointX, h * activeLetter.pointY)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            activeLetter.zone.color.copy(alpha = 0.80f),
+                            GoldBright.copy(alpha = 0.35f),
+                            Color.Transparent
+                        ),
+                        center = target,
+                        radius = 44f * pulse
+                    ),
+                    radius = 44f * pulse,
+                    center = target
+                )
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.65f),
+                    radius = 18f,
+                    center = target,
+                    style = Stroke(width = 5f)
+                )
+                drawCircle(
+                    color = GoldBright,
+                    radius = 16f,
+                    center = target,
+                    style = Stroke(width = 3f)
+                )
+                drawCircle(
+                    color = activeLetter.zone.color,
+                    radius = 8f,
+                    center = target
+                )
+                // Crosshair ticks
+                drawLine(GoldBright, Offset(target.x - 24f, target.y), Offset(target.x - 12f, target.y), strokeWidth = 2.4f, cap = StrokeCap.Round)
+                drawLine(GoldBright, Offset(target.x + 12f, target.y), Offset(target.x + 24f, target.y), strokeWidth = 2.4f, cap = StrokeCap.Round)
+                drawLine(GoldBright, Offset(target.x, target.y - 24f), Offset(target.x, target.y - 12f), strokeWidth = 2.4f, cap = StrokeCap.Round)
+                drawLine(GoldBright, Offset(target.x, target.y + 12f), Offset(target.x, target.y + 24f), strokeWidth = 2.4f, cap = StrokeCap.Round)
+            }
         }
-        for (j in 1..4) {
-            val y = h * j / 5f
-            drawLine(gridColor, Offset(0f, y), Offset(w, y), strokeWidth = 1f)
+
+        // Top-right crisp active organ badge
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(Color(0xCC041410))
+                .border(1.dp, activeLetter.zone.color.copy(alpha = 0.85f), RoundedCornerShape(50))
+                .padding(horizontal = 10.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = L10n.pick(
+                    lang,
+                    "${activeLetter.zone.nameAr} · اضغط للتكبير",
+                    "${activeLetter.zone.nameEn} · Tap to Zoom"
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = GoldBright
+            )
         }
-
-        // Stylized side-profile silhouette of nasal passage (Al-Khayshum), oral cavity (Al-Jawf),
-        // tongue (Al-Lisan), lips (Ash-Shafatan), and throat (Al-Halq)
-        val nasalPath = Path().apply {
-            moveTo(w * 0.16f, h * 0.34f)
-            cubicTo(w * 0.26f, h * 0.16f, w * 0.48f, h * 0.15f, w * 0.58f, h * 0.33f)
-            cubicTo(w * 0.52f, h * 0.36f, w * 0.34f, h * 0.36f, w * 0.20f, h * 0.38f)
-            close()
-        }
-        drawPath(nasalPath, color = MakhrajZone.AL_KHAYSHUM.color.copy(alpha = if (activeLetter.zone == MakhrajZone.AL_KHAYSHUM) 0.30f else 0.10f))
-        drawPath(nasalPath, color = MakhrajZone.AL_KHAYSHUM.color.copy(alpha = 0.65f), style = Stroke(width = 2.2f))
-
-        // Hard & soft palate arch + throat back wall
-        val palateAndThroat = Path().apply {
-            moveTo(w * 0.18f, h * 0.45f)
-            cubicTo(w * 0.32f, h * 0.36f, w * 0.56f, h * 0.37f, w * 0.66f, h * 0.54f)
-            lineTo(w * 0.72f, h * 0.90f)
-        }
-        drawPath(palateAndThroat, color = Color.White.copy(alpha = 0.45f), style = Stroke(width = 3f, cap = StrokeCap.Round))
-
-        // Throat channel (Al-Halq)
-        val throatPath = Path().apply {
-            moveTo(w * 0.60f, h * 0.56f)
-            lineTo(w * 0.66f, h * 0.54f)
-            lineTo(w * 0.73f, h * 0.90f)
-            lineTo(w * 0.62f, h * 0.90f)
-            close()
-        }
-        drawPath(throatPath, color = MakhrajZone.AL_HALQ.color.copy(alpha = if (activeLetter.zone == MakhrajZone.AL_HALQ) 0.30f else 0.10f))
-        drawPath(throatPath, color = MakhrajZone.AL_HALQ.color.copy(alpha = 0.60f), style = Stroke(width = 2f))
-
-        // Tongue body (Al-Lisan)
-        val tonguePath = Path().apply {
-            moveTo(w * 0.22f, h * 0.62f)
-            cubicTo(w * 0.30f, h * 0.49f, w * 0.49f, h * 0.48f, w * 0.59f, h * 0.60f)
-            cubicTo(w * 0.61f, h * 0.72f, w * 0.45f, h * 0.76f, w * 0.25f, h * 0.70f)
-            close()
-        }
-        drawPath(tonguePath, color = MakhrajZone.AL_LISAN.color.copy(alpha = if (activeLetter.zone == MakhrajZone.AL_LISAN) 0.32f else 0.12f))
-        drawPath(tonguePath, color = MakhrajZone.AL_LISAN.color.copy(alpha = 0.75f), style = Stroke(width = 2.4f))
-
-        // Lips (Ash-Shafatan)
-        drawCircle(
-            color = MakhrajZone.ASH_SHAFATAN.color.copy(alpha = if (activeLetter.zone == MakhrajZone.ASH_SHAFATAN) 0.40f else 0.18f),
-            radius = h * 0.08f,
-            center = Offset(w * 0.16f, h * 0.54f)
-        )
-        drawCircle(
-            color = MakhrajZone.ASH_SHAFATAN.color.copy(alpha = 0.85f),
-            radius = h * 0.08f,
-            center = Offset(w * 0.16f, h * 0.54f),
-            style = Stroke(width = 2.2f)
-        )
-
-        // All 5 Zone Anchor Dots
-        MakhrajZone.entries.forEach { zone ->
-            val pt = Offset(w * zone.normX, h * zone.normY)
-            drawCircle(color = zone.color.copy(alpha = 0.35f), radius = 6f, center = pt)
-        }
-
-        // Exact Active Letter Articulation Point Pulsing Beacon
-        val activeCenter = Offset(w * activeLetter.pointX, h * activeLetter.pointY)
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(activeLetter.zone.color.copy(alpha = 0.55f), Color.Transparent),
-                center = activeCenter,
-                radius = 34f * pulse
-            ),
-            radius = 34f * pulse,
-            center = activeCenter
-        )
-        drawCircle(
-            color = activeLetter.zone.color,
-            radius = 12f,
-            center = activeCenter,
-            style = Stroke(width = 2.5f)
-        )
-        drawCircle(
-            color = GoldBright,
-            radius = 6.5f,
-            center = activeCenter
-        )
     }
 }
+
