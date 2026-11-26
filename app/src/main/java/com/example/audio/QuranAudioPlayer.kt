@@ -358,14 +358,30 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                         safelyDisposeOrphanPlayer(player)
                         return@setOnPreparedListener
                     }
-                    if (startRange.startMs > 0L) {
+                    // For custom uploaded reciters (proportional manifest), rescale Ayah timestamps
+                    // to the exact real audio file duration now that MediaPlayer has decoded headers!
+                    var resolvedStartMs = startRange.startMs
+                    val preparedDur = runCatching { player.duration.toLong() }.getOrDefault(0L)
+                    if (manifest.quranComReciterId == -1 && preparedDur > 1_000L && manifest.ayahs.isNotEmpty()) {
+                        val origTotal = manifest.ayahs.last().endMs.coerceAtLeast(1L)
+                        val rescaledAyahs = manifest.ayahs.map { r ->
+                            val newStart = (r.startMs * preparedDur) / origTotal
+                            val newEnd = ((r.endMs * preparedDur) / origTotal).coerceAtLeast(newStart + 100L)
+                            r.copy(startMs = newStart, endMs = newEnd.coerceAtMost(preparedDur))
+                        }
+                        val updatedManifest = manifest.copy(ayahs = rescaledAyahs)
+                        activeContinuousManifest = updatedManifest
+                        resolvedStartMs = updatedManifest.findAyahRange(startRange.ayahNumber)?.startMs ?: 0L
+                        pendingSeekTargetMs = resolvedStartMs.takeIf { it > 0L }
+                    }
+                    if (resolvedStartMs > 0L) {
                         // Wait for seekTo to finish BEFORE calling start() so audio strictly begins
                         // at the selected Ayah (e.g., Ayah 3) and never leaks a snippet of Ayah 1.
                         player.setOnSeekCompleteListener { seekedPlayer ->
                             seekedPlayer.setOnSeekCompleteListener(null)
                             beginContinuousPlayback(seekedPlayer)
                         }
-                        val seekOk = runCatching { player.seekTo(startRange.startMs.toInt()) }.isSuccess
+                        val seekOk = runCatching { player.seekTo(resolvedStartMs.toInt()) }.isSuccess
                         if (!seekOk) {
                             player.setOnSeekCompleteListener(null)
                             beginContinuousPlayback(player)

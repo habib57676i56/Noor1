@@ -257,6 +257,9 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             if (user != null) cloudRepo.observeCustomReciters() else flowOf(emptyList())
         }
 
+    private val _selectedMushafCustomReciterId = MutableStateFlow<String?>(null)
+    val selectedMushafCustomReciterId: StateFlow<String?> = _selectedMushafCustomReciterId.asStateFlow()
+
     val customReciters: StateFlow<List<CustomReciterItem>> = combine(
         customReciterRepo.reciters,
         cloudCustomReciters
@@ -1287,6 +1290,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setQuranReciter(reciter: QuranReciter) = viewModelScope.launch {
+        _selectedMushafCustomReciterId.value = null
         val prevAudio = quranAudioPlayer.state.value
         val shouldRestartActive = (prevAudio.isPlaying || prevAudio.isBuffering) &&
             prevAudio.playingSurah != null &&
@@ -1318,6 +1322,26 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Selects an Admin-uploaded Custom Reciter directly inside the Quran Mushaf reader.
+     * Playing inside the Mushaf will stream the uploaded file/URL and automatically track
+     * and highlight Ayahs across the Surah proportionally to playback progress.
+     */
+    fun selectMushafCustomReciter(reciter: CustomReciterItem) {
+        val prevAudio = quranAudioPlayer.state.value
+        val shouldRestartActive = (prevAudio.isPlaying || prevAudio.isBuffering) &&
+            prevAudio.playingSurah != null
+        val targetSurah = prevAudio.playingSurah
+        val targetAyah = prevAudio.playingAyah ?: 1
+
+        _selectedMushafCustomReciterId.value = reciter.id
+        if (shouldRestartActive && targetSurah != null) {
+            cancelPendingPlaybackRequests()
+            quranAudioPlayer.stop()
+            playFromMushafAyah(surahNumber = targetSurah, startAyah = targetAyah)
+        }
+    }
+
     fun playQuranVerse(
         verse: QuranVerse,
         allVerses: List<QuranVerse>,
@@ -1325,6 +1349,14 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val surah = SurahCatalog.findSurah(verse.surahNumber)
         val reciter = preferences.value.quranReciter
+        if (_selectedMushafCustomReciterId.value != null) {
+            playFromMushafAyah(
+                surahNumber = verse.surahNumber,
+                startAyah = verse.numberInSurah,
+                preloadedVerses = allVerses
+            )
+            return
+        }
         if (repeatPerAyah <= 1 && allVerses.isNotEmpty()) {
             playSurahVerseByVerse(
                 surahNumber = verse.surahNumber,
@@ -1455,11 +1487,20 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         explicitReciter: QuranReciter? = null,
         preloadedVerses: List<QuranVerse>? = null
     ): Job {
+        val activeCustomReciter = if (explicitReciter == null) {
+            _selectedMushafCustomReciterId.value?.let { cid ->
+                customReciters.value.firstOrNull { it.id == cid && it.hasPlayableAudio() }
+            }
+        } else {
+            null
+        }
         val reciter = explicitReciter ?: preferences.value.quranReciter
         val sMeta = SurahCatalog.findSurah(surahNumber)
         val clampedStart = startAyah.coerceIn(1, sMeta.verseCount)
         val clampedEndAyah = endAyah?.coerceIn(clampedStart, sMeta.verseCount)
-        val signature = "${reciter.id}:$surahNumber:$clampedStart:$clampedEndAyah:$repeatRange"
+        val activeReciterKey = activeCustomReciter?.let { "custom_${it.id}" } ?: reciter.id
+        val activeReciterNameEn = activeCustomReciter?.let { it.nameEn.ifBlank { it.nameAr } } ?: reciter.nameEn
+        val signature = "$activeReciterKey:$surahNumber:$clampedStart:$clampedEndAyah:$repeatRange"
         val nowMs = System.currentTimeMillis()
         val existingJob = activePlaybackRequestJob
         val curAudio = quranAudioPlayer.state.value
@@ -1479,7 +1520,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         // Immediately silence any conflicting active session (different Surah/reciter/non-continuous)
         // before suspending on network or DB calls.
         if (curAudio.hasActiveSession &&
-            (curAudio.playingSurah != surahNumber || curAudio.subtitleEn != reciter.nameEn)
+            (curAudio.playingSurah != surahNumber || curAudio.subtitleEn != activeReciterNameEn)
         ) {
             quranAudioPlayer.stop()
         }
@@ -1499,6 +1540,43 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             if (myToken != playbackRequestToken.get()) return@launch
 
             val pageByAyah = surahVerses.associate { it.numberInSurah to it.pageNumber.takeIf { p -> p in 1..604 } }
+
+            // Engine Custom: Admin-Uploaded Custom Reciter inside the Mushaf with Automatic Ayah Sync!
+            if (activeCustomReciter != null) {
+                val ayahWeights = if (surahVerses.isNotEmpty()) {
+                    surahVerses.map { it.numberInSurah to it.textUthmani.length.coerceAtLeast(15) }
+                } else {
+                    (1..sMeta.verseCount).map { it to 40 }
+                }
+                val customManifest = QuranWordTimingRepository.buildProportionalSurahManifest(
+                    reciterId = "custom_${activeCustomReciter.id}",
+                    surahNumber = surahNumber,
+                    audioSource = activeCustomReciter.resolvePlayableSource(),
+                    ayahWeights = ayahWeights
+                )
+                val rangeLabel = if (repeatRange && clampedEndAyah != null) {
+                    if (isAr) "تكرار ${sMeta.nameAr} ($clampedStart–$clampedEndAyah)"
+                    else "Loop ${sMeta.nameEn} ($clampedStart–$clampedEndAyah)"
+                } else {
+                    null
+                }
+                quranAudioPlayer.playContinuousSurahManifest(
+                    manifest = customManifest,
+                    surahTitleAr = "سورة ${sMeta.nameAr}",
+                    surahTitleEn = sMeta.nameEn,
+                    reciterNameAr = activeCustomReciter.nameAr,
+                    reciterNameEn = activeCustomReciter.nameEn.ifBlank { activeCustomReciter.nameAr },
+                    pageResolver = { _, ayahNum -> pageByAyah[ayahNum] ?: sMeta.startPage },
+                    startAyah = clampedStart,
+                    repeatRangeStartAyah = if (repeatRange && clampedEndAyah != null) clampedStart else null,
+                    repeatRangeEndAyah = if (repeatRange && clampedEndAyah != null) clampedEndAyah else null,
+                    repeatRangeLabel = rangeLabel,
+                    initialSpeed = preferences.value.audioPlaybackSpeed,
+                    onAyahChanged = { s, a, _ -> saveLastRead(s, a) },
+                    onSurahCompleted = null
+                )
+                return@launch
+            }
 
             // Engine A: Continuous Uninterrupted Full-Surah Stream + Verified Millisecond Timestamps
             val manifest = if (quranWordTimingRepository.supportsVerifiedWordTimings(reciter)) {

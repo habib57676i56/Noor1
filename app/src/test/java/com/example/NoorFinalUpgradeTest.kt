@@ -3,9 +3,12 @@ package com.example
 import com.example.data.cloud.AppVersionGate
 import com.example.data.cloud.GlobalAppConfigDoc
 import com.example.data.cloud.NoorPlatformConstants
+import com.example.data.quran.QuranWordTimingRepository
+import com.example.domain.model.QuranReciter
 import com.example.ui.screens.ecosystem.AsbabAlNuzulCatalog
 import com.example.ui.screens.ecosystem.HifzSpacedRepetitionEngine
 import com.example.ui.screens.ecosystem.MakhrajZone
+import com.example.ui.screens.ecosystem.PropheticSundialEngine
 import com.example.ui.screens.ecosystem.QuranMaqamatCatalog
 import com.example.ui.screens.ecosystem.QuranicSanadCatalog
 import com.example.ui.screens.ecosystem.SacredMeeqatCalculator
@@ -13,6 +16,7 @@ import com.example.ui.screens.ecosystem.SacredSatelliteAtlasCatalog
 import com.example.ui.screens.ecosystem.SpiritualMuhasabahEngine
 import com.example.ui.screens.ecosystem.TajweedAcousticDsp
 import com.example.ui.screens.ecosystem.TajweedMakharijCatalog
+import com.example.ui.screens.ecosystem.YasserDosariIraqiCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,28 +30,64 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("3.1.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v3.1.0", NoorPlatformConstants.APP_VERSION_TAG)
-        // New build v3.1.0 passes the default v3.1.0 gate, while older v3.0.0 APK is blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.1.0", defaultConfig))
+        assertEquals("3.3.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v3.3.0", NoorPlatformConstants.APP_VERSION_TAG)
+        // New build v3.3.0 passes default v3.3.0 gate, while older v3.2.0, v3.1.0 & v3.0.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.3.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.2.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.1.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.0.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("2.9.9", defaultConfig))
 
-        // Raising minSupportedVersion to 3.2.0 blocks 3.1.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.2.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.1.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.2.0", raisedConfig))
+        // Raising minSupportedVersion to 3.4.0 blocks 3.3.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.4.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.4.0", raisedConfig))
         assertFalse(AppVersionGate.isForceUpdateRequired("3.5.0", raisedConfig))
 
         // Explicit emergency forceUpdateEnabled blocks even current version
         val forcedConfig = defaultConfig.copy(forceUpdateEnabled = true)
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.1.0", forcedConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", forcedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("javascript:alert(1)"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("http://insecure.example"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("https://t.me/Noor_ui"))
+    }
+
+    @Test
+    fun yasserAlDosariIraqiMaqam_inMushafRecitersAndViralStudioCatalog() {
+        val iraqi = QuranReciter.YASSER_AL_DOSARI_IRAQI_MAQAM
+        assertEquals("yasser_dosari_iraqi", iraqi.id)
+        assertTrue(iraqi.nameAr.contains("العراق"))
+        assertTrue(iraqi.fullSurahUrl(40).endsWith("/040.mp3"))
+        assertTrue(iraqi.ayahAudioUrl(40, 44).endsWith("/040044.mp3"))
+        assertEquals(iraqi, QuranReciter.fromId("yasser_dosari_iraqi"))
+
+        // Viral YouTube & Haramain Studio Catalog has 10 verified recitations
+        assertEquals(10, YasserDosariIraqiCatalog.recitations.size)
+        assertTrue(YasserDosariIraqiCatalog.recitations.all {
+            it.fullSurahAudioUrl().startsWith("https://server11.mp3quran.net/yasser/") &&
+                it.climaxAyahAudioUrl().startsWith("https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/") &&
+                it.youtubeSearchUrl().startsWith("https://www.youtube.com/results?search_query=")
+        })
+    }
+
+    @Test
+    fun customUploadedReciter_proportionalManifestTracksAyahsAcrossSurah() {
+        val manifest = QuranWordTimingRepository.buildProportionalSurahManifest(
+            reciterId = "custom_sheikh_1",
+            surahNumber = 1,
+            audioSource = "/data/user/0/custom/fatihah.mp3",
+            ayahWeights = listOf(1 to 20, 2 to 20, 3 to 20, 4 to 40),
+            totalDurationMs = 100_000L
+        )
+        assertEquals(QuranWordTimingRepository.CUSTOM_PROPORTIONAL_RECITER_ID, manifest.quranComReciterId)
+        assertEquals(4, manifest.ayahs.size)
+        assertEquals(1, manifest.findAyahAt(5_000L)?.ayahNumber)
+        assertEquals(2, manifest.findAyahAt(25_000L)?.ayahNumber)
+        assertEquals(3, manifest.findAyahAt(45_000L)?.ayahNumber)
+        assertEquals(4, manifest.findAyahAt(75_000L)?.ayahNumber)
     }
 
     @Test
@@ -163,5 +203,19 @@ class NoorFinalUpgradeTest {
         assertEquals(1, hardReset.intervalDays)
 
         assertEquals(50, HifzSpacedRepetitionEngine.computeMasteryPercent(listOf(secondReview, hardReset)))
+    }
+
+    @Test
+    fun propheticSundialEngine_computesValidDaylightShadowAndAsrThresholds() {
+        val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("Asia/Riyadh")).apply {
+            set(2026, java.util.Calendar.MAY, 28, 12, 18, 0)
+        }
+        val makkahNoon = PropheticSundialEngine.computeReading(21.4225, 39.8262, cal, staffHeightMeters = 1.0)
+        assertTrue("Expected high noon sun in Makkah on May 28, got ${makkahNoon.solarAltitudeDeg}", makkahNoon.solarAltitudeDeg > 80.0)
+        assertTrue(makkahNoon.isDaylight)
+        assertTrue((makkahNoon.shadowLengthMeters ?: 99.0) < 0.25)
+        assertTrue(makkahNoon.shafiAsrThresholdMeters > makkahNoon.meridianShadowMeters)
+        assertTrue(makkahNoon.hanafiAsrThresholdMeters > makkahNoon.shafiAsrThresholdMeters)
+        assertTrue(makkahNoon.daysToNextKaabaZenith in 0..365)
     }
 }

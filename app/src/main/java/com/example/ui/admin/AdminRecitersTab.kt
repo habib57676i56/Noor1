@@ -122,11 +122,11 @@ fun AdminRecitersTab(
     ) {
         item {
             AdminSectionHeader(
-                title = L10n.pick(lang, "استوديو القراء ورفع الصوتيات", "Reciters Studio & Audio Uploader"),
+                title = L10n.pick(lang, "استوديو القراء ورفع الصوتيات للمصحف", "Mushaf Reciters Studio & Audio Uploader"),
                 subtitle = L10n.pick(
                     lang,
-                    "أضف قراء جدداً وارفع الملفات الصوتية من الهاتف لتظهر فوراً في قائمة القراء بالتطبيق",
-                    "Add new reciters & upload phone audio files — published immediately to the Reciters list"
+                    "ارفع صوت القارئ من الهاتف ليظهر فوراً داخل قائمة قراء المصحف الشريف مع تحديد وتتبع الآيات تلقائياً",
+                    "Upload phone audio — appears directly inside the Quran Mushaf reciters picker with automatic Ayah sync"
                 )
             )
         }

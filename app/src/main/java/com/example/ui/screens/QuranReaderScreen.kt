@@ -149,6 +149,8 @@ fun QuranReaderScreen(
     val highlightStyle by viewModel.mushafHighlightStyle.collectAsStateWithLifecycle()
     val activeWordPosition by viewModel.activeWordPosition.collectAsStateWithLifecycle()
     val hasVerifiedWordTimings by viewModel.hasVerifiedWordTimingsForCurrentPlayback.collectAsStateWithLifecycle()
+    val customReciters by viewModel.customReciters.collectAsStateWithLifecycle()
+    val selectedCustomReciterId by viewModel.selectedMushafCustomReciterId.collectAsStateWithLifecycle()
 
     val surahMeta = remember(surahNumber) { SurahCatalog.findSurah(surahNumber) }
     val listState = rememberLazyListState()
@@ -642,6 +644,11 @@ fun QuranReaderScreen(
                         ChooseReciterButton(
                             selectedReciter = prefs.quranReciter,
                             onSelectReciter = { viewModel.setQuranReciter(it) },
+                            customReciters = customReciters,
+                            selectedCustomReciterId = selectedCustomReciterId,
+                            onSelectCustomReciter = { custom ->
+                                viewModel.selectMushafCustomReciter(custom)
+                            },
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedButton(

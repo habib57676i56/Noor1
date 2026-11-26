@@ -186,7 +186,9 @@ fun HomeScreen(
     onOpenMaqamatAcademy: () -> Unit = {},
     onOpenSanadChain: () -> Unit = {},
     onOpenSacredMeeqat: () -> Unit = {},
-    onOpenHifzSm2: () -> Unit = {}
+    onOpenHifzSm2: () -> Unit = {},
+    onOpenPropheticSundial: () -> Unit = {},
+    onOpenYasserIraqiMaqam: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -671,6 +673,8 @@ fun HomeScreen(
                         add(Triple(L10n.pick(lang, "شجرة الإسناد", "Sanad Tree", "Sanad daraxti"), Icons.Rounded.Hub, onOpenSanadChain))
                         add(Triple(L10n.pick(lang, "الثلث الأخير", "Last Third", "Kecha oxiri"), Icons.Rounded.NightsStay, onOpenSacredMeeqat))
                         add(Triple(L10n.pick(lang, "بطاقات SM-2", "Hifz SM-2", "SM-2 Hifz"), Icons.Rounded.Psychology, onOpenHifzSm2))
+                        add(Triple(L10n.pick(lang, "الدوسري مقام العراق", "Dosari Iraqi", "Dosari Iroq"), Icons.Rounded.GraphicEq, onOpenYasserIraqiMaqam))
+                        add(Triple(L10n.pick(lang, "المِزولة النبوية", "Sundial", "Quyosh soati"), Icons.Rounded.Explore, onOpenPropheticSundial))
                         add(Triple(L10n.pick(lang, "محاسبة القلب", "Heart Radar", "Qalb hisobi"), Icons.Rounded.Favorite, onOpenMuhasabah))
                         add(Triple(L10n.pick(lang, "أسباب النزول", "Asbab Nuzul", "Nuzul sababi"), Icons.Rounded.MenuBook, onOpenAsbabAlNuzul))
                     }

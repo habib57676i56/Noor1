@@ -267,6 +267,17 @@ enum class QuranReciter(
         mp3QuranBaseUrl = "https://server11.mp3quran.net/yasser",
         isFeatured = true
     ),
+    YASSER_AL_DOSARI_IRAQI_MAQAM(
+        id = "yasser_dosari_iraqi",
+        nameAr = "الشيخ ياسر الدوسري (مقام العراق)",
+        nameEn = "Yasser Al-Dosari (Iraqi Maqam)",
+        styleAr = "مقام العراق والتلاوات الخاشعة · الحرم المكي",
+        styleEn = "Iraqi Maqam & Emotional Tarawih · Makkah",
+        cdnSlug = "ar.alafasy",
+        everyAyahFolder = "Yasser_Ad-Dussary_128kbps",
+        mp3QuranBaseUrl = "https://server11.mp3quran.net/yasser",
+        isFeatured = true
+    ),
     ALAFASY(
         id = "alafasy",
         nameAr = "مشاري راشد العفاسي",

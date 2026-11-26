@@ -143,6 +143,8 @@ fun EcosystemHubScreen(
     onOpenSanadChain: () -> Unit = {},
     onOpenSacredMeeqat: () -> Unit = {},
     onOpenHifzSm2: () -> Unit = {},
+    onOpenPropheticSundial: () -> Unit = {},
+    onOpenYasserIraqiMaqam: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -273,6 +275,16 @@ fun EcosystemHubScreen(
     )
 
     val liveOnlineFeatures = listOf(
+        EcosystemModuleItem(
+            "خاشعات ياسر الدوسري · مقام العراق", "Yasser Al-Dosari · Iraqi Maqam",
+            "أشهر ١٠ تلاوات خاشعة منتشرة على يوتيوب والحرم المكي مع فتحها مباشرة في المصحف", "10 Viral YouTube & Haramain Iraqi-Maqam Recitations + Live Studio",
+            Icons.Rounded.GraphicEq, GoldBright, "hub_yasser_iraqi_maqam", onOpenYasserIraqiMaqam
+        ),
+        EcosystemModuleItem(
+            "المِزْولة الشمسية النبوية والظل الحي", "Live Prophetic Sundial & Shadow Lab",
+            "حساب فلكي حي لطول الظل وفيء الزوال ودخول العصر + مرصد تعامد الشمس على الكعبة", "Real Solar Altitude, Live Gnomon Shadow, Compass Align & Kaaba Zenith",
+            Icons.Rounded.Explore, GoldBright, "hub_prophetic_sundial", onOpenPropheticSundial
+        ),
         EcosystemModuleItem(
             "شجرة الإسناد الذهبية والقرّاء العشرة", "Golden Sanad Tree & 10 Qira'at",
             "السند المتصل إلى النبي ﷺ · الأئمة العشرة ورواتهم العشرون + مقارنة صوتية حية", "Unbroken Chain to Prophet ﷺ · 10 Imams, 20 Rawis & Live Audio",

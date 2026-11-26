@@ -127,12 +127,15 @@ import com.example.ui.screens.ecosystem.OfflineSuperAdminScreen
 import com.example.ui.screens.ecosystem.QadaTrackerScreen
 import com.example.ui.screens.ecosystem.QuranCalligraphyStudioScreen
 import com.example.ui.screens.ecosystem.QuranIrabSarfScreen
+import com.example.domain.model.QuranReciter
+import com.example.ui.screens.ecosystem.PropheticSundialScreen
 import com.example.ui.screens.ecosystem.QuranMaqamatAcademyScreen
 import com.example.ui.screens.ecosystem.QuranMemorizationFlashcardsScreen
 import com.example.ui.screens.ecosystem.QuranMiraclesAndParablesScreen
 import com.example.ui.screens.ecosystem.QuranicSanadChainScreen
 import com.example.ui.screens.ecosystem.SacredTimeAndMeeqatScreen
 import com.example.ui.screens.ecosystem.TajweedVoiceAnalyzerScreen
+import com.example.ui.screens.ecosystem.YasserDosariIraqiMaqamScreen
 import com.example.ui.screens.ecosystem.QuranMutashabihatScreen
 import com.example.ui.screens.ecosystem.QuranRootAndQiraatUniverseScreen
 import com.example.ui.screens.ecosystem.QuranicSoulRemedyScreen
@@ -222,6 +225,8 @@ object NoorRoutes {
     const val QURAN_SANAD_CHAIN = "quran_sanad_chain"
     const val SACRED_TIME_MEEQAT = "sacred_time_meeqat"
     const val HIFZ_SM2_FLASHCARDS = "hifz_sm2_flashcards"
+    const val PROPHETIC_SUNDIAL = "prophetic_sundial"
+    const val YASSER_IRAQI_MAQAM = "yasser_iraqi_maqam"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -549,7 +554,9 @@ fun NoorAppShell(
                                     onOpenMaqamatAcademy = { navController.navigate(NoorRoutes.QURAN_MAQAMAT_ACADEMY) },
                                     onOpenSanadChain = { navController.navigate(NoorRoutes.QURAN_SANAD_CHAIN) },
                                     onOpenSacredMeeqat = { navController.navigate(NoorRoutes.SACRED_TIME_MEEQAT) },
-                                    onOpenHifzSm2 = { navController.navigate(NoorRoutes.HIFZ_SM2_FLASHCARDS) }
+                                    onOpenHifzSm2 = { navController.navigate(NoorRoutes.HIFZ_SM2_FLASHCARDS) },
+                                    onOpenPropheticSundial = { navController.navigate(NoorRoutes.PROPHETIC_SUNDIAL) },
+                                    onOpenYasserIraqiMaqam = { navController.navigate(NoorRoutes.YASSER_IRAQI_MAQAM) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -766,6 +773,8 @@ fun NoorAppShell(
                                     onOpenSanadChain = { navController.navigate(NoorRoutes.QURAN_SANAD_CHAIN) },
                                     onOpenSacredMeeqat = { navController.navigate(NoorRoutes.SACRED_TIME_MEEQAT) },
                                     onOpenHifzSm2 = { navController.navigate(NoorRoutes.HIFZ_SM2_FLASHCARDS) },
+                                    onOpenPropheticSundial = { navController.navigate(NoorRoutes.PROPHETIC_SUNDIAL) },
+                                    onOpenYasserIraqiMaqam = { navController.navigate(NoorRoutes.YASSER_IRAQI_MAQAM) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -1099,6 +1108,23 @@ fun NoorAppShell(
                                 QuranMemorizationFlashcardsScreen(
                                     onBack = { navController.popBackStack() },
                                     onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.PROPHETIC_SUNDIAL) {
+                                PropheticSundialScreen(
+                                    latitude = prefs.latitude,
+                                    longitude = prefs.longitude,
+                                    cityLabel = L10n.pick(lang, prefs.cityNameAr, prefs.cityNameEn),
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.YASSER_IRAQI_MAQAM) {
+                                YasserDosariIraqiMaqamScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenInMushafWithDosariIraqi = { surah ->
+                                        viewModel.setQuranReciter(QuranReciter.YASSER_AL_DOSARI_IRAQI_MAQAM)
+                                        navController.navigate(NoorRoutes.quranReader(surah.coerceIn(1, 114)))
+                                    }
                                 )
                             }
                         }

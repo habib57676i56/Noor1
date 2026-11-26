@@ -281,7 +281,52 @@ class QuranWordTimingRepository(private val appContext: Context) {
             QuranReciter.MINSHAWI -> 9         // Mohamed Siddiq al-Minshawi (Murattal)
             QuranReciter.ABDUL_BASIT -> 2      // AbdulBaset AbdulSamad (Murattal)
             QuranReciter.YASSER_AL_DOSARI -> null // Uses gapless pre-buffered per-Ayah stream
+            QuranReciter.YASSER_AL_DOSARI_IRAQI_MAQAM -> null // Uses gapless pre-buffered per-Ayah stream
             QuranReciter.MAHER_AL_MUAIQLY -> null // Uses gapless pre-buffered per-Ayah stream
+        }
+
+        const val CUSTOM_PROPORTIONAL_RECITER_ID = -1
+
+        /**
+         * Builds a proportional continuous-stream manifest for an Admin-uploaded custom reciter
+         * so Ayah highlighting advances smoothly across the Mushaf proportional to each Ayah's text
+         * weight, and automatically rescales to exact MediaPlayer duration once prepared.
+         */
+        fun buildProportionalSurahManifest(
+            reciterId: String,
+            surahNumber: Int,
+            audioSource: String,
+            ayahWeights: List<Pair<Int, Int>>,
+            totalDurationMs: Long = 180_000L
+        ): SurahContinuousAudioManifest {
+            val safeWeights = ayahWeights.ifEmpty { listOf(1 to 40) }
+            val totalWeight = safeWeights.sumOf { it.second.coerceAtLeast(10).toLong() }.coerceAtLeast(1L)
+            val safeDur = totalDurationMs.coerceAtLeast(1_000L)
+            var cursor = 0L
+            val ranges = safeWeights.mapIndexed { idx, (ayahNum, weight) ->
+                val slice = if (idx == safeWeights.lastIndex) {
+                    (safeDur - cursor).coerceAtLeast(250L)
+                } else {
+                    ((safeDur * weight.coerceAtLeast(10).toLong()) / totalWeight).coerceAtLeast(250L)
+                }
+                val start = cursor
+                val end = (cursor + slice).coerceAtMost(safeDur)
+                cursor = end
+                AyahTimestampRange(
+                    surahNumber = surahNumber,
+                    ayahNumber = ayahNum,
+                    startMs = start,
+                    endMs = end.coerceAtLeast(start + 100L)
+                )
+            }
+            return SurahContinuousAudioManifest(
+                reciterId = reciterId,
+                quranComReciterId = CUSTOM_PROPORTIONAL_RECITER_ID,
+                surahNumber = surahNumber,
+                audioUrl = audioSource,
+                ayahs = ranges,
+                sourceAttribution = "NOOR Custom Uploaded Reciter (Auto-Ayah Sync)"
+            )
         }
 
         /**
