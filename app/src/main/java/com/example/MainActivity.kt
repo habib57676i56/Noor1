@@ -113,6 +113,7 @@ class MainActivity : ComponentActivity() {
                     adminViewModel.saveGlobalConfig(
                         globalConfig.copy(
                             minSupportedVersion = NoorPlatformConstants.APP_VERSION_NAME,
+                            forceUpdateEnabled = false,
                             updateChannelUrl = AppVersionGate.resolveSafeUpdateUrl(globalConfig.updateChannelUrl)
                         )
                     )

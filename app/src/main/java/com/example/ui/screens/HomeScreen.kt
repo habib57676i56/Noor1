@@ -188,7 +188,9 @@ fun HomeScreen(
     onOpenSacredMeeqat: () -> Unit = {},
     onOpenHifzSm2: () -> Unit = {},
     onOpenPropheticSundial: () -> Unit = {},
-    onOpenYasserIraqiMaqam: () -> Unit = {}
+    onOpenYasserIraqiMaqam: () -> Unit = {},
+    onOpenWaqfLab: () -> Unit = {},
+    onOpenLunarObservatory: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -677,6 +679,8 @@ fun HomeScreen(
                         add(Triple(L10n.pick(lang, "المِزولة النبوية", "Sundial", "Quyosh soati"), Icons.Rounded.Explore, onOpenPropheticSundial))
                         add(Triple(L10n.pick(lang, "محاسبة القلب", "Heart Radar", "Qalb hisobi"), Icons.Rounded.Favorite, onOpenMuhasabah))
                         add(Triple(L10n.pick(lang, "أسباب النزول", "Asbab Nuzul", "Nuzul sababi"), Icons.Rounded.MenuBook, onOpenAsbabAlNuzul))
+                        add(Triple(L10n.pick(lang, "الوقف والابتداء", "Waqf Lab", "Vaqf ilmi"), Icons.Rounded.RecordVoiceOver, onOpenWaqfLab))
+                        add(Triple(L10n.pick(lang, "القمر والكسوف", "Moon & Eclipse", "Oy va tutilish"), Icons.Rounded.NightsStay, onOpenLunarObservatory))
                     }
                     Column {
                         drawerTiles.chunked(3).forEach { rowTiles ->

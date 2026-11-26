@@ -11,8 +11,8 @@ import com.google.firebase.firestore.ServerTimestamp
  */
 object NoorPlatformConstants {
     const val PRIMARY_OWNER_EMAIL = "mustafa20090520@gmail.com"
-    const val APP_VERSION_NAME = "3.3.0"
-    const val APP_VERSION_TAG = "v3.3.0"
+    const val APP_VERSION_NAME = "3.4.0"
+    const val APP_VERSION_TAG = "v3.4.0"
 
     // Part 4 — Official Founder Profile (exact verified biography, no invented achievements)
     const val FOUNDER_NAME = "Osama"
@@ -507,10 +507,13 @@ object AppVersionGate {
         currentVersion: String,
         config: GlobalAppConfigDoc
     ): Boolean {
-        if (config.forceUpdateEnabled) return true
         val minVer = config.minSupportedVersion.trim()
-        if (minVer.isBlank()) return false
-        return compareVersions(currentVersion, minVer) < 0
+        if (minVer.isNotBlank()) {
+            // Once the user updates to a version >= minSupportedVersion, the update gate
+            // automatically disappears immediately — never stays stuck after updating!
+            return compareVersions(currentVersion, minVer) < 0
+        }
+        return config.forceUpdateEnabled
     }
 
     fun resolveSafeUpdateUrl(rawUrl: String?): String {

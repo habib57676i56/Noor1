@@ -7,9 +7,11 @@ import com.example.data.quran.QuranWordTimingRepository
 import com.example.domain.model.QuranReciter
 import com.example.ui.screens.ecosystem.AsbabAlNuzulCatalog
 import com.example.ui.screens.ecosystem.HifzSpacedRepetitionEngine
+import com.example.ui.screens.ecosystem.LunarAstronomyEngine
 import com.example.ui.screens.ecosystem.MakhrajZone
 import com.example.ui.screens.ecosystem.PropheticSundialEngine
 import com.example.ui.screens.ecosystem.QuranMaqamatCatalog
+import com.example.ui.screens.ecosystem.QuranWaqfCatalog
 import com.example.ui.screens.ecosystem.QuranicSanadCatalog
 import com.example.ui.screens.ecosystem.SacredMeeqatCalculator
 import com.example.ui.screens.ecosystem.SacredSatelliteAtlasCatalog
@@ -26,33 +28,63 @@ import kotlin.math.abs
 class NoorFinalUpgradeTest {
 
     @Test
-    fun forceUpdateGate_blocksOlderVersionsAndDefaultsToTelegramNoorUi() {
+    fun forceUpdateGate_blocksOlderVersionsAndAutoDismissesOnceUpdated() {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("3.3.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v3.3.0", NoorPlatformConstants.APP_VERSION_TAG)
-        // New build v3.3.0 passes default v3.3.0 gate, while older v3.2.0, v3.1.0 & v3.0.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.3.0", defaultConfig))
+        assertEquals("3.4.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v3.4.0", NoorPlatformConstants.APP_VERSION_TAG)
+
+        // New build v3.4.0 passes default v3.4.0 gate, while older v3.3.0 / v3.2.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.4.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.2.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.1.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.0.0", defaultConfig))
 
-        // Raising minSupportedVersion to 3.4.0 blocks 3.3.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.4.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.4.0", raisedConfig))
+        // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
+        // with minSupportedVersion = "3.4.0", the newly updated v3.4.0 (or v3.5.0) APK opens automatically
+        // while older v3.3.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.4.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.4.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.5.0", forcedWithMin))
+
+        // Raising minSupportedVersion to 3.5.0 blocks 3.4.0 until user updates to 3.5.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.5.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.4.0", raisedConfig))
         assertFalse(AppVersionGate.isForceUpdateRequired("3.5.0", raisedConfig))
-
-        // Explicit emergency forceUpdateEnabled blocks even current version
-        val forcedConfig = defaultConfig.copy(forceUpdateEnabled = true)
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", forcedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("javascript:alert(1)"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("http://insecure.example"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("https://t.me/Noor_ui"))
+    }
+
+    @Test
+    fun quranWaqfCatalog_hasAll7MushafSignsValidQuizAndBreathEstimator() {
+        assertEquals(7, QuranWaqfCatalog.signs.size)
+        assertTrue(QuranWaqfCatalog.signs.all { it.audioUrl().startsWith("https://everyayah.com/data/") })
+        assertTrue(QuranWaqfCatalog.quizQuestions.size >= 4)
+        assertTrue(QuranWaqfCatalog.quizQuestions.all { it.correctIndex in it.optionsAr.indices })
+        assertEquals(2.0, QuranWaqfCatalog.estimateRecitableLines(15.0), 0.01)
+    }
+
+    @Test
+    fun lunarAstronomyEngine_computesAccurateMoonPhaseAndVerifiedEclipses() {
+        // Reference New Moon epoch (2000-01-06 18:14 UTC) should yield ~0% illumination
+        val newMoon = LunarAstronomyEngine.computeLunarPhase(947182440000L)
+        assertTrue(newMoon.illuminationPercent < 1.0)
+        assertTrue(newMoon.ageDays < 0.2)
+
+        // Half a synodic month later should yield ~100% Full Moon (Badr) & Ayyam al-Bid active!
+        val halfMonthMs = (LunarAstronomyEngine.SYNODIC_MONTH_DAYS / 2.0 * 86_400_000.0).toLong()
+        val fullMoon = LunarAstronomyEngine.computeLunarPhase(947182440000L + halfMonthMs)
+        assertTrue("Expected >99% illumination, got ${fullMoon.illuminationPercent}", fullMoon.illuminationPercent > 99.0)
+        assertTrue(fullMoon.isAyyamAlBidNow)
+        assertTrue(fullMoon.distanceKm in 350_000..415_000)
+
+        assertTrue(LunarAstronomyEngine.upcomingEclipses.size >= 6)
+        assertTrue(LunarAstronomyEngine.upcomingEclipses.any { it.id == "solar_2027_aug_makkah" })
     }
 
     @Test
@@ -64,7 +96,6 @@ class NoorFinalUpgradeTest {
         assertTrue(iraqi.ayahAudioUrl(40, 44).endsWith("/040044.mp3"))
         assertEquals(iraqi, QuranReciter.fromId("yasser_dosari_iraqi"))
 
-        // Viral YouTube & Haramain Studio Catalog has 10 verified recitations
         assertEquals(10, YasserDosariIraqiCatalog.recitations.size)
         assertTrue(YasserDosariIraqiCatalog.recitations.all {
             it.fullSurahAudioUrl().startsWith("https://server11.mp3quran.net/yasser/") &&

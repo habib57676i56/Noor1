@@ -134,6 +134,8 @@ import com.example.ui.screens.ecosystem.QuranMemorizationFlashcardsScreen
 import com.example.ui.screens.ecosystem.QuranMiraclesAndParablesScreen
 import com.example.ui.screens.ecosystem.QuranicSanadChainScreen
 import com.example.ui.screens.ecosystem.SacredTimeAndMeeqatScreen
+import com.example.ui.screens.ecosystem.LunarEclipseObservatoryScreen
+import com.example.ui.screens.ecosystem.QuranWaqfLabScreen
 import com.example.ui.screens.ecosystem.TajweedVoiceAnalyzerScreen
 import com.example.ui.screens.ecosystem.YasserDosariIraqiMaqamScreen
 import com.example.ui.screens.ecosystem.QuranMutashabihatScreen
@@ -227,6 +229,8 @@ object NoorRoutes {
     const val HIFZ_SM2_FLASHCARDS = "hifz_sm2_flashcards"
     const val PROPHETIC_SUNDIAL = "prophetic_sundial"
     const val YASSER_IRAQI_MAQAM = "yasser_iraqi_maqam"
+    const val QURAN_WAQF_LAB = "quran_waqf_lab"
+    const val LUNAR_ECLIPSE_OBSERVATORY = "lunar_eclipse_observatory"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -556,7 +560,9 @@ fun NoorAppShell(
                                     onOpenSacredMeeqat = { navController.navigate(NoorRoutes.SACRED_TIME_MEEQAT) },
                                     onOpenHifzSm2 = { navController.navigate(NoorRoutes.HIFZ_SM2_FLASHCARDS) },
                                     onOpenPropheticSundial = { navController.navigate(NoorRoutes.PROPHETIC_SUNDIAL) },
-                                    onOpenYasserIraqiMaqam = { navController.navigate(NoorRoutes.YASSER_IRAQI_MAQAM) }
+                                    onOpenYasserIraqiMaqam = { navController.navigate(NoorRoutes.YASSER_IRAQI_MAQAM) },
+                                    onOpenWaqfLab = { navController.navigate(NoorRoutes.QURAN_WAQF_LAB) },
+                                    onOpenLunarObservatory = { navController.navigate(NoorRoutes.LUNAR_ECLIPSE_OBSERVATORY) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -775,6 +781,8 @@ fun NoorAppShell(
                                     onOpenHifzSm2 = { navController.navigate(NoorRoutes.HIFZ_SM2_FLASHCARDS) },
                                     onOpenPropheticSundial = { navController.navigate(NoorRoutes.PROPHETIC_SUNDIAL) },
                                     onOpenYasserIraqiMaqam = { navController.navigate(NoorRoutes.YASSER_IRAQI_MAQAM) },
+                                    onOpenWaqfLab = { navController.navigate(NoorRoutes.QURAN_WAQF_LAB) },
+                                    onOpenLunarObservatory = { navController.navigate(NoorRoutes.LUNAR_ECLIPSE_OBSERVATORY) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -1125,6 +1133,17 @@ fun NoorAppShell(
                                         viewModel.setQuranReciter(QuranReciter.YASSER_AL_DOSARI_IRAQI_MAQAM)
                                         navController.navigate(NoorRoutes.quranReader(surah.coerceIn(1, 114)))
                                     }
+                                )
+                            }
+                            composable(NoorRoutes.QURAN_WAQF_LAB) {
+                                QuranWaqfLabScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.LUNAR_ECLIPSE_OBSERVATORY) {
+                                LunarEclipseObservatoryScreen(
+                                    onBack = { navController.popBackStack() }
                                 )
                             }
                         }

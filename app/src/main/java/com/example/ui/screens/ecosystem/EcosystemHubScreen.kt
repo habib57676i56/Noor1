@@ -145,6 +145,8 @@ fun EcosystemHubScreen(
     onOpenHifzSm2: () -> Unit = {},
     onOpenPropheticSundial: () -> Unit = {},
     onOpenYasserIraqiMaqam: () -> Unit = {},
+    onOpenWaqfLab: () -> Unit = {},
+    onOpenLunarObservatory: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -279,6 +281,16 @@ fun EcosystemHubScreen(
             "خاشعات ياسر الدوسري · مقام العراق", "Yasser Al-Dosari · Iraqi Maqam",
             "أشهر ١٠ تلاوات خاشعة منتشرة على يوتيوب والحرم المكي مع فتحها مباشرة في المصحف", "10 Viral YouTube & Haramain Iraqi-Maqam Recitations + Live Studio",
             Icons.Rounded.GraphicEq, GoldBright, "hub_yasser_iraqi_maqam", onOpenYasserIraqiMaqam
+        ),
+        EcosystemModuleItem(
+            "معمل الوقف والابتداء ومدرب النَّفَس", "Quranic Waqf, Ibtida & Breath Lab",
+            "علامات الوقف الـ٧ في المصحف مع تلاوة الحصري + قياس طول النَّفَس واختبار المعاني", "7 Mushaf Waqf Signs, Husary Audio, Breath-Span Trainer & Quiz",
+            Icons.Rounded.RecordVoiceOver, Color(0xFF34D399), "hub_quran_waqf_lab", onOpenWaqfLab
+        ),
+        EcosystemModuleItem(
+            "مرصد القمر والكسوف وصلاة الكسوف", "Moon Phase & Eclipse Observatory",
+            "أطوار القمر الحية + محاكي ٣٠ يوماً + الأيام البيض ومواعيد الكسوف (كسوف مكة ٢٠٢٧)", "Real-Time 3D-Shaded Moon, 30-Day Scrubber & Verified 2026–2028 Eclipses",
+            Icons.Rounded.NightsStay, Color(0xFF93C5FD), "hub_lunar_eclipse_observatory", onOpenLunarObservatory
         ),
         EcosystemModuleItem(
             "المِزْولة الشمسية النبوية والظل الحي", "Live Prophetic Sundial & Shadow Lab",
