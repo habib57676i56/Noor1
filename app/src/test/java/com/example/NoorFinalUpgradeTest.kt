@@ -32,26 +32,26 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("3.4.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v3.4.0", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("3.5.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v3.5.0", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v3.4.0 passes default v3.4.0 gate, while older v3.3.0 / v3.2.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.4.0", defaultConfig))
+        // New build v3.5.0 passes default v3.5.0 gate, while older v3.4.0 / v3.3.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.5.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.4.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.2.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "3.4.0", the newly updated v3.4.0 (or v3.5.0) APK opens automatically
-        // while older v3.3.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.4.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.4.0", forcedWithMin))
+        // with minSupportedVersion = "3.5.0", the newly updated v3.5.0 (or v3.6.0) APK opens automatically
+        // while older v3.4.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.5.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.4.0", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("3.5.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.6.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 3.5.0 blocks 3.4.0 until user updates to 3.5.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.5.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.4.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.5.0", raisedConfig))
+        // Raising minSupportedVersion to 3.6.0 blocks 3.5.0 until user updates to 3.6.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.6.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.5.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.6.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
@@ -83,6 +83,7 @@ class NoorFinalUpgradeTest {
         assertTrue(fullMoon.isAyyamAlBidNow)
         assertTrue(fullMoon.distanceKm in 350_000..415_000)
 
+        assertTrue(LunarAstronomyEngine.landmarks.size >= 6)
         assertTrue(LunarAstronomyEngine.upcomingEclipses.size >= 6)
         assertTrue(LunarAstronomyEngine.upcomingEclipses.any { it.id == "solar_2027_aug_makkah" })
     }
