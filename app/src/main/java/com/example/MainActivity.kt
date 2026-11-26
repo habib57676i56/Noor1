@@ -96,6 +96,29 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
+            // When the owner (Super Admin) launches a newly built release (e.g. v3.1.0),
+            // automatically raise Firestore's minSupportedVersion so older APKs immediately
+            // display the mandatory Telegram update screen (https://t.me/Noor_ui).
+            var didAutoSyncMinVersion by remember { mutableStateOf(false) }
+            LaunchedEffect(resolvedRole, globalConfig.minSupportedVersion, currentUser?.uid) {
+                if (!didAutoSyncMinVersion &&
+                    currentUser != null &&
+                    resolvedRole.canControlGlobalFeatures &&
+                    AppVersionGate.compareVersions(
+                        NoorPlatformConstants.APP_VERSION_NAME,
+                        globalConfig.minSupportedVersion
+                    ) > 0
+                ) {
+                    didAutoSyncMinVersion = true
+                    adminViewModel.saveGlobalConfig(
+                        globalConfig.copy(
+                            minSupportedVersion = NoorPlatformConstants.APP_VERSION_NAME,
+                            updateChannelUrl = AppVersionGate.resolveSafeUpdateUrl(globalConfig.updateChannelUrl)
+                        )
+                    )
+                }
+            }
+
             CompositionLocalProvider(
                 LocalAppLanguage provides prefs.language,
                 LocalLayoutDirection provides layoutDirection

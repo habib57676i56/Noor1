@@ -56,6 +56,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import com.example.data.cloud.AdminRole
+import com.example.data.cloud.NoorPlatformConstants
 import com.example.data.cloud.SupportTicketDoc
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
@@ -212,26 +213,86 @@ fun AdminSettingsAndSupportTab(
                     AdminPanelCard(
                         accentBorder = if (draftConfig.forceUpdateEnabled) AdminPalette.AccentAmber else AdminPalette.AccentCyan.copy(alpha = 0.55f)
                     ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = L10n.pick(
+                                    lang,
+                                    "التحديث الإجباري وقناة تيليجرام (t.me/Noor_ui)",
+                                    "Mandatory Telegram Force Update Gate"
+                                ),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = AdminPalette.GoldLuxe,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(AdminPalette.AccentCyan.copy(alpha = 0.22f))
+                                    .border(1.dp, AdminPalette.AccentCyan, RoundedCornerShape(50))
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = NoorPlatformConstants.APP_VERSION_TAG,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = AdminPalette.AccentCyan
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = L10n.pick(
                                 lang,
-                                "التحديث الإجباري وقناة تيليجرام (t.me/Noor_ui)",
-                                "Mandatory Telegram Force Update Gate"
-                            ),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = AdminPalette.GoldLuxe
-                        )
-                        Text(
-                            text = L10n.pick(
-                                lang,
-                                "عند رفع الحد الأدنى للإصدار (مثلاً 3.1.0) أو تفعيل التحديث الإجباري، لن تشتغل النسخ القديمة وتُحوّل المستخدمين مباشرةً لقناة تيليجرام للتحديث.",
-                                "Raising Min Version (e.g. 3.1.0) or enabling Force Update blocks older APKs and redirects users directly to Telegram."
+                                "الإصدار المثبّت حالياً: ${NoorPlatformConstants.APP_VERSION_TAG} — أي هاتف يحمل نسخة أقدم من «أقل إصدار مسموح» سيتوقف تلقائياً وتظهر له شاشة التحديث من تيليجرام.",
+                                "Current build: ${NoorPlatformConstants.APP_VERSION_TAG} — any older APK below Min Version is automatically blocked until updated via Telegram."
                             ),
                             style = MaterialTheme.typography.labelSmall,
                             color = AdminPalette.TextSecondary
                         )
                         Spacer(modifier = Modifier.height(10.dp))
+                        if (isSuperAdmin) {
+                            Button(
+                                onClick = {
+                                    val locked = draftConfig.copy(
+                                        minSupportedVersion = NoorPlatformConstants.APP_VERSION_NAME,
+                                        updateChannelUrl = draftConfig.updateChannelUrl.ifBlank { NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL }
+                                    )
+                                    draftConfig = locked
+                                    adminViewModel.saveGlobalConfig(locked)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("admin_lock_older_versions_btn"),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = AdminPalette.AccentCyan)
+                            ) {
+                                Text(
+                                    text = L10n.pick(
+                                        lang,
+                                        "قفل جميع النسخ الأقدم من ${NoorPlatformConstants.APP_VERSION_TAG} فوراً",
+                                        "Lock All Older Versions Below ${NoorPlatformConstants.APP_VERSION_TAG} Now"
+                                    ),
+                                    color = Color(0xFF031426),
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(listOf("3.1.0", "3.2.0", "3.5.0", "4.0.0")) { ver ->
+                                    AdminFilterPill(
+                                        label = "v$ver",
+                                        selected = draftConfig.minSupportedVersion.trim() == ver,
+                                        onClick = { draftConfig = draftConfig.copy(minSupportedVersion = ver) }
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
                         AdminSwitchRow(
                             label = L10n.pick(lang, "إجبار جميع النسخ على التحديث فوراً", "Force Update All Versions Immediately"),
                             checked = draftConfig.forceUpdateEnabled,
@@ -243,8 +304,9 @@ fun AdminSettingsAndSupportTab(
                             OutlinedTextField(
                                 value = draftConfig.minSupportedVersion,
                                 onValueChange = { draftConfig = draftConfig.copy(minSupportedVersion = it) },
-                                label = { Text(L10n.pick(lang, "أقل إصدار مسموح", "Min Version")) },
-                                placeholder = { Text("3.0.0") },
+                                label = { Text(L10n.pick(lang, "أقل إصدار (v)", "Min Version (v)")) },
+                                prefix = { Text("v", fontWeight = FontWeight.Bold, color = AdminPalette.GoldLuxe) },
+                                placeholder = { Text(NoorPlatformConstants.APP_VERSION_NAME) },
                                 singleLine = true,
                                 enabled = isSuperAdmin,
                                 modifier = Modifier.weight(0.42f).testTag("admin_min_version_input")

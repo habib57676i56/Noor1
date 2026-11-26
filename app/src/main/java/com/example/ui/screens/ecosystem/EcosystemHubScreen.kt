@@ -140,6 +140,9 @@ fun EcosystemHubScreen(
     onOpenAsbabAlNuzul: () -> Unit = {},
     onOpenVoiceAnalyzer: () -> Unit = {},
     onOpenMaqamatAcademy: () -> Unit = {},
+    onOpenSanadChain: () -> Unit = {},
+    onOpenSacredMeeqat: () -> Unit = {},
+    onOpenHifzSm2: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -270,6 +273,21 @@ fun EcosystemHubScreen(
     )
 
     val liveOnlineFeatures = listOf(
+        EcosystemModuleItem(
+            "شجرة الإسناد الذهبية والقرّاء العشرة", "Golden Sanad Tree & 10 Qira'at",
+            "السند المتصل إلى النبي ﷺ · الأئمة العشرة ورواتهم العشرون + مقارنة صوتية حية", "Unbroken Chain to Prophet ﷺ · 10 Imams, 20 Rawis & Live Audio",
+            Icons.Rounded.Hub, GoldBright, "hub_quran_sanad_chain", onOpenSanadChain
+        ),
+        EcosystemModuleItem(
+            "مقياس الثلث الأخير والمواقيت الفلكية", "Last Third of Night & Sacred Meeqat",
+            "ساعة فلكية حية بالثانية لوقت النزول الإلهي والتهجد والضحى والزوال والجمعة", "Live 24h Astronomical Dial for Tahajjud, Duha, Zawal & Friday Hour",
+            Icons.Rounded.NightsStay, Color(0xFF38BDF8), "hub_sacred_time_meeqat", onOpenSacredMeeqat
+        ),
+        EcosystemModuleItem(
+            "المراجعة المتباعدة الذكية للحفظ (SM-2)", "SM-2 Spaced Repetition Hifz",
+            "خوارزمية الذاكرة العلمية لترسيخ الآيات والمتشابهات مع التلاوة الصوتية", "Scientific SM-2 Memory Engine + Custom Cards & Live Ayah Audio",
+            Icons.Rounded.Psychology, Color(0xFF34D399), "hub_hifz_sm2_flashcards", onOpenHifzSm2
+        ),
         EcosystemModuleItem(
             "ميزان المدود والتجويد الصوتي الحي", "Live Mic Tajweed & Madd",
             "تحليل حقيقي بالميكروفون لحركات المدّ (٢، ٤–٥، ٦) والطيف الصوتي والنَّفَس", "Real Hardware Mic DSP for Madd Harakaat, Live Spectrum & Breath",

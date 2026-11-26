@@ -128,7 +128,10 @@ import com.example.ui.screens.ecosystem.QadaTrackerScreen
 import com.example.ui.screens.ecosystem.QuranCalligraphyStudioScreen
 import com.example.ui.screens.ecosystem.QuranIrabSarfScreen
 import com.example.ui.screens.ecosystem.QuranMaqamatAcademyScreen
+import com.example.ui.screens.ecosystem.QuranMemorizationFlashcardsScreen
 import com.example.ui.screens.ecosystem.QuranMiraclesAndParablesScreen
+import com.example.ui.screens.ecosystem.QuranicSanadChainScreen
+import com.example.ui.screens.ecosystem.SacredTimeAndMeeqatScreen
 import com.example.ui.screens.ecosystem.TajweedVoiceAnalyzerScreen
 import com.example.ui.screens.ecosystem.QuranMutashabihatScreen
 import com.example.ui.screens.ecosystem.QuranRootAndQiraatUniverseScreen
@@ -216,6 +219,9 @@ object NoorRoutes {
     const val ASBAB_AL_NUZUL = "asbab_al_nuzul"
     const val TAJWEED_VOICE_ANALYZER = "tajweed_voice_analyzer"
     const val QURAN_MAQAMAT_ACADEMY = "quran_maqamat_academy"
+    const val QURAN_SANAD_CHAIN = "quran_sanad_chain"
+    const val SACRED_TIME_MEEQAT = "sacred_time_meeqat"
+    const val HIFZ_SM2_FLASHCARDS = "hifz_sm2_flashcards"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -540,7 +546,10 @@ fun NoorAppShell(
                                     onOpenMuhasabah = { navController.navigate(NoorRoutes.SPIRITUAL_MUHASABAH) },
                                     onOpenAsbabAlNuzul = { navController.navigate(NoorRoutes.ASBAB_AL_NUZUL) },
                                     onOpenVoiceAnalyzer = { navController.navigate(NoorRoutes.TAJWEED_VOICE_ANALYZER) },
-                                    onOpenMaqamatAcademy = { navController.navigate(NoorRoutes.QURAN_MAQAMAT_ACADEMY) }
+                                    onOpenMaqamatAcademy = { navController.navigate(NoorRoutes.QURAN_MAQAMAT_ACADEMY) },
+                                    onOpenSanadChain = { navController.navigate(NoorRoutes.QURAN_SANAD_CHAIN) },
+                                    onOpenSacredMeeqat = { navController.navigate(NoorRoutes.SACRED_TIME_MEEQAT) },
+                                    onOpenHifzSm2 = { navController.navigate(NoorRoutes.HIFZ_SM2_FLASHCARDS) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -754,6 +763,9 @@ fun NoorAppShell(
                                     onOpenAsbabAlNuzul = { navController.navigate(NoorRoutes.ASBAB_AL_NUZUL) },
                                     onOpenVoiceAnalyzer = { navController.navigate(NoorRoutes.TAJWEED_VOICE_ANALYZER) },
                                     onOpenMaqamatAcademy = { navController.navigate(NoorRoutes.QURAN_MAQAMAT_ACADEMY) },
+                                    onOpenSanadChain = { navController.navigate(NoorRoutes.QURAN_SANAD_CHAIN) },
+                                    onOpenSacredMeeqat = { navController.navigate(NoorRoutes.SACRED_TIME_MEEQAT) },
+                                    onOpenHifzSm2 = { navController.navigate(NoorRoutes.HIFZ_SM2_FLASHCARDS) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -1065,6 +1077,26 @@ fun NoorAppShell(
                             }
                             composable(NoorRoutes.QURAN_MAQAMAT_ACADEMY) {
                                 QuranMaqamatAcademyScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.QURAN_SANAD_CHAIN) {
+                                QuranicSanadChainScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.SACRED_TIME_MEEQAT) {
+                                SacredTimeAndMeeqatScreen(
+                                    latitude = prefs.latitude,
+                                    longitude = prefs.longitude,
+                                    cityLabel = L10n.pick(lang, prefs.cityNameAr, prefs.cityNameEn),
+                                    onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.HIFZ_SM2_FLASHCARDS) {
+                                QuranMemorizationFlashcardsScreen(
                                     onBack = { navController.popBackStack() },
                                     onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
                                 )

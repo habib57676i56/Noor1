@@ -11,7 +11,8 @@ import com.google.firebase.firestore.ServerTimestamp
  */
 object NoorPlatformConstants {
     const val PRIMARY_OWNER_EMAIL = "mustafa20090520@gmail.com"
-    const val APP_VERSION_NAME = "3.0.0"
+    const val APP_VERSION_NAME = "3.1.0"
+    const val APP_VERSION_TAG = "v3.1.0"
 
     // Part 4 — Official Founder Profile (exact verified biography, no invented achievements)
     const val FOUNDER_NAME = "Osama"
@@ -189,7 +190,7 @@ data class GlobalAppConfigDoc(
     val maintenanceMode: Boolean = false,
     val maintenanceMessageAr: String = "نقوم حالياً بتحديثات مجدولة لتحسين تجربة نور. سنعود قريباً بإذن الله.",
     val maintenanceMessageEn: String = "NOOR is undergoing scheduled maintenance to serve you better. We will be back shortly.",
-    val minSupportedVersion: String = "3.0.0",
+    val minSupportedVersion: String = NoorPlatformConstants.APP_VERSION_NAME,
     val forceUpdateEnabled: Boolean = false,
     val updateChannelUrl: String = NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL,
     val updateMessageAr: String = "يتوفر إصدار جديد ومهم من تطبيق نور! لا يمكن تشغيل هذه النسخة القديمة — يرجى التحديث فوراً من قناة تيليجرام الرسمية للمتابعة.",

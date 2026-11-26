@@ -165,7 +165,11 @@ fun SettingsScreen(
     ) {
         item {
             NoorScreenHeader(
-                title = L10n.pick(lang, "الإعدادات", "Settings"),
+                title = L10n.pick(
+                    lang,
+                    "الإعدادات (${com.example.data.cloud.NoorPlatformConstants.APP_VERSION_TAG})",
+                    "Settings (${com.example.data.cloud.NoorPlatformConstants.APP_VERSION_TAG})"
+                ),
                 subtitle = L10n.pick(lang, "الحساب، اللغة، القارئ، التنبيهات، الدعم والخصوصية", "Account, language, reciter, alerts, support & privacy"),
                 onBack = onBack
             )

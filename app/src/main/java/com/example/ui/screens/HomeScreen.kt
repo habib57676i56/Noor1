@@ -183,7 +183,10 @@ fun HomeScreen(
     onOpenMuhasabah: () -> Unit = {},
     onOpenAsbabAlNuzul: () -> Unit = {},
     onOpenVoiceAnalyzer: () -> Unit = {},
-    onOpenMaqamatAcademy: () -> Unit = {}
+    onOpenMaqamatAcademy: () -> Unit = {},
+    onOpenSanadChain: () -> Unit = {},
+    onOpenSacredMeeqat: () -> Unit = {},
+    onOpenHifzSm2: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -261,11 +264,28 @@ fun HomeScreen(
                     }
                     val isVerified = currentUserProfile?.verified == true
                     val verifiedLabel = currentUserProfile?.verifiedBadgeLabel.orEmpty()
-                    Text(
-                        text = L10n.pick(lang, "السلام عليكم", "Assalamu Alaikum", "Assalomu alaykum"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = noorColors.goldAccent
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = L10n.pick(lang, "السلام عليكم", "Assalamu Alaikum", "Assalomu alaykum"),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = noorColors.goldAccent
+                        )
+                        Text(
+                            text = com.example.data.cloud.NoorPlatformConstants.APP_VERSION_TAG,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color(0xFF7DD3FC),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFF38BDF8).copy(alpha = 0.16f))
+                                .border(1.dp, Color(0xFF38BDF8).copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 6.dp, vertical = 1.dp)
+                                .testTag("home_app_version_badge")
+                        )
+                    }
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -648,6 +668,9 @@ fun HomeScreen(
                         add(Triple(L10n.pick(lang, "مختبر المخارج", "Makharij Lab", "Maxrajlar"), Icons.Rounded.RecordVoiceOver, onOpenMakharijLab))
                         add(Triple(L10n.pick(lang, "ميزان المدود", "Voice Madd", "Mad tahlili"), Icons.Rounded.GraphicEq, onOpenVoiceAnalyzer))
                         add(Triple(L10n.pick(lang, "المقامات الـ٧", "7 Maqamat", "7 Maqom"), Icons.Rounded.AutoAwesome, onOpenMaqamatAcademy))
+                        add(Triple(L10n.pick(lang, "شجرة الإسناد", "Sanad Tree", "Sanad daraxti"), Icons.Rounded.Hub, onOpenSanadChain))
+                        add(Triple(L10n.pick(lang, "الثلث الأخير", "Last Third", "Kecha oxiri"), Icons.Rounded.NightsStay, onOpenSacredMeeqat))
+                        add(Triple(L10n.pick(lang, "بطاقات SM-2", "Hifz SM-2", "SM-2 Hifz"), Icons.Rounded.Psychology, onOpenHifzSm2))
                         add(Triple(L10n.pick(lang, "محاسبة القلب", "Heart Radar", "Qalb hisobi"), Icons.Rounded.Favorite, onOpenMuhasabah))
                         add(Triple(L10n.pick(lang, "أسباب النزول", "Asbab Nuzul", "Nuzul sababi"), Icons.Rounded.MenuBook, onOpenAsbabAlNuzul))
                     }
