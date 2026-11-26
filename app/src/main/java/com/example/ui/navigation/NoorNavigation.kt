@@ -76,6 +76,8 @@ import androidx.navigation.navArgument
 import com.example.audio.AudioPlaybackState
 import com.example.shortcuts.NoorShortcutManager
 import com.example.ui.admin.AdminControlCenterScreen
+import com.example.ui.components.Ios27DockTabItem
+import com.example.ui.components.Ios27LiquidGlassBottomDock
 import com.example.ui.components.IslamicGeometricBackground
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
@@ -399,89 +401,22 @@ fun NoorAppShell(
                                 )
                             }
                             if (!useRail && showNavBar) {
-                                val dockShape = RoundedCornerShape(32.dp)
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 10.dp)
-                                        .clip(dockShape)
-                                        .background(
-                                            Brush.verticalGradient(
-                                                colors = listOf(
-                                                    noorColors.glassDockTop,
-                                                    noorColors.glassDockBottom
-                                                )
-                                            )
+                                val dockTabs = remember(lang) {
+                                    bottomTabs.map { tab ->
+                                        Ios27DockTabItem(
+                                            route = tab.route,
+                                            label = L10n.pick(lang, tab.labelAr, tab.labelEn),
+                                            selectedIcon = tab.selectedIcon,
+                                            unselectedIcon = tab.unselectedIcon,
+                                            testTag = tab.testTag
                                         )
-                                        .border(
-                                            width = 1.2.dp,
-                                            brush = Brush.linearGradient(
-                                                colors = listOf(
-                                                    noorColors.glassBorderTop,
-                                                    GoldPrimary.copy(alpha = if (noorColors.isDark) 0.42f else 0.36f),
-                                                    noorColors.glassBorderBottom
-                                                )
-                                            ),
-                                            shape = dockShape
-                                        )
-                                ) {
-                                    // Top curved liquid-glass specular sheen line
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .align(Alignment.TopCenter)
-                                            .padding(horizontal = 24.dp)
-                                            .background(
-                                                Brush.horizontalGradient(
-                                                    listOf(
-                                                        Color.Transparent,
-                                                        noorColors.glassSpecularTop,
-                                                        Color.Transparent
-                                                    )
-                                                )
-                                            )
-                                            .size(height = 2.dp, width = 200.dp)
-                                    )
-                                    NavigationBar(
-                                        containerColor = Color.Transparent,
-                                        tonalElevation = 0.dp,
-                                        windowInsets = WindowInsets(0, 0, 0, 0)
-                                    ) {
-                                        bottomTabs.forEach { tab ->
-                                            val selected = currentRoute == tab.route
-                                            NavigationBarItem(
-                                                selected = selected,
-                                                onClick = { navigateToTab(tab.route) },
-                                                icon = {
-                                                    Icon(
-                                                        imageVector = if (selected) tab.selectedIcon else tab.unselectedIcon,
-                                                        contentDescription = L10n.pick(lang, tab.labelAr, tab.labelEn)
-                                                    )
-                                                },
-                                                label = {
-                                                    Text(
-                                                        text = L10n.pick(lang, tab.labelAr, tab.labelEn),
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                                                        maxLines = 1
-                                                    )
-                                                },
-                                                colors = NavigationBarItemDefaults.colors(
-                                                    selectedIconColor = if (noorColors.isDark) GoldBright else noorColors.goldAccent,
-                                                    selectedTextColor = if (noorColors.isDark) GoldBright else noorColors.goldAccent,
-                                                    indicatorColor = if (noorColors.isDark) {
-                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.24f)
-                                                    } else {
-                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
-                                                    },
-                                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-                                                ),
-                                                modifier = Modifier.testTag(tab.testTag)
-                                            )
-                                        }
                                     }
                                 }
+                                Ios27LiquidGlassBottomDock(
+                                    tabs = dockTabs,
+                                    selectedRoute = currentRoute,
+                                    onSelectTab = { tab -> navigateToTab(tab.route) }
+                                )
                             }
                         }
                     }

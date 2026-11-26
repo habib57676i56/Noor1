@@ -5,6 +5,7 @@ import com.example.data.cloud.GlobalAppConfigDoc
 import com.example.data.cloud.NoorPlatformConstants
 import com.example.data.quran.QuranWordTimingRepository
 import com.example.domain.model.QuranReciter
+import com.example.ui.components.Ios27LiquidGlassDockMath
 import com.example.ui.screens.ecosystem.AsbabAlNuzulCatalog
 import com.example.ui.screens.ecosystem.HifzSpacedRepetitionEngine
 import com.example.ui.screens.ecosystem.LunarAstronomyEngine
@@ -32,32 +33,56 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("3.5.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v3.5.0", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("3.6.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v3.6.0", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v3.5.0 passes default v3.5.0 gate, while older v3.4.0 / v3.3.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.5.0", defaultConfig))
+        // New build v3.6.0 passes default v3.6.0 gate, while older v3.5.0 / v3.4.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.6.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.5.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.4.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.3.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "3.5.0", the newly updated v3.5.0 (or v3.6.0) APK opens automatically
-        // while older v3.4.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.5.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.4.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.5.0", forcedWithMin))
+        // with minSupportedVersion = "3.6.0", the newly updated v3.6.0 (or v3.7.0) APK opens automatically
+        // while older v3.5.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.6.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.5.0", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("3.6.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.7.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 3.6.0 blocks 3.5.0 until user updates to 3.6.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.6.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.5.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.6.0", raisedConfig))
+        // Raising minSupportedVersion to 3.7.0 blocks 3.6.0 until user updates to 3.7.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.7.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.6.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.7.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("javascript:alert(1)"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("http://insecure.example"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("https://t.me/Noor_ui"))
+    }
+
+    @Test
+    fun ios27LiquidGlassDockMath_mapsPointerAccuratelyInBothRtlAndLtr() {
+        val dockWidth = 500f
+        val count = 5
+
+        // LTR: tab 0 is left (x=50), tab 4 is right (x=450)
+        assertEquals(50f, Ios27LiquidGlassDockMath.visualCenterXForTab(0, count, dockWidth, isRtl = false), 0.01f)
+        assertEquals(450f, Ios27LiquidGlassDockMath.visualCenterXForTab(4, count, dockWidth, isRtl = false), 0.01f)
+        assertEquals(0, Ios27LiquidGlassDockMath.tabIndexForPointerX(40f, count, dockWidth, isRtl = false))
+        assertEquals(2, Ios27LiquidGlassDockMath.tabIndexForPointerX(250f, count, dockWidth, isRtl = false))
+        assertEquals(4, Ios27LiquidGlassDockMath.tabIndexForPointerX(460f, count, dockWidth, isRtl = false))
+
+        // RTL (Arabic): tab 0 ("الرئيسية") is on the RIGHT (x=450), tab 4 ("المسبحة") is on the LEFT (x=50)
+        assertEquals(450f, Ios27LiquidGlassDockMath.visualCenterXForTab(0, count, dockWidth, isRtl = true), 0.01f)
+        assertEquals(50f, Ios27LiquidGlassDockMath.visualCenterXForTab(4, count, dockWidth, isRtl = true), 0.01f)
+        assertEquals(0, Ios27LiquidGlassDockMath.tabIndexForPointerX(460f, count, dockWidth, isRtl = true))
+        assertEquals(2, Ios27LiquidGlassDockMath.tabIndexForPointerX(250f, count, dockWidth, isRtl = true))
+        assertEquals(4, Ios27LiquidGlassDockMath.tabIndexForPointerX(40f, count, dockWidth, isRtl = true))
+
+        // Optical magnification proximity peaks at 1.0 when droplet is directly over the tab
+        assertEquals(1f, Ios27LiquidGlassDockMath.lensProximity(250f, 250f, 100f), 0.001f)
+        assertEquals(0f, Ios27LiquidGlassDockMath.lensProximity(50f, 250f, 100f), 0.001f)
     }
 
     @Test
