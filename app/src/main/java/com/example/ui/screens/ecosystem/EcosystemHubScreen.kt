@@ -135,6 +135,9 @@ fun EcosystemHubScreen(
     onOpenCalligraphyStudio: () -> Unit = {},
     onOpenSanctuaryAudio: () -> Unit = {},
     onOpenAstrolabe: () -> Unit = {},
+    onOpenMakharijLab: () -> Unit = {},
+    onOpenMuhasabah: () -> Unit = {},
+    onOpenAsbabAlNuzul: () -> Unit = {},
     activeAdCards: List<AdCardDoc> = emptyList(),
     onAdImpression: (String) -> Unit = {},
     onAdClick: (String) -> Unit = {}
@@ -265,6 +268,21 @@ fun EcosystemHubScreen(
     )
 
     val liveOnlineFeatures = listOf(
+        EcosystemModuleItem(
+            "مختبر مخارج الحروف والتجويد", "Makharij & Tajweed Lab",
+            "خريطة تشريحية تفاعلية لـ ٢٨ حرفاً + أحكام التجويد الملوّنة واختبار", "Interactive Vocal Tract Atlas (28 Letters), Color Tajweed & Quiz",
+            Icons.Rounded.RecordVoiceOver, Color(0xFF34D399), "hub_tajweed_makharij_lab", onOpenMakharijLab
+        ),
+        EcosystemModuleItem(
+            "محاسبة النفس ومؤشر نور القلب", "Heart Noor Muhasabah Radar",
+            "رادار إيماني سداسي الأبعاد + سجل ٧ أيام ووصفة قرآنية يومية", "6-Axis Golden Spiritual Radar, 7-Day Trend & Quranic Remedy",
+            Icons.Rounded.Favorite, Color(0xFFF472B6), "hub_spiritual_muhasabah", onOpenMuhasabah
+        ),
+        EcosystemModuleItem(
+            "أطلس أسباب النزول الصحيحة", "Authentic Asbab al-Nuzul",
+            "قصص نزول الآيات من الصحيحين مع العِبر والفتح الفوري للمصحف", "Verified Revelation Occasions from Bukhari & Muslim + Mushaf",
+            Icons.Rounded.MenuBook, GoldBright, "hub_asbab_al_nuzul", onOpenAsbabAlNuzul
+        ),
         EcosystemModuleItem(
             "مرسم التذهيب والخط العربي ٣D", "Golden Calligraphy Studio",
             "تأثيرات شرارات النور باللمس + ٥ لوحات تذهيب + تلاوة وحفظ HD", "Touch Noor Sparks, 5 Gold-Leaf Themes, Live Audio & HD Art",

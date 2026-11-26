@@ -20,12 +20,15 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.cloud.AppVersionGate
 import com.example.data.cloud.FirebaseAuthHelper
+import com.example.data.cloud.NoorPlatformConstants
 import com.example.shortcuts.NoorShortcutManager
 import com.example.ui.admin.AdminControlCenterScreen
 import com.example.ui.components.Noor3DLaunchSplashOverlay
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.navigation.NoorAppShell
+import com.example.ui.screens.ForceUpdateGateScreen
 import com.example.ui.screens.MaintenanceModeScreen
 import com.example.ui.screens.NoorAuthGateScreen
 import com.example.ui.theme.NoorTheme
@@ -69,15 +72,27 @@ class MainActivity : ComponentActivity() {
                 globalConfig.effectsStarlightEnabled,
                 globalConfig.effectsAuroraEnabled,
                 globalConfig.effects3DSplashEnabled,
-                globalConfig.effectsIntensity
+                globalConfig.effectsIntensity,
+                prefs.backgroundStarsEnabled,
+                prefs.backgroundAuroraEnabled
             ) {
                 NoorVisualSettings(
                     themePreset = globalConfig.themePreset,
                     glassOpacity = globalConfig.glassOpacity.toFloat().coerceIn(0.45f, 1.0f),
-                    effectsStarlightEnabled = globalConfig.effectsStarlightEnabled,
-                    effectsAuroraEnabled = globalConfig.effectsAuroraEnabled,
+                    effectsStarlightEnabled = globalConfig.effectsStarlightEnabled && prefs.backgroundStarsEnabled,
+                    effectsAuroraEnabled = globalConfig.effectsAuroraEnabled && prefs.backgroundAuroraEnabled,
                     effects3DSplashEnabled = globalConfig.effects3DSplashEnabled,
                     effectsIntensity = globalConfig.effectsIntensity.toFloat().coerceIn(0.2f, 1.5f)
+                )
+            }
+
+            val isForceUpdateBlocked = remember(
+                globalConfig.forceUpdateEnabled,
+                globalConfig.minSupportedVersion
+            ) {
+                AppVersionGate.isForceUpdateRequired(
+                    currentVersion = NoorPlatformConstants.APP_VERSION_NAME,
+                    config = globalConfig
                 )
             }
 
@@ -91,7 +106,20 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
                         val user = currentUser
-                        if (user == null && !allowOfflineLocalMode) {
+                        if (isForceUpdateBlocked && !(adminBypassMaintenance && resolvedRole.isPrivileged)) {
+                            ForceUpdateGateScreen(
+                                config = globalConfig,
+                                currentVersion = NoorPlatformConstants.APP_VERSION_NAME,
+                                canBypassAsAdmin = resolvedRole.isPrivileged,
+                                onOpenAdminCenter = { adminBypassMaintenance = true }
+                            )
+                        } else if (isForceUpdateBlocked && adminBypassMaintenance && resolvedRole.isPrivileged) {
+                            AdminControlCenterScreen(
+                                adminViewModel = adminViewModel,
+                                resolvedRole = resolvedRole,
+                                onExitToApp = { adminBypassMaintenance = false }
+                            )
+                        } else if (user == null && !allowOfflineLocalMode) {
                             NoorAuthGateScreen(
                                 onContinueOfflineWhenUnconfigured = { allowOfflineLocalMode = true }
                             )

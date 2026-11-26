@@ -131,7 +131,10 @@ import com.example.ui.screens.ecosystem.QuranMiraclesAndParablesScreen
 import com.example.ui.screens.ecosystem.QuranMutashabihatScreen
 import com.example.ui.screens.ecosystem.QuranRootAndQiraatUniverseScreen
 import com.example.ui.screens.ecosystem.QuranicSoulRemedyScreen
+import com.example.ui.screens.ecosystem.AsbabAlNuzulScreen
 import com.example.ui.screens.ecosystem.SeerahChronicleAtlasScreen
+import com.example.ui.screens.ecosystem.SpiritualMuhasabahScreen
+import com.example.ui.screens.ecosystem.TajweedMakharijLabScreen
 import com.example.ui.screens.ecosystem.TajweedScreen
 import com.example.ui.screens.ecosystem.WorshipGuidesScreen
 import com.example.data.local.catalog.IslamicVideoCategory
@@ -206,6 +209,9 @@ object NoorRoutes {
     const val QURAN_CALLIGRAPHY_STUDIO = "quran_calligraphy_studio"
     const val ISLAMIC_SANCTUARY_AUDIO = "islamic_sanctuary_audio"
     const val ISLAMIC_ASTROLABE = "islamic_astrolabe"
+    const val TAJWEED_MAKHARIJ_LAB = "tajweed_makharij_lab"
+    const val SPIRITUAL_MUHASABAH = "spiritual_muhasabah"
+    const val ASBAB_AL_NUZUL = "asbab_al_nuzul"
 
     fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
@@ -525,7 +531,10 @@ fun NoorAppShell(
                                     onOpenMiraclesProphets = { navController.navigate(NoorRoutes.QURAN_MIRACLES_PROPHETS) },
                                     onOpenCalligraphyStudio = { navController.navigate(NoorRoutes.QURAN_CALLIGRAPHY_STUDIO) },
                                     onOpenSanctuaryAudio = { navController.navigate(NoorRoutes.ISLAMIC_SANCTUARY_AUDIO) },
-                                    onOpenAstrolabe = { navController.navigate(NoorRoutes.ISLAMIC_ASTROLABE) }
+                                    onOpenAstrolabe = { navController.navigate(NoorRoutes.ISLAMIC_ASTROLABE) },
+                                    onOpenMakharijLab = { navController.navigate(NoorRoutes.TAJWEED_MAKHARIJ_LAB) },
+                                    onOpenMuhasabah = { navController.navigate(NoorRoutes.SPIRITUAL_MUHASABAH) },
+                                    onOpenAsbabAlNuzul = { navController.navigate(NoorRoutes.ASBAB_AL_NUZUL) }
                                 )
                             }
                             composable(NoorRoutes.PRAYERS) {
@@ -734,6 +743,9 @@ fun NoorAppShell(
                                     onOpenCalligraphyStudio = { navController.navigate(NoorRoutes.QURAN_CALLIGRAPHY_STUDIO) },
                                     onOpenSanctuaryAudio = { navController.navigate(NoorRoutes.ISLAMIC_SANCTUARY_AUDIO) },
                                     onOpenAstrolabe = { navController.navigate(NoorRoutes.ISLAMIC_ASTROLABE) },
+                                    onOpenMakharijLab = { navController.navigate(NoorRoutes.TAJWEED_MAKHARIJ_LAB) },
+                                    onOpenMuhasabah = { navController.navigate(NoorRoutes.SPIRITUAL_MUHASABAH) },
+                                    onOpenAsbabAlNuzul = { navController.navigate(NoorRoutes.ASBAB_AL_NUZUL) },
                                     activeAdCards = activeAdCards,
                                     onAdImpression = { viewModel.recordAdImpression(it) },
                                     onAdClick = { viewModel.recordAdClick(it) }
@@ -1017,6 +1029,24 @@ fun NoorAppShell(
                                     userLongitude = prefs.longitude,
                                     userCityLabel = L10n.pick(lang, prefs.cityNameAr, prefs.cityNameEn),
                                     onBack = { navController.popBackStack() }
+                                )
+                            }
+                            composable(NoorRoutes.TAJWEED_MAKHARIJ_LAB) {
+                                TajweedMakharijLabScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.SPIRITUAL_MUHASABAH) {
+                                SpiritualMuhasabahScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
+                                )
+                            }
+                            composable(NoorRoutes.ASBAB_AL_NUZUL) {
+                                AsbabAlNuzulScreen(
+                                    onBack = { navController.popBackStack() },
+                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) }
                                 )
                             }
                         }

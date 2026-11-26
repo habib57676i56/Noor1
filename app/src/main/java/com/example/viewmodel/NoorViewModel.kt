@@ -804,6 +804,14 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         repo.prefs.setThemeMode(mode)
     }
 
+    fun setBackgroundStarsEnabled(enabled: Boolean) = viewModelScope.launch {
+        repo.prefs.setBackgroundStarsEnabled(enabled)
+    }
+
+    fun setBackgroundAuroraEnabled(enabled: Boolean) = viewModelScope.launch {
+        repo.prefs.setBackgroundAuroraEnabled(enabled)
+    }
+
     fun setHomeDashboardConfig(config: HomeDashboardConfig) = viewModelScope.launch {
         repo.prefs.setHomeDashboardConfig(config)
     }

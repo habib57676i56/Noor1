@@ -34,6 +34,7 @@ object NoorPlatformConstants {
     const val SUPPORT_TELEGRAM = "+963 984 215 420"
     const val SUPPORT_WHATSAPP_URL = "https://wa.me/963984215420"
     const val SUPPORT_TELEGRAM_URL = "https://t.me/+963984215420"
+    const val DEFAULT_UPDATE_CHANNEL_URL = "https://t.me/Noor_ui"
 }
 
 enum class AdminRole(val key: String, val labelAr: String, val labelEn: String) {
@@ -189,6 +190,10 @@ data class GlobalAppConfigDoc(
     val maintenanceMessageAr: String = "نقوم حالياً بتحديثات مجدولة لتحسين تجربة نور. سنعود قريباً بإذن الله.",
     val maintenanceMessageEn: String = "NOOR is undergoing scheduled maintenance to serve you better. We will be back shortly.",
     val minSupportedVersion: String = "3.0.0",
+    val forceUpdateEnabled: Boolean = false,
+    val updateChannelUrl: String = NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL,
+    val updateMessageAr: String = "يتوفر إصدار جديد ومهم من تطبيق نور! لا يمكن تشغيل هذه النسخة القديمة — يرجى التحديث فوراً من قناة تيليجرام الرسمية للمتابعة.",
+    val updateMessageEn: String = "A mandatory new version of NOOR is available! This older version cannot run — please update immediately from our official Telegram channel to continue.",
     val founderName: String = NoorPlatformConstants.FOUNDER_NAME,
     val founderTitleAr: String = NoorPlatformConstants.FOUNDER_TITLE_AR,
     val founderTitleEn: String = NoorPlatformConstants.FOUNDER_TITLE_EN,
@@ -466,5 +471,56 @@ data class CustomReciterDoc(
     val active: Boolean = true,
     @ServerTimestamp val createdAt: Timestamp? = null
 )
+
+/**
+ * Semantic version gate enforcing mandatory updates from the official Telegram channel (https://t.me/Noor_ui).
+ */
+object AppVersionGate {
+    fun parseVersionSegments(version: String): List<Int> {
+        val cleaned = version.trim().substringBefore("-").substringBefore("+")
+        if (cleaned.isBlank()) return listOf(0, 0, 0)
+        return cleaned.split(".").map { seg ->
+            seg.filter { it.isDigit() }.toIntOrNull() ?: 0
+        }.let { parts ->
+            if (parts.isEmpty()) listOf(0, 0, 0) else parts
+        }
+    }
+
+    /**
+     * Compares two semantic version strings (e.g. "2.9.0" vs "3.0.0").
+     * Returns negative if [current] < [minimum], 0 if equal, positive if [current] > [minimum].
+     */
+    fun compareVersions(current: String, minimum: String): Int {
+        val a = parseVersionSegments(current)
+        val b = parseVersionSegments(minimum)
+        val maxLen = maxOf(a.size, b.size)
+        for (i in 0 until maxLen) {
+            val av = a.getOrElse(i) { 0 }
+            val bv = b.getOrElse(i) { 0 }
+            if (av != bv) return av.compareTo(bv)
+        }
+        return 0
+    }
+
+    fun isForceUpdateRequired(
+        currentVersion: String,
+        config: GlobalAppConfigDoc
+    ): Boolean {
+        if (config.forceUpdateEnabled) return true
+        val minVer = config.minSupportedVersion.trim()
+        if (minVer.isBlank()) return false
+        return compareVersions(currentVersion, minVer) < 0
+    }
+
+    fun resolveSafeUpdateUrl(rawUrl: String?): String {
+        val trimmed = rawUrl?.trim().orEmpty()
+        return if (trimmed.isNotEmpty() && NoorSecurityValidators.isSafeOptionalHttpsUrl(trimmed)) {
+            trimmed
+        } else {
+            NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL
+        }
+    }
+}
+
 
 

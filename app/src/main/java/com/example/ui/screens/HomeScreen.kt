@@ -68,6 +68,7 @@ import androidx.compose.material.icons.rounded.LocalLibrary
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Public
+import androidx.compose.material.icons.rounded.RecordVoiceOver
 import androidx.compose.material.icons.rounded.Science
 import androidx.compose.material.icons.rounded.Spellcheck
 import androidx.compose.material.icons.rounded.TravelExplore
@@ -177,7 +178,10 @@ fun HomeScreen(
     onOpenMiraclesProphets: () -> Unit = {},
     onOpenCalligraphyStudio: () -> Unit = {},
     onOpenSanctuaryAudio: () -> Unit = {},
-    onOpenAstrolabe: () -> Unit = {}
+    onOpenAstrolabe: () -> Unit = {},
+    onOpenMakharijLab: () -> Unit = {},
+    onOpenMuhasabah: () -> Unit = {},
+    onOpenAsbabAlNuzul: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -639,6 +643,9 @@ fun HomeScreen(
                         if (globalConfig.featureAstrolabeEnabled) {
                             add(Triple(L10n.pick(lang, "الأسطرلاب الحي", "Astrolabe", "Asturlob"), Icons.Rounded.Explore, onOpenAstrolabe))
                         }
+                        add(Triple(L10n.pick(lang, "مختبر المخارج", "Makharij Lab", "Maxrajlar"), Icons.Rounded.RecordVoiceOver, onOpenMakharijLab))
+                        add(Triple(L10n.pick(lang, "محاسبة القلب", "Heart Radar", "Qalb hisobi"), Icons.Rounded.Favorite, onOpenMuhasabah))
+                        add(Triple(L10n.pick(lang, "أسباب النزول", "Asbab Nuzul", "Nuzul sababi"), Icons.Rounded.MenuBook, onOpenAsbabAlNuzul))
                     }
                     Column {
                         drawerTiles.chunked(3).forEach { rowTiles ->

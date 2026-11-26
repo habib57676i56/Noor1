@@ -486,6 +486,71 @@ fun SettingsScreen(
                         modifier = Modifier.weight(1f)
                     )
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text(
+                    text = L10n.pick(lang, "تأثيرات الخلفية والنجوم", "Background Stars & Effects"),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = noorColors.goldAccent
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = L10n.pick(lang, "إظهار النجوم المتلألئة بالخلفية", "Background Floating Stars"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "يمكنك إطفاء النجوم والذرات الذهبية لخلفية هادئة وتوفير البطارية",
+                                "Turn off floating starlight motes for a calm background & battery savings"
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = prefs.backgroundStarsEnabled,
+                        onCheckedChange = { viewModel.setBackgroundStarsEnabled(it) },
+                        modifier = Modifier.testTag("settings_toggle_background_stars")
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                        Text(
+                            text = L10n.pick(lang, "تأثير الشفق المتحرّك بالخلفية", "Animated Background Aurora"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "توهّج الأضواء المتدرجة الهادئة خلف البطاقات الزجاجية",
+                                "Soft moving aurora orbs behind Liquid Glass cards"
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = prefs.backgroundAuroraEnabled,
+                        onCheckedChange = { viewModel.setBackgroundAuroraEnabled(it) },
+                        modifier = Modifier.testTag("settings_toggle_background_aurora")
+                    )
+                }
             }
         }
 

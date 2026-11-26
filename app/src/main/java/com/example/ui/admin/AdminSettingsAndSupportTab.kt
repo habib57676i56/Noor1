@@ -206,6 +206,80 @@ fun AdminSettingsAndSupportTab(
                     }
                 }
 
+                // Mandatory Telegram Force Update Gate (https://t.me/Noor_ui)
+                item {
+                    val isSuperAdmin = currentRole.canControlGlobalFeatures
+                    AdminPanelCard(
+                        accentBorder = if (draftConfig.forceUpdateEnabled) AdminPalette.AccentAmber else AdminPalette.AccentCyan.copy(alpha = 0.55f)
+                    ) {
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "التحديث الإجباري وقناة تيليجرام (t.me/Noor_ui)",
+                                "Mandatory Telegram Force Update Gate"
+                            ),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = AdminPalette.GoldLuxe
+                        )
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "عند رفع الحد الأدنى للإصدار (مثلاً 3.1.0) أو تفعيل التحديث الإجباري، لن تشتغل النسخ القديمة وتُحوّل المستخدمين مباشرةً لقناة تيليجرام للتحديث.",
+                                "Raising Min Version (e.g. 3.1.0) or enabling Force Update blocks older APKs and redirects users directly to Telegram."
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AdminPalette.TextSecondary
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        AdminSwitchRow(
+                            label = L10n.pick(lang, "إجبار جميع النسخ على التحديث فوراً", "Force Update All Versions Immediately"),
+                            checked = draftConfig.forceUpdateEnabled,
+                            enabled = isSuperAdmin,
+                            onCheckedChange = { draftConfig = draftConfig.copy(forceUpdateEnabled = it) }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = draftConfig.minSupportedVersion,
+                                onValueChange = { draftConfig = draftConfig.copy(minSupportedVersion = it) },
+                                label = { Text(L10n.pick(lang, "أقل إصدار مسموح", "Min Version")) },
+                                placeholder = { Text("3.0.0") },
+                                singleLine = true,
+                                enabled = isSuperAdmin,
+                                modifier = Modifier.weight(0.42f).testTag("admin_min_version_input")
+                            )
+                            OutlinedTextField(
+                                value = draftConfig.updateChannelUrl,
+                                onValueChange = { draftConfig = draftConfig.copy(updateChannelUrl = it) },
+                                label = { Text(L10n.pick(lang, "رابط قناة تيليجرام", "Telegram Channel URL")) },
+                                placeholder = { Text("https://t.me/Noor_ui") },
+                                singleLine = true,
+                                enabled = isSuperAdmin,
+                                modifier = Modifier.weight(0.58f).testTag("admin_telegram_url_input")
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = draftConfig.updateMessageAr,
+                            onValueChange = { draftConfig = draftConfig.copy(updateMessageAr = it) },
+                            label = { Text(L10n.pick(lang, "رسالة التحديث الإجباري (عربي)", "Force Update Message (AR)")) },
+                            minLines = 2,
+                            enabled = isSuperAdmin,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedTextField(
+                            value = draftConfig.updateMessageEn,
+                            onValueChange = { draftConfig = draftConfig.copy(updateMessageEn = it) },
+                            label = { Text(L10n.pick(lang, "رسالة التحديث الإجباري (إنجليزي)", "Force Update Message (EN)")) },
+                            minLines = 2,
+                            enabled = isSuperAdmin,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+
                 // Live Visual, Color Palette, Glass Opacity & Effects Studio
                 item {
                     val isSuperAdmin = currentRole.canControlGlobalFeatures

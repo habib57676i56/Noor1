@@ -181,6 +181,7 @@ service cloud.firestore {
       return data.keys().hasOnly([
         'appNameAr', 'appNameEn', 'themePreset', 'defaultLanguage', 'supportedLanguages',
         'maintenanceMode', 'maintenanceMessageAr', 'maintenanceMessageEn', 'minSupportedVersion',
+        'forceUpdateEnabled', 'updateChannelUrl', 'updateMessageAr', 'updateMessageEn',
         'founderName', 'founderTitleAr', 'founderTitleEn', 'founderProjectAr', 'founderProjectEn',
         'founderBioAr', 'founderBioEn', 'supportEmail', 'supportWhatsApp', 'supportTelegram',
         'featureQuranEnabled', 'featureMushafImagesEnabled', 'featureAudioEnabled',
@@ -200,6 +201,10 @@ service cloud.firestore {
       && data.appNameEn is string && data.appNameEn.size() >= 1 && data.appNameEn.size() <= 60
       && (!('appNameAr' in data) || (data.appNameAr is string && data.appNameAr.size() <= 60))
       && data.maintenanceMode is bool
+      && (!('forceUpdateEnabled' in data) || data.forceUpdateEnabled is bool)
+      && (!('updateChannelUrl' in data) || (data.updateChannelUrl is string && data.updateChannelUrl.size() <= 300 && (data.updateChannelUrl == '' || data.updateChannelUrl.matches('^https://.*'))))
+      && (!('updateMessageAr' in data) || (data.updateMessageAr is string && data.updateMessageAr.size() <= 600))
+      && (!('updateMessageEn' in data) || (data.updateMessageEn is string && data.updateMessageEn.size() <= 600))
       && (!('glassOpacity' in data) || (data.glassOpacity is number && data.glassOpacity >= 0.45 && data.glassOpacity <= 1.0))
       && (!('effectsIntensity' in data) || (data.effectsIntensity is number && data.effectsIntensity >= 0.2 && data.effectsIntensity <= 1.5))
       && (!('effectsStarlightEnabled' in data) || data.effectsStarlightEnabled is bool)

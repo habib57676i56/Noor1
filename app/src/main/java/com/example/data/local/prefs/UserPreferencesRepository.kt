@@ -105,7 +105,10 @@ data class UserPreferences(
     val adhanConfig: PerPrayerAdhanConfig = PerPrayerAdhanConfig(),
     val customAdhanRecords: List<CustomAdhanRecord> = emptyList(),
     val persistentPrayerNotificationEnabled: Boolean = true,
-    val quranAutoScrollSpeed: Float = 1.0f
+    val quranAutoScrollSpeed: Float = 1.0f,
+    // User-side Background Visual Effects Controls
+    val backgroundStarsEnabled: Boolean = true,
+    val backgroundAuroraEnabled: Boolean = true
 ) {
     fun isPrayerNotificationEnabled(prayer: PrayerName): Boolean = when (prayer) {
         PrayerName.FAJR -> notifyFajr
@@ -215,6 +218,8 @@ class UserPreferencesRepository(private val context: Context) {
         val ADHAN_CUSTOM_RECORDS = stringPreferencesKey("adhan_custom_records")
         val PERSISTENT_PRAYER_NOTIF = booleanPreferencesKey("persistent_prayer_notif")
         val QURAN_AUTO_SCROLL_SPEED = floatPreferencesKey("quran_auto_scroll_speed")
+        val BACKGROUND_STARS_ENABLED = booleanPreferencesKey("background_stars_enabled")
+        val BACKGROUND_AURORA_ENABLED = booleanPreferencesKey("background_aurora_enabled")
     }
 
     val preferencesFlow: Flow<UserPreferences> = context.noorDataStore.data.map { p ->
@@ -317,7 +322,9 @@ class UserPreferencesRepository(private val context: Context) {
             ),
             customAdhanRecords = AdhanCatalog.decodeCustomRecords(p[Keys.ADHAN_CUSTOM_RECORDS] ?: ""),
             persistentPrayerNotificationEnabled = p[Keys.PERSISTENT_PRAYER_NOTIF] ?: true,
-            quranAutoScrollSpeed = p[Keys.QURAN_AUTO_SCROLL_SPEED] ?: 1.0f
+            quranAutoScrollSpeed = p[Keys.QURAN_AUTO_SCROLL_SPEED] ?: 1.0f,
+            backgroundStarsEnabled = p[Keys.BACKGROUND_STARS_ENABLED] ?: true,
+            backgroundAuroraEnabled = p[Keys.BACKGROUND_AURORA_ENABLED] ?: true
         )
     }
 
@@ -618,6 +625,14 @@ class UserPreferencesRepository(private val context: Context) {
         context.noorDataStore.edit { it[Keys.QURAN_AUTO_SCROLL_SPEED] = speed.coerceIn(0.4f, 3.0f) }
     }
 
+    suspend fun setBackgroundStarsEnabled(enabled: Boolean) {
+        context.noorDataStore.edit { it[Keys.BACKGROUND_STARS_ENABLED] = enabled }
+    }
+
+    suspend fun setBackgroundAuroraEnabled(enabled: Boolean) {
+        context.noorDataStore.edit { it[Keys.BACKGROUND_AURORA_ENABLED] = enabled }
+    }
+
     suspend fun restoreFromPreferences(prefs: UserPreferences) {
         context.noorDataStore.edit {
             it[Keys.USER_NAME] = prefs.userName
@@ -688,6 +703,8 @@ class UserPreferencesRepository(private val context: Context) {
             it[Keys.HOME_SHOW_QURAN] = prefs.homeConfig.showQuranProgress
             it[Keys.HOME_SHOW_AUDIO] = prefs.homeConfig.showRecentAudio
             it[Keys.HOME_SHOW_EVENTS] = prefs.homeConfig.showUpcomingEvent
+            it[Keys.BACKGROUND_STARS_ENABLED] = prefs.backgroundStarsEnabled
+            it[Keys.BACKGROUND_AURORA_ENABLED] = prefs.backgroundAuroraEnabled
         }
     }
 
