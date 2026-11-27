@@ -36,25 +36,25 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("4.2.1", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v4.2.1", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.2.2", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.2.2", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v4.2.1 passes default v4.2.1 gate, while older v4.2.0 / v3.9.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.1", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.0", defaultConfig))
+        // New build v4.2.2 passes default v4.2.2 gate, while older v4.2.1 / v3.9.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.2", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.1", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "4.2.1", the newly updated v4.2.1 (or v4.3.0) APK opens automatically
-        // while older v4.2.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.1")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.1", forcedWithMin))
+        // with minSupportedVersion = "4.2.2", the newly updated v4.2.2 (or v4.3.0) APK opens automatically
+        // while older v4.2.1 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.2")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.1", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.2", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.3.0 blocks 4.2.1 until user updates to 4.3.0
+        // Raising minSupportedVersion to 4.3.0 blocks 4.2.2 until user updates to 4.3.0
         val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.3.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.1", raisedConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.2", raisedConfig))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui

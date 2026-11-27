@@ -186,7 +186,7 @@ object NoorRoutes {
     const val CONTACT_SUPPORT = "contact_support"
     const val NOTIFICATIONS = "notifications"
     const val ADMIN_CENTER = "admin_center"
-    const val QURAN_READER = "quran_reader/{surahNumber}"
+    const val QURAN_READER = "quran_reader/{surahNumber}?openLastRead={openLastRead}"
     const val ADHKAR_DETAIL = "adhkar_detail/{categoryId}"
 
     // NOOR Complete Islamic Ecosystem Routes
@@ -243,7 +243,8 @@ object NoorRoutes {
     const val QURAN_WAQF_LAB = "quran_waqf_lab"
     const val LUNAR_ECLIPSE_OBSERVATORY = "lunar_eclipse_observatory"
 
-    fun quranReader(surahNumber: Int) = "quran_reader/$surahNumber"
+    fun quranReader(surahNumber: Int, openLastRead: Boolean = false) =
+        "quran_reader/$surahNumber?openLastRead=$openLastRead"
     fun adhkarDetail(categoryId: String) = "adhkar_detail/$categoryId"
     fun hifzAiTarget(surahNumber: Int, ayahNumber: Int) = "hifz_ai/$surahNumber/$ayahNumber"
 }
@@ -303,7 +304,7 @@ fun NoorAppShell(
     }
 
     var isMushafFullScreen by remember { mutableStateOf(false) }
-    val isReaderRoute = currentRoute == NoorRoutes.QURAN || currentRoute == NoorRoutes.QURAN_READER
+    val isReaderRoute = currentRoute.startsWith("quran_reader")
     LaunchedEffect(currentRoute) {
         if (!isReaderRoute) {
             isMushafFullScreen = false
@@ -341,9 +342,6 @@ fun NoorAppShell(
     }
 
     fun navigateToTab(route: String) {
-        if (route == NoorRoutes.QURAN && currentRoute != NoorRoutes.QURAN) {
-            viewModel.setQuranDisplayMode(com.example.domain.model.QuranDisplayMode.MUSHAF)
-        }
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) {
                 saveState = true
@@ -360,7 +358,7 @@ fun NoorAppShell(
         when (target) {
             NoorShortcutManager.TARGET_QURAN -> navigateToTab(NoorRoutes.QURAN)
             NoorShortcutManager.TARGET_RESUME_READING -> {
-                navController.navigate(NoorRoutes.quranReader(prefs.lastReadSurah.coerceIn(1, 114))) {
+                navController.navigate(NoorRoutes.quranReader(prefs.lastReadSurah.coerceIn(1, 114), openLastRead = true)) {
                     launchSingleTop = true
                 }
             }
@@ -544,39 +542,55 @@ fun NoorAppShell(
                                 )
                             }
                             composable(NoorRoutes.QURAN) {
-                                val entrySurah = remember { prefs.lastReadSurah.coerceIn(1, 114) }
-                                QuranReaderScreen(
-                                    surahNumber = entrySurah,
+                                QuranScreen(
                                     viewModel = viewModel,
-                                    onBack = { navigateToTab(NoorRoutes.HOME) },
-                                    onNavigateToSurah = { nextSurah ->
-                                        navController.navigate(NoorRoutes.quranReader(nextSurah.coerceIn(1, 114))) {
-                                            launchSingleTop = true
-                                        }
+                                    onOpenSurah = { surah ->
+                                        viewModel.setQuranDisplayMode(com.example.domain.model.QuranDisplayMode.MUSHAF)
+                                        navController.navigate(NoorRoutes.quranReader(surah, openLastRead = false))
                                     },
-                                    onOpenInMemorization = { targetSurah, targetAyah ->
-                                        navController.navigate(NoorRoutes.hifzAiTarget(targetSurah, targetAyah))
+                                    onOpenLastReadPage = {
+                                        val savedPage = prefs.lastReadPage.coerceIn(1, 604)
+                                        val pageMeta = com.example.data.local.catalog.MadinahMushafPageCatalog.pageMeta(savedPage)
+                                        viewModel.setQuranDisplayMode(com.example.domain.model.QuranDisplayMode.MUSHAF)
+                                        navController.navigate(
+                                            NoorRoutes.quranReader(pageMeta.primarySurahNumber, openLastRead = true)
+                                        )
                                     },
-                                    ecosystemViewModel = ecosystemViewModel,
-                                    onFullScreenChanged = { isMushafFullScreen = it },
-                                    openAtLastReadPage = true,
-                                    showBackButton = false,
-                                    onOpenSurahIndex = { navController.navigate(NoorRoutes.QURAN_INDEX) }
+                                    onOpenAudioLibrary = { navController.navigate(NoorRoutes.AUDIO_LIBRARY) },
+                                    onBack = null
                                 )
                             }
                             composable(NoorRoutes.QURAN_INDEX) {
                                 QuranScreen(
                                     viewModel = viewModel,
-                                    onOpenSurah = { surah -> navController.navigate(NoorRoutes.quranReader(surah)) },
+                                    onOpenSurah = { surah ->
+                                        viewModel.setQuranDisplayMode(com.example.domain.model.QuranDisplayMode.MUSHAF)
+                                        navController.navigate(NoorRoutes.quranReader(surah, openLastRead = false))
+                                    },
+                                    onOpenLastReadPage = {
+                                        val savedPage = prefs.lastReadPage.coerceIn(1, 604)
+                                        val pageMeta = com.example.data.local.catalog.MadinahMushafPageCatalog.pageMeta(savedPage)
+                                        viewModel.setQuranDisplayMode(com.example.domain.model.QuranDisplayMode.MUSHAF)
+                                        navController.navigate(
+                                            NoorRoutes.quranReader(pageMeta.primarySurahNumber, openLastRead = true)
+                                        )
+                                    },
                                     onOpenAudioLibrary = { navController.navigate(NoorRoutes.AUDIO_LIBRARY) },
                                     onBack = { navController.popBackStack() }
                                 )
                             }
                             composable(
                                 route = NoorRoutes.QURAN_READER,
-                                arguments = listOf(navArgument("surahNumber") { type = NavType.IntType })
+                                arguments = listOf(
+                                    navArgument("surahNumber") { type = NavType.IntType },
+                                    navArgument("openLastRead") {
+                                        type = NavType.BoolType
+                                        defaultValue = false
+                                    }
+                                )
                             ) { entry ->
                                 val surahNum = entry.arguments?.getInt("surahNumber") ?: 1
+                                val openLastRead = entry.arguments?.getBoolean("openLastRead") ?: false
                                 QuranReaderScreen(
                                     surahNumber = surahNum,
                                     viewModel = viewModel,
@@ -592,9 +606,9 @@ fun NoorAppShell(
                                     },
                                     ecosystemViewModel = ecosystemViewModel,
                                     onFullScreenChanged = { isMushafFullScreen = it },
-                                    openAtLastReadPage = false,
+                                    openAtLastReadPage = openLastRead,
                                     showBackButton = true,
-                                    onOpenSurahIndex = { navController.navigate(NoorRoutes.QURAN_INDEX) }
+                                    onOpenSurahIndex = { navController.popBackStack() }
                                 )
                             }
                             composable(NoorRoutes.ADHKAR) {

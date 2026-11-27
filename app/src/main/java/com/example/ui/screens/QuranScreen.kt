@@ -73,6 +73,7 @@ import com.example.viewmodel.NoorViewModel
 fun QuranScreen(
     viewModel: NoorViewModel,
     onOpenSurah: (Int) -> Unit,
+    onOpenLastReadPage: (() -> Unit)? = null,
     onOpenAudioLibrary: () -> Unit = {},
     onBack: (() -> Unit)? = null
 ) {
@@ -102,7 +103,10 @@ fun QuranScreen(
         }
     }
 
-    val lastReadSurah = remember(prefs.lastReadSurah) { SurahCatalog.findSurah(prefs.lastReadSurah) }
+    val savedPage = prefs.lastReadPage.coerceIn(1, 604)
+    val savedPageMeta = remember(savedPage) {
+        com.example.data.local.catalog.MadinahMushafPageCatalog.pageMeta(savedPage)
+    }
 
     Column(
         modifier = Modifier
@@ -110,8 +114,8 @@ fun QuranScreen(
             .testTag("quran_screen")
     ) {
         NoorScreenHeader(
-            title = L10n.pick(lang, "فهرس القرآن الكريم", "Quran Index"),
-            subtitle = L10n.pick(lang, "١١٤ سورة · ٣٠ جزءاً · ٦٠٤ صفحة مع البحث والعلامات", "114 Surahs · 30 Juz · 604 Pages & Bookmarks"),
+            title = L10n.pick(lang, "القرآن الكريم", "Holy Quran"),
+            subtitle = L10n.pick(lang, "١١٤ سورة · ٣٠ جزءاً · ٦٠٤ صفحة — مصحف المدينة المصوّر", "114 Surahs · 30 Juz · 604 Pages — Madinah Mushaf"),
             onBack = onBack,
             trailing = {
                 IconButton(
@@ -131,7 +135,7 @@ fun QuranScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 112.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Ornamental Resume Reading Banner
+            // Prominent Top "Last Read Page" Banner right above the Surah list
             item {
                 Box(
                     modifier = Modifier
@@ -139,51 +143,56 @@ fun QuranScreen(
                         .testTag("continue_reading_banner")
                         .clip(RoundedCornerShape(24.dp))
                         .background(Brush.linearGradient(listOf(EmeraldDeep, EmeraldForest, Color(0xFF0A2A20))))
-                        .border(1.2.dp, GoldPrimary.copy(alpha = 0.55f), RoundedCornerShape(24.dp))
-                        .clickable { onOpenSurah(lastReadSurah.number) }
+                        .border(1.4.dp, GoldPrimary.copy(alpha = 0.65f), RoundedCornerShape(24.dp))
+                        .clickable {
+                            if (onOpenLastReadPage != null) {
+                                onOpenLastReadPage()
+                            } else {
+                                onOpenSurah(savedPageMeta.primarySurahNumber)
+                            }
+                        }
                         .padding(18.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IslamicRosetteOrnament(size = 42.dp, tint = GoldBright)
+                        IslamicRosetteOrnament(size = 44.dp, tint = GoldBright)
                         Spacer(modifier = Modifier.width(14.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = L10n.pick(lang, "متابعة القراءة من حيث توقفت", "Continue Last Reading"),
+                                text = L10n.pick(lang, "آخر صفحة قرأتها · اضغط للفتح", "Last Read Page · Tap to Open"),
                                 style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
                                 color = GoldBright
                             )
                             Text(
                                 text = L10n.pick(
                                     lang,
-                                    "سورة ${lastReadSurah.nameAr} — الآية ${prefs.lastReadAyah}",
-                                    "${lastReadSurah.nameEn} — Ayah ${prefs.lastReadAyah}"
+                                    "صفحة $savedPage — سورة ${savedPageMeta.primarySurahNameAr}",
+                                    "Page $savedPage — ${savedPageMeta.primarySurahNameEn}"
                                 ),
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White
+                                color = Color.White,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            val savedPage = prefs.lastReadPage.coerceIn(1, 604)
-                            val savedPageMeta = remember(savedPage) {
-                                com.example.data.local.catalog.MadinahMushafPageCatalog.pageMeta(savedPage)
-                            }
                             Text(
                                 text = L10n.pick(
                                     lang,
-                                    "الجزء ${savedPageMeta.juzNumber} · آخر صفحة قرأتها: ص $savedPage",
-                                    "Juz ${savedPageMeta.juzNumber} · Last Read Page: p.$savedPage"
+                                    "الجزء ${savedPageMeta.juzNumber} · الآية ${prefs.lastReadAyah} · مصحف المدينة المصوّر",
+                                    "Juz ${savedPageMeta.juzNumber} · Ayah ${prefs.lastReadAyah} · Madinah Mushaf"
                                 ),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.84f)
+                                color = Color.White.copy(alpha = 0.86f)
                             )
                         }
                         Icon(
                             Icons.Rounded.AutoStories,
-                            contentDescription = null,
+                            contentDescription = L10n.pick(lang, "فتح آخر صفحة قرأتها", "Open last read page"),
                             tint = GoldBright,
-                            modifier = Modifier.size(28.dp)
+                            modifier = Modifier.size(30.dp)
                         )
                     }
                 }

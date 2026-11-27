@@ -177,7 +177,7 @@ fun QuranReaderScreen(
     var showMoreReaderOptions by rememberSaveable { mutableStateOf(false) }
     var activeMushafPage by remember(surahNumber, openAtLastReadPage) {
         mutableIntStateOf(
-            if (openAtLastReadPage || prefs.lastReadSurah == surahNumber) {
+            if (openAtLastReadPage) {
                 prefs.lastReadPage.coerceIn(1, 604)
             } else {
                 surahMeta.startPage
@@ -1133,13 +1133,8 @@ fun QuranReaderScreen(
                                 ?: liveRecitation.trackedPage
                             val initialPageForSurah = if (openAtLastReadPage) {
                                 prefs.lastReadPage.coerceIn(1, 604)
-                            } else if (prefs.lastReadSurah == surahNumber) {
-                                prefs.lastReadPage.coerceIn(1, 604)
                             } else {
-                                state.verses
-                                    .firstOrNull { it.numberInSurah == lastVisibleAyah }
-                                    ?.pageNumber
-                                    ?: surahMeta.startPage
+                                surahMeta.startPage
                             }
                             val isDarkReader = prefs.quranReadingTheme == QuranReadingTheme.NIGHT ||
                                 (prefs.quranReadingTheme == QuranReadingTheme.AUTO && noorColors.isDark)
