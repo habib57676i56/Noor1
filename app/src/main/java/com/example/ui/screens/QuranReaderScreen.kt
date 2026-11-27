@@ -209,9 +209,12 @@ fun QuranReaderScreen(
     // Microphone permission privacy rationale dialog for Listen & Follow
     var showMicPermissionDialog by remember { mutableStateOf(false) }
 
-    // Sync Clean Full-Screen state to parent NoorAppShell (so floating mini-player hides cleanly)
+    // Sync Clean Full-Screen state to parent NoorAppShell (so bottom dock, top bar, mini-player & system bars hide cleanly)
     LaunchedEffect(isFullScreenActive) {
         onFullScreenChanged(isFullScreenActive)
+        if (isFullScreenActive) {
+            runCatching { listState.scrollToItem(0) }
+        }
     }
 
     // Pressing system Back while in Clean Full-Screen exits Full-Screen first

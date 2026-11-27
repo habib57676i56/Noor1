@@ -1,5 +1,8 @@
 package com.example.ui.navigation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -50,6 +53,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,10 +65,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
@@ -311,6 +319,27 @@ fun NoorAppShell(
         !isAdminCenter &&
         !isReaderFullScreen
 
+    // Pure Immersive Full-Screen for Madinah Mushaf: hides Android status + navigation bars on 1st tap,
+    // restores them immediately on 2nd tap or when navigating away!
+    val currentView = LocalView.current
+    DisposableEffect(isReaderFullScreen, currentView) {
+        val window = currentView.context.findActivity()?.window
+        val controller = window?.let { WindowCompat.getInsetsController(it, currentView) }
+        if (controller != null) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (isReaderFullScreen) {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+        onDispose {
+            if (isReaderFullScreen && controller != null) {
+                controller.show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
     fun navigateToTab(route: String) {
         if (route == NoorRoutes.QURAN && currentRoute != NoorRoutes.QURAN) {
             viewModel.setQuranDisplayMode(com.example.domain.model.QuranDisplayMode.MUSHAF)
@@ -388,40 +417,42 @@ fun NoorAppShell(
                 Scaffold(
                     containerColor = Color.Transparent,
                     contentColor = MaterialTheme.colorScheme.onBackground,
-                    contentWindowInsets = WindowInsets.safeDrawing,
+                    contentWindowInsets = if (isReaderFullScreen) WindowInsets(0, 0, 0, 0) else WindowInsets.safeDrawing,
                     snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                     bottomBar = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .navigationBarsPadding()
-                        ) {
-                            if (showMiniPlayer) {
-                                FloatingAudioMiniPlayer(
-                                    audioState = audioState,
-                                    onOpenPlayer = { navController.navigate(NoorRoutes.AUDIO_LIBRARY) },
-                                    onTogglePlayPause = { viewModel.toggleAudioPauseResume() },
-                                    onNext = { viewModel.playNextAudio() },
-                                    onStop = { viewModel.stopQuranAudio() }
-                                )
-                            }
-                            if (!useRail && showNavBar) {
-                                val dockTabs = remember(lang) {
-                                    bottomTabs.map { tab ->
-                                        Ios27DockTabItem(
-                                            route = tab.route,
-                                            label = L10n.pick(lang, tab.labelAr, tab.labelEn),
-                                            selectedIcon = tab.selectedIcon,
-                                            unselectedIcon = tab.unselectedIcon,
-                                            testTag = tab.testTag
-                                        )
-                                    }
+                        if (!isReaderFullScreen && (showMiniPlayer || (!useRail && showNavBar))) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .navigationBarsPadding()
+                            ) {
+                                if (showMiniPlayer) {
+                                    FloatingAudioMiniPlayer(
+                                        audioState = audioState,
+                                        onOpenPlayer = { navController.navigate(NoorRoutes.AUDIO_LIBRARY) },
+                                        onTogglePlayPause = { viewModel.toggleAudioPauseResume() },
+                                        onNext = { viewModel.playNextAudio() },
+                                        onStop = { viewModel.stopQuranAudio() }
+                                    )
                                 }
-                                Ios27LiquidGlassBottomDock(
-                                    tabs = dockTabs,
-                                    selectedRoute = currentRoute,
-                                    onSelectTab = { tab -> navigateToTab(tab.route) }
-                                )
+                                if (!useRail && showNavBar) {
+                                    val dockTabs = remember(lang) {
+                                        bottomTabs.map { tab ->
+                                            Ios27DockTabItem(
+                                                route = tab.route,
+                                                label = L10n.pick(lang, tab.labelAr, tab.labelEn),
+                                                selectedIcon = tab.selectedIcon,
+                                                unselectedIcon = tab.unselectedIcon,
+                                                testTag = tab.testTag
+                                            )
+                                        }
+                                    }
+                                    Ios27LiquidGlassBottomDock(
+                                        tabs = dockTabs,
+                                        selectedRoute = currentRoute,
+                                        onSelectTab = { tab -> navigateToTab(tab.route) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -429,7 +460,7 @@ fun NoorAppShell(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(top = innerPadding.calculateTopPadding())
+                            .padding(top = if (isReaderFullScreen) 0.dp else innerPadding.calculateTopPadding())
                     ) {
                         NavHost(
                             navController = navController,
@@ -1199,4 +1230,10 @@ private fun FloatingAudioMiniPlayer(
             Icon(Icons.Rounded.Close, contentDescription = "Close Player", tint = Color.White.copy(alpha = 0.7f), modifier = Modifier.size(18.dp))
         }
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

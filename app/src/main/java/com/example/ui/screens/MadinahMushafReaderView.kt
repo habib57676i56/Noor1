@@ -11,6 +11,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -656,35 +658,23 @@ fun MadinahMushafReaderView(
                         scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
                     }
                 },
-                onAyahTapped = { hit ->
-                    if (hit == null) {
-                        // Single tap on EMPTY AREA:
-                        // 1. If a contextual menu or Ayah selection is open, dismiss it cleanly first.
-                        // 2. Otherwise toggle Clean Full-Screen Mushaf Mode (without interrupting audio!).
-                        if (showContextualMenu || selectedAyah != null) {
-                            showContextualMenu = false
-                            selectedAyah = null
-                        } else {
-                            onToggleFullScreen()
-                        }
+                onSingleTapPage = {
+                    // Single tap ANYWHERE on the Madinah Mushaf page:
+                    // 1. If an Ayah contextual menu or selection is open, dismiss it cleanly first.
+                    // 2. Otherwise immediately toggle Pure Full-Screen Mode (1st tap hides EVERYTHING
+                    //    so ONLY the Quran page fills the screen; 2nd tap brings back bottom bar & settings!).
+                    if (showContextualMenu || selectedAyah != null) {
+                        showContextualMenu = false
+                        selectedAyah = null
                     } else {
-                        // Single tap on an AYAH:
-                        // Never toggles full-screen! Accurately selects that exact Ayah & opens its toolbar.
-                        if (showContextualMenu && selectedAyah?.key == hit.key) {
-                            showContextualMenu = false
-                            selectedAyah = null
-                        } else {
-                            selectedAyah = hit
-                            showContextualMenu = true
-                        }
+                        onToggleFullScreen()
                     }
                 },
                 onAyahLongPressed = { hit ->
-                    // Long press on an AYAH: selects exact Ayah + opens full contextual toolbar.
+                    // Long press on an AYAH: selects exact Ayah + opens full contextual toolbar (Copy, Share, Play, Tafsir...).
                     selectedAyah = hit
                     showContextualMenu = true
                 },
-                onExitFullScreen = onToggleFullScreen,
                 onSwitchToTextMushaf = onSwitchToTextMushaf
             )
         }
@@ -1009,9 +999,8 @@ private fun MadinahMushafSinglePageCard(
     onZoomChange: (Float, Offset) -> Unit,
     onSwipeNextPage: () -> Unit,
     onSwipePrevPage: () -> Unit,
-    onAyahTapped: (AyahPageRegion?) -> Unit,
+    onSingleTapPage: () -> Unit,
     onAyahLongPressed: (AyahPageRegion) -> Unit,
-    onExitFullScreen: () -> Unit,
     onSwitchToTextMushaf: () -> Unit
 ) {
     val lang = LocalAppLanguage.current
@@ -1067,7 +1056,7 @@ private fun MadinahMushafSinglePageCard(
     val latestContainerSize by rememberUpdatedState(containerSize)
     val latestLayout by rememberUpdatedState(pageLayout)
     val latestLoadResult by rememberUpdatedState(loadResult)
-    val latestOnTap by rememberUpdatedState(onAyahTapped)
+    val latestOnSingleTap by rememberUpdatedState(onSingleTapPage)
     val latestOnLongPress by rememberUpdatedState(onAyahLongPressed)
     val latestOnZoomChange by rememberUpdatedState(onZoomChange)
     val latestOnSwipeNext by rememberUpdatedState(onSwipeNextPage)
@@ -1135,69 +1124,39 @@ private fun MadinahMushafSinglePageCard(
         )
 
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .then(if (isFullScreen) Modifier.navigationBarsPadding() else Modifier)
+            modifier = Modifier.fillMaxSize()
         ) {
-            // In Full-Screen Mode, show authentic subtle Quran-for-Android running Mushaf header
-            // (`الجزء X` on one side, `سورة ...` on the other) + unobtrusive audio/exit icon buttons
+            // Pure Distraction-Free Full-Screen Mode: ZERO buttons, ZERO icons, ZERO toolbars!
+            // Only whisper-clean traditional Mushaf paper typography (`سورة ...` and `الجزء ...`)
+            // so the Quran page fills the entire phone screen edge-to-edge. Tapping anywhere toggles back!
             if (isFullScreen) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { latestOnSingleTap() }
+                        )
+                        .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        IconButton(
-                            onClick = onExitFullScreen,
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(runningMetaInk.copy(alpha = 0.12f))
-                                .testTag("mushaf_exit_fullscreen_btn")
-                        ) {
-                            Icon(
-                                Icons.Rounded.FullscreenExit,
-                                contentDescription = L10n.pick(lang, "إظهار الأدوات", "Exit Full-Screen"),
-                                tint = runningMetaInk,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Text(
-                            text = "سورة $surahNameAr",
-                            fontFamily = AmiriFontFamily,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = runningMetaInk,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            text = "الجزء $juzNumber",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Medium,
-                            color = runningMetaInk
-                        )
-                        IconButton(
-                            onClick = onToggleAudio,
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(runningMetaInk.copy(alpha = 0.12f))
-                        ) {
-                            Icon(
-                                imageVector = if (isAudioPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = L10n.pick(lang, "تشغيل/إيقاف التلاوة", "Play/Pause"),
-                                tint = runningMetaInk,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
+                    Text(
+                        text = "سورة $surahNameAr",
+                        fontFamily = AmiriFontFamily,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = runningMetaInk,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "الجزء $juzNumber",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
+                        color = runningMetaInk
+                    )
                 }
             }
 
@@ -1207,12 +1166,11 @@ private fun MadinahMushafSinglePageCard(
                     .fillMaxWidth()
                     .weight(1f)
                     .onSizeChanged { containerSize = it }
-                    // Tap / Double-Tap / Long-Press handler (never blocks horizontal page swiping!)
+                    // Single Tap = Toggle Pure Full-Screen | Double Tap = Zoom | Long Press = Ayah Menu
                     .pointerInput(pageNumber) {
                         detectTapGestures(
-                            onTap = { tapOffset ->
-                                val hit = resolveHitAt(tapOffset)
-                                latestOnTap(hit)
+                            onTap = {
+                                latestOnSingleTap()
                             },
                             onDoubleTap = {
                                 if (latestZoomScale > 1.1f) {
@@ -1391,17 +1349,22 @@ private fun MadinahMushafSinglePageCard(
                 }
             }
 
-            // Authentic centered page number footer in Full-Screen Mode (matches Quran for Android)
+            // Authentic centered page number footer in Full-Screen Mode (tap anywhere to restore bars)
             if (isFullScreen) {
                 Text(
                     text = pageNumber.toString(),
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Medium,
                     color = runningMetaInk,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { latestOnSingleTap() }
+                        )
+                        .padding(top = 2.dp, bottom = 10.dp)
                 )
             }
         }
