@@ -1092,12 +1092,17 @@ fun NoorAppShell(
                                 )
                             }
                             composable(NoorRoutes.YASSER_IRAQI_MAQAM) {
+                                val customReciters by viewModel.customReciters.collectAsStateWithLifecycle()
+                                val iraqiAdminTracks = remember(customReciters) {
+                                    customReciters.filter { it.isYasserIraqiMaqamTrack() }
+                                }
                                 YasserDosariIraqiMaqamScreen(
                                     onBack = { navController.popBackStack() },
                                     onOpenInMushafWithDosariIraqi = { surah ->
                                         viewModel.setQuranReciter(QuranReciter.YASSER_AL_DOSARI_IRAQI_MAQAM)
                                         navController.navigate(NoorRoutes.quranReader(surah.coerceIn(1, 114)))
-                                    }
+                                    },
+                                    adminCustomTracks = iraqiAdminTracks
                                 )
                             }
                             composable(NoorRoutes.QURAN_WAQF_LAB) {

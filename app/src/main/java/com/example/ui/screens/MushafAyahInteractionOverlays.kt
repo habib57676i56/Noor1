@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -73,11 +74,15 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Brush
+import kotlin.math.PI
+import kotlin.math.sin
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -142,13 +147,24 @@ internal fun buildSeamlessConnectedHighlightRects(
     val lineNumbers = mutableListOf<Int>()
     val rawRects = mutableListOf<FittedImageRect>()
 
-    for (seg in sorted) {
-        val clipped = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
-            segBounds = seg.bounds,
-            endMarkerBounds = endMarkerBounds
-        )
-        // Never drop a short single-word Ayah (e.g. "الم" 2:1) if endMarker overlap trimmed too aggressively
-        val effectiveBounds = if (clipped != null && clipped.width >= 0.012f) clipped else seg.bounds
+    for ((idx, seg) in sorted.withIndex()) {
+        // Encompass the Ayah's ornamental end-rosette circle (﴿١﴾) cleanly when it sits on the
+        // Ayah's final line, matching Quran-for-Android's even end-to-end highlight block.
+        var effectiveBounds = seg.bounds
+        if (idx == sorted.lastIndex && endMarkerBounds != null && endMarkerBounds.width > 0f && endMarkerBounds.height > 0f) {
+            val sameLineBand = endMarkerBounds.bottom >= seg.bounds.top - 0.015f &&
+                endMarkerBounds.top <= seg.bounds.bottom + 0.015f
+            val adjacentOnLeft = endMarkerBounds.left >= seg.bounds.left - 0.065f &&
+                endMarkerBounds.right <= seg.bounds.right + 0.02f
+            if (sameLineBand && adjacentOnLeft) {
+                effectiveBounds = NormalizedRect(
+                    left = minOf(seg.bounds.left, endMarkerBounds.left),
+                    top = minOf(seg.bounds.top, endMarkerBounds.top),
+                    right = maxOf(seg.bounds.right, endMarkerBounds.right),
+                    bottom = maxOf(seg.bounds.bottom, endMarkerBounds.bottom)
+                )
+            }
+        }
         val pxRect = MushafCoordinateTransform.normalizedRectToFittedRect(effectiveBounds, fitted)
         if (pxRect.width <= 1f || pxRect.height <= 1f) continue
         lineNumbers += seg.lineNumber
@@ -158,7 +174,7 @@ internal fun buildSeamlessConnectedHighlightRects(
 
     val avgLineH = rawRects.map { it.height }.average().toFloat().coerceAtLeast(8f)
     val outerPadY = (avgLineH * 0.06f).coerceIn(1.5f, 6f)
-    val padX = (fitted.width * 0.004f).coerceIn(1.5f, 5f)
+    val padX = (fitted.width * 0.0045f).coerceIn(1.5f, 5.5f)
 
     // First expand horizontal edges gently and outer top/bottom edges
     val tops = FloatArray(rawRects.size) { i -> (rawRects[i].top - outerPadY).coerceAtLeast(fitted.top) }
@@ -251,6 +267,48 @@ fun MushafAyahHighlightOverlay(
         }
     }
 
+    // Graceful, continuous Ayah-to-Ayah transition state (no abrupt disappear/reappear blink!)
+    var displayedRegion by remember(layout.pageNumber) { mutableStateOf(activeRegion) }
+    var outgoingRegion by remember(layout.pageNumber) { mutableStateOf<AyahPageRegion?>(null) }
+    val transitionProgress = remember(layout.pageNumber) { Animatable(1f) }
+
+    LaunchedEffect(activeRegion?.key, layout.pageNumber) {
+        val nextKey = activeRegion?.key
+        val currKey = displayedRegion?.key
+        if (nextKey != currKey) {
+            val previous = displayedRegion
+            outgoingRegion = previous
+            displayedRegion = activeRegion
+            when {
+                previous != null && activeRegion != null -> {
+                    // Silky liquid crossfade + flowing glide between consecutive Ayahs (420ms)
+                    transitionProgress.snapTo(0f)
+                    transitionProgress.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = 420, easing = FastOutSlowInEasing)
+                    )
+                    outgoingRegion = null
+                }
+                activeRegion != null -> {
+                    transitionProgress.snapTo(0f)
+                    transitionProgress.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                    )
+                    outgoingRegion = null
+                }
+                else -> {
+                    transitionProgress.snapTo(0f)
+                    transitionProgress.animateTo(
+                        targetValue = 1f,
+                        animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                    )
+                    outgoingRegion = null
+                }
+            }
+        }
+    }
+
     Canvas(
         modifier = modifier
             .fillMaxSize()
@@ -263,39 +321,89 @@ fun MushafAyahHighlightOverlay(
             imageHeight = imageHeight.toFloat()
         )
         val cornerPx = (fitted.width * 0.005f).coerceIn(2f, 6f)
+        val targetAlpha = (baseAlpha * effectivePulse * (if (nightMode) 1.15f else 0.96f)).coerceIn(0.16f, 0.44f)
+        val p = transitionProgress.value.coerceIn(0f, 1f)
+        // Smoothstep easing curve for overlapping glow handoff
+        val easeIn = p * p * (3f - 2f * p)
+        val easeOut = 1f - easeIn
 
-        // 1. Real-Time Active Recited Ayah Highlight — ONE single unified connected translucent block
-        // across all lines of the Ayah with ZERO vertical gaps and ZERO double-blended seams!
-        if (activeRegion != null) {
-            val fillColor = preset.ayahFillColor.copy(
-                alpha = (baseAlpha * effectivePulse * (if (nightMode) 1.15f else 0.96f)).coerceIn(0.16f, 0.44f)
-            )
-            val connectedRects = buildSeamlessConnectedHighlightRects(
-                lineRegions = activeRegion.lineRegions,
-                endMarkerBounds = activeRegion.endMarkerBounds,
+        // 1A. Outgoing Ayah — softly fades out while handing off light to the next Ayah
+        val outReg = outgoingRegion
+        val outRects = if (outReg != null && easeOut > 0.01f) {
+            val rects = buildSeamlessConnectedHighlightRects(
+                lineRegions = outReg.lineRegions,
+                endMarkerBounds = outReg.endMarkerBounds,
                 fitted = fitted
             )
-            if (connectedRects.isNotEmpty()) {
-                val unifiedPath = buildUnifiedHighlightPath(connectedRects)
-                drawPath(path = unifiedPath, color = fillColor)
+            if (rects.isNotEmpty()) {
+                val unifiedOut = buildUnifiedHighlightPath(rects)
+                drawPath(path = unifiedOut, color = preset.ayahFillColor.copy(alpha = targetAlpha * easeOut))
             }
+            rects
+        } else {
+            emptyList()
+        }
 
-            // 2. Verified Word-by-Word Audio Highlight (ONLY when verified millisecond timestamps exist)
-            if (activeWordRegion != null) {
-                val safeWordBounds = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
-                    segBounds = activeWordRegion.bounds,
-                    endMarkerBounds = activeRegion.endMarkerBounds
+        // 1B. Incoming / Current Recited Ayah — glides in smoothly as ONE unified connected block
+        val inReg = displayedRegion
+        val inRects = if (inReg != null && easeIn > 0.01f) {
+            val rects = buildSeamlessConnectedHighlightRects(
+                lineRegions = inReg.lineRegions,
+                endMarkerBounds = inReg.endMarkerBounds,
+                fitted = fitted
+            )
+            if (rects.isNotEmpty()) {
+                val unifiedIn = buildUnifiedHighlightPath(rects)
+                drawPath(path = unifiedIn, color = preset.ayahFillColor.copy(alpha = targetAlpha * easeIn))
+            }
+            rects
+        } else {
+            emptyList()
+        }
+
+        // 1C. Soft flowing light bridge gliding from end of outgoing Ayah to start of incoming Ayah
+        if (outRects.isNotEmpty() && inRects.isNotEmpty() && p in 0.02f..0.98f) {
+            val fromRect = outRects.last()
+            val toRect = inRects.first()
+            val fromAnchor = Offset(fromRect.left + fromRect.width * 0.15f, fromRect.top + fromRect.height * 0.5f)
+            val toAnchor = Offset(toRect.right - toRect.width * 0.15f, toRect.top + toRect.height * 0.5f)
+            val flowCenter = Offset(
+                x = fromAnchor.x + (toAnchor.x - fromAnchor.x) * easeIn,
+                y = fromAnchor.y + (toAnchor.y - fromAnchor.y) * easeIn
+            )
+            val glowRadius = (maxOf(fromRect.height, toRect.height) * 1.15f).coerceIn(18f, 68f)
+            val bridgeAlpha = (targetAlpha * 0.65f * sin(p * PI).toFloat()).coerceIn(0f, 0.30f)
+            if (bridgeAlpha > 0.01f) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            preset.ayahFillColor.copy(alpha = bridgeAlpha),
+                            preset.ayahFillColor.copy(alpha = 0f)
+                        ),
+                        center = flowCenter,
+                        radius = glowRadius
+                    ),
+                    radius = glowRadius,
+                    center = flowCenter
                 )
-                if (safeWordBounds != null) {
-                    val wRect = MushafCoordinateTransform.normalizedRectToFittedRect(safeWordBounds, fitted)
-                    if (wRect.width > 1f && wRect.height > 1f) {
-                        drawRoundRect(
-                            color = preset.wordFillColor.copy(alpha = (baseAlpha + 0.14f).coerceAtMost(0.48f)),
-                            topLeft = Offset(wRect.left, wRect.top),
-                            size = Size(wRect.width, wRect.height),
-                            cornerRadius = CornerRadius(cornerPx, cornerPx)
-                        )
-                    }
+            }
+        }
+
+        // 2. Verified Word-by-Word Audio Highlight (ONLY when verified millisecond timestamps exist)
+        if (inReg != null && activeWordRegion != null) {
+            val safeWordBounds = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
+                segBounds = activeWordRegion.bounds,
+                endMarkerBounds = inReg.endMarkerBounds
+            )
+            if (safeWordBounds != null) {
+                val wRect = MushafCoordinateTransform.normalizedRectToFittedRect(safeWordBounds, fitted)
+                if (wRect.width > 1f && wRect.height > 1f) {
+                    drawRoundRect(
+                        color = preset.wordFillColor.copy(alpha = ((baseAlpha + 0.14f).coerceAtMost(0.48f)) * easeIn),
+                        topLeft = Offset(wRect.left, wRect.top),
+                        size = Size(wRect.width, wRect.height),
+                        cornerRadius = CornerRadius(cornerPx, cornerPx)
+                    )
                 }
             }
         }

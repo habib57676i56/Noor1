@@ -107,14 +107,20 @@ data class YasserIraqiRecitationItem(
     val iconicAyahAr: String,
     val youtubeQuery: String,
     val eraNoteAr: String,
-    val eraNoteEn: String
+    val eraNoteEn: String,
+    val customAudioSource: String? = null,
+    val isAdminUploaded: Boolean = false
 ) {
     fun fullSurahAudioUrl(): String {
+        val custom = customAudioSource?.trim()
+        if (!custom.isNullOrBlank()) return custom
         val s = surahNumber.toString().padStart(3, '0')
         return "https://server11.mp3quran.net/yasser/$s.mp3"
     }
 
     fun climaxAyahAudioUrl(): String {
+        val custom = customAudioSource?.trim()
+        if (!custom.isNullOrBlank()) return custom
         val s = surahNumber.toString().padStart(3, '0')
         val a = highlightAyahNumber.toString().padStart(3, '0')
         return "https://everyayah.com/data/Yasser_Ad-Dussary_128kbps/${s}${a}.mp3"
@@ -283,11 +289,36 @@ object YasserDosariIraqiCatalog {
 @Composable
 fun YasserDosariIraqiMaqamScreen(
     onBack: () -> Unit,
-    onOpenInMushafWithDosariIraqi: (surahNumber: Int) -> Unit
+    onOpenInMushafWithDosariIraqi: (surahNumber: Int) -> Unit,
+    adminCustomTracks: List<com.example.data.quran.CustomReciterItem> = emptyList()
 ) {
     val lang = LocalAppLanguage.current
     val context = LocalContext.current
     val noorColors = LocalNoorColors.current
+
+    val allRecitations = remember(adminCustomTracks) {
+        val uploaded = adminCustomTracks
+            .filter { it.hasPlayableAudio() }
+            .map { track ->
+                val surahMeta = com.example.data.local.catalog.SurahCatalog.findSurah(track.surahNumber.coerceIn(1, 114))
+                YasserIraqiRecitationItem(
+                    id = "admin_${track.id}",
+                    surahNumber = track.surahNumber.coerceIn(1, 114),
+                    highlightAyahNumber = 1,
+                    titleAr = track.surahTitleAr.ifBlank { "سورة ${surahMeta.nameAr} — مقام العراق" },
+                    titleEn = track.surahTitleEn.ifBlank { "Surah ${surahMeta.nameEn} — Iraqi Maqam" },
+                    maqamTagAr = "مقام العراق · مضافة من لوحة التحكم",
+                    maqamTagEn = "Iraqi Maqam · Admin Studio",
+                    iconicAyahAr = "﴿سورة ${surahMeta.nameAr} — تلاوة مرفوعة للشيخ ياسر الدوسري بمقام العراق﴾",
+                    youtubeQuery = "ياسر الدوسري سورة ${surahMeta.nameAr} مقام العراق",
+                    eraNoteAr = track.fileName.ifBlank { "تلاوة MP3 مضافة مباشرة من لوحة التحكم" },
+                    eraNoteEn = track.fileName.ifBlank { "Custom MP3 / audio link published from Admin Control Center" },
+                    customAudioSource = track.resolvePlayableSource(),
+                    isAdminUploaded = true
+                )
+            }
+        uploaded + YasserDosariIraqiCatalog.recitations
+    }
 
     var selectedIndex by remember { mutableIntStateOf(0) }
     var fullSurahMode by remember { mutableStateOf(true) } // true = full Surah MP3, false = iconic Ayah clip
@@ -300,7 +331,8 @@ fun YasserDosariIraqiMaqamScreen(
     var errorMsg by remember { mutableStateOf<String?>(null) }
     var playerRef by remember { mutableStateOf<MediaPlayer?>(null) }
 
-    val activeItem = YasserDosariIraqiCatalog.recitations[selectedIndex]
+    val safeSelectedIndex = selectedIndex.coerceIn(0, allRecitations.lastIndex.coerceAtLeast(0))
+    val activeItem = allRecitations[safeSelectedIndex]
 
     fun releasePlayer() {
         runCatching {
@@ -325,10 +357,11 @@ fun YasserDosariIraqiMaqamScreen(
     }
 
     fun startPlayback(index: Int, fullMode: Boolean) {
-        val item = YasserDosariIraqiCatalog.recitations[index]
+        val safeIdx = index.coerceIn(0, allRecitations.lastIndex.coerceAtLeast(0))
+        val item = allRecitations[safeIdx]
         val url = if (fullMode) item.fullSurahAudioUrl() else item.climaxAyahAudioUrl()
         releasePlayer()
-        selectedIndex = index
+        selectedIndex = safeIdx
         fullSurahMode = fullMode
         currentPosMs = 0L
         durationMs = 0L
@@ -639,7 +672,7 @@ fun YasserDosariIraqiMaqamScreen(
                     ) {
                         IconButton(
                             onClick = {
-                                val prev = if (selectedIndex > 0) selectedIndex - 1 else YasserDosariIraqiCatalog.recitations.lastIndex
+                                val prev = if (safeSelectedIndex > 0) safeSelectedIndex - 1 else allRecitations.lastIndex
                                 startPlayback(prev, fullSurahMode)
                             }
                         ) {
@@ -671,7 +704,7 @@ fun YasserDosariIraqiMaqamScreen(
 
                         IconButton(
                             onClick = {
-                                val next = (selectedIndex + 1) % YasserDosariIraqiCatalog.recitations.size
+                                val next = (safeSelectedIndex + 1) % allRecitations.size
                                 startPlayback(next, fullSurahMode)
                             }
                         ) {
@@ -757,7 +790,11 @@ fun YasserDosariIraqiMaqamScreen(
                     Icon(Icons.Rounded.GraphicEq, contentDescription = null, tint = GoldBright, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = L10n.pick(lang, "روائع مقام العراق للشيخ ياسر الدوسري (١٠ تلاوات خالدة)", "10 Viral Iraqi-Maqam Masterpieces"),
+                        text = L10n.pick(
+                            lang,
+                            "روائع مقام العراق للشيخ ياسر الدوسري (${allRecitations.size} تلاوات)",
+                            "${allRecitations.size} Viral Iraqi-Maqam Masterpieces"
+                        ),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         color = noorColors.goldAccent
@@ -765,8 +802,8 @@ fun YasserDosariIraqiMaqamScreen(
                 }
             }
 
-            itemsIndexed(YasserDosariIraqiCatalog.recitations, key = { _, item -> item.id }) { idx, item ->
-                val isSelected = idx == selectedIndex
+            itemsIndexed(allRecitations, key = { _, item -> item.id }) { idx, item ->
+                val isSelected = idx == safeSelectedIndex
                 LiquidGlassCard(
                     modifier = Modifier
                         .fillMaxWidth()

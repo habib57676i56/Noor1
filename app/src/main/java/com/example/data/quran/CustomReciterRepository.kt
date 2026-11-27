@@ -47,6 +47,12 @@ data class CustomReciterItem(
 
     fun hasPlayableAudio(): Boolean = resolvePlayableSource().isNotBlank()
 
+    fun isYasserIraqiMaqamTrack(): Boolean =
+        styleEn.contains("Iraqi", ignoreCase = true) ||
+            styleAr.contains("العراق") ||
+            nameAr.contains("مقام العراق") ||
+            nameEn.contains("Iraqi Maqam", ignoreCase = true)
+
     fun toAudioTrackItem(): AudioTrackItem {
         val playable = resolvePlayableSource()
         return AudioTrackItem(

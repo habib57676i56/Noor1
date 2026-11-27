@@ -36,26 +36,26 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("4.1.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v4.1.0", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.2.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.2.0", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v4.1.0 passes default v4.1.0 gate, while older v4.0.1 / v3.9.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.1", defaultConfig))
+        // New build v4.2.0 passes default v4.2.0 gate, while older v4.1.0 / v3.9.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.1.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "4.1.0", the newly updated v4.1.0 (or v4.2.0) APK opens automatically
-        // while older v4.0.1 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.1.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.1", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", forcedWithMin))
+        // with minSupportedVersion = "4.2.0", the newly updated v4.2.0 (or v4.3.0) APK opens automatically
+        // while older v4.1.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.1.0", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.2.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.2.0 blocks 4.1.0 until user updates to 4.2.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.2.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.1.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.0", raisedConfig))
+        // Raising minSupportedVersion to 4.3.0 blocks 4.2.0 until user updates to 4.3.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.3.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
@@ -511,5 +511,90 @@ class NoorFinalUpgradeTest {
         assertEquals(4_200L, proportional.ayahs.first().startMs)
         assertEquals(null, proportional.findAyahAt(2_000L))
         assertEquals(1, proportional.findAyahAt(5_000L)?.ayahNumber)
+    }
+
+    @Test
+    fun adminYasserIraqiUpload_matchesFilterAndOverridesAudioUrls() {
+        val uploadedMp3 = com.example.data.quran.CustomReciterItem(
+            id = "yasser_iraqi_1",
+            nameAr = "ياسر الدوسري · المقام العراقي",
+            nameEn = "Yasser Al-Dosari · Iraqi Maqam",
+            styleAr = "مقام العراق · ياسر الدوسري",
+            styleEn = "Iraqi Maqam",
+            surahTitleAr = "تلاوة سورة يوسف نادرة",
+            surahNumber = 12,
+            localAudioPath = "/data/user/0/custom_reciters/yasser_yusuf.mp3"
+        )
+        val unrelated = com.example.data.quran.CustomReciterItem(
+            id = "other_1",
+            nameAr = "الشيخ المنشاوي",
+            nameEn = "Al-Minshawi",
+            styleAr = "مجود",
+            styleEn = "Mujawwad",
+            surahTitleAr = "سورة الكهف",
+            surahNumber = 18,
+            audioUrl = "https://example.com/kahf.mp3"
+        )
+        assertTrue(uploadedMp3.isYasserIraqiMaqamTrack())
+        assertFalse(unrelated.isYasserIraqiMaqamTrack())
+
+        val customItem = com.example.ui.screens.ecosystem.YasserIraqiRecitationItem(
+            id = "admin_1",
+            surahNumber = 12,
+            highlightAyahNumber = 1,
+            titleAr = "تلاوة سورة يوسف نادرة",
+            titleEn = "Rare Surah Yusuf Recitation",
+            maqamTagAr = "مقام عراقي · لوحة التحكم",
+            maqamTagEn = "Iraqi Maqam · Admin",
+            iconicAyahAr = "تلاوة مضافة",
+            youtubeQuery = "ياسر الدوسري سورة يوسف مقام عراقي",
+            eraNoteAr = "مرفوعة من لوحة التحكم",
+            eraNoteEn = "Uploaded from Admin Panel",
+            customAudioSource = "https://cdn.example.com/yasser_iraqi_yusuf.mp3",
+            isAdminUploaded = true
+        )
+        assertEquals("https://cdn.example.com/yasser_iraqi_yusuf.mp3", customItem.fullSurahAudioUrl())
+        assertEquals("https://cdn.example.com/yasser_iraqi_yusuf.mp3", customItem.climaxAyahAudioUrl())
+    }
+
+    @Test
+    fun mushafV42_highlightCleanlyCoversAdjacentAyahEndRosetteCircle() {
+        val fitted = com.example.data.quran.FittedImageRect(left = 0f, top = 0f, width = 1000f, height = 1600f)
+        val lineRegion = com.example.data.quran.AyahLineRegion(
+            surahNumber = 3,
+            ayahNumber = 7,
+            lineNumber = 11,
+            bounds = com.example.data.quran.NormalizedRect(left = 0.65f, top = 0.675f, right = 0.95f, bottom = 0.730f)
+        )
+        val rosetteBounds = com.example.data.quran.NormalizedRect(left = 0.59f, top = 0.678f, right = 0.65f, bottom = 0.728f)
+        val rects = com.example.ui.screens.buildSeamlessConnectedHighlightRects(
+            lineRegions = listOf(lineRegion),
+            endMarkerBounds = rosetteBounds,
+            fitted = fitted
+        )
+        assertEquals(1, rects.size)
+        // Left edge must extend smoothly to encompass the Ayah-end rosette circle (590px)
+        assertTrue("Expected highlight left (${rects[0].left}) <= 590f to cover rosette", rects[0].left <= 590f)
+        assertTrue("Expected highlight right (${rects[0].right}) >= 950f", rects[0].right >= 950f)
+    }
+
+    @Test
+    fun tasbihConveyor_guaranteesZeroBeadOverlapAcrossFullDragRange() {
+        val beadStepT = 0.115f
+        for (step in -20..20) {
+            val progress = step / 20f
+            val slots = com.example.ui.screens.computeTasbihBeadSlots(
+                progress = progress,
+                beadStepT = beadStepT
+            ).sortedBy { it.t }
+            assertTrue("Expected non-empty bead slots at progress=$progress", slots.size >= 8)
+            for (i in 0 until slots.lastIndex) {
+                val gap = slots[i + 1].t - slots[i].t
+                assertTrue(
+                    "Bead collision detected at progress=$progress between t=${slots[i].t} and t=${slots[i + 1].t} (gap=$gap < $beadStepT)",
+                    gap >= beadStepT - 0.0005f
+                )
+            }
+        }
     }
 }

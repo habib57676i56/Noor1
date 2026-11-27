@@ -87,13 +87,38 @@ fun AdminRecitersTab(
     var pickedAudioUri by remember { mutableStateOf<Uri?>(null) }
     var pickedFileName by remember { mutableStateOf("") }
 
+    // Dedicated Yasser Al-Dosari (Iraqi Maqam) MP3 Upload / Direct Link Studio State
+    var yasserTitleAr by remember { mutableStateOf("سورة غافر — تلاوة عراقية خاشعة") }
+    var yasserSurahNumberText by remember { mutableStateOf("40") }
+    var yasserAudioUrl by remember { mutableStateOf("") }
+    var yasserPickedUri by remember { mutableStateOf<Uri?>(null) }
+    var yasserPickedFileName by remember { mutableStateOf("") }
+
     val styleOptions = remember {
         listOf(
             "مرتّل (حفص عن عاصم)" to "Murattal (Hafs)",
             "مجوّد" to "Mujawwad",
             "ورش عن نافع" to "Warsh",
+            "مقام العراق · ياسر الدوسري" to "Yasser Al-Dosari · Iraqi Maqam",
             "تلاوة خاشعة خاصة" to "Special Khashia"
         )
+    }
+
+    val yasserAudioPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            yasserPickedUri = uri
+            val resolved = runCatching {
+                context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val idx = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) c.getString(idx) else null
+                    } else null
+                }
+            }.getOrNull()
+            yasserPickedFileName = resolved ?: uri.lastPathSegment.orEmpty().ifBlank { "yasser_iraqi.mp3" }
+        }
     }
 
     val audioPickerLauncher = rememberLauncherForActivityResult(
@@ -129,6 +154,162 @@ fun AdminRecitersTab(
                     "Upload phone audio — appears directly inside the Quran Mushaf reciters picker with automatic Ayah sync"
                 )
             )
+        }
+
+        // Dedicated Sheikh Yasser Al-Dosari — Iraqi Maqam MP3 Upload & Direct Link Card
+        item {
+            AdminPanelCard(accentBorder = AdminPalette.AccentEmerald.copy(alpha = 0.75f)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(CircleShape)
+                            .background(AdminPalette.AccentEmerald.copy(alpha = 0.18f))
+                            .border(1.dp, AdminPalette.AccentEmerald.copy(alpha = 0.65f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Rounded.GraphicEq, contentDescription = null, tint = AdminPalette.AccentEmerald)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "تلاوات ياسر الدوسري · المقام العراقي (رفع MP3 أو رابط)",
+                                "Yasser Al-Dosari · Iraqi Maqam (Upload MP3 / URL)"
+                            ),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = AdminPalette.TextPrimary
+                        )
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "ارفع ملف MP3 من جهازك أو أضف رابط تلاوة مباشر ليظهر فوراً في قسم ياسر الدوسري بالمقام العراقي",
+                                "Upload an MP3 from your phone or paste a direct audio link to publish directly into the Iraqi Maqam studio"
+                            ),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = AdminPalette.TextSecondary
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = yasserTitleAr,
+                        onValueChange = { yasserTitleAr = it },
+                        label = { Text(L10n.pick(lang, "عنوان التلاوة *", "Recitation Title *")) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1.75f)
+                            .testTag("admin_yasser_iraqi_title")
+                    )
+                    OutlinedTextField(
+                        value = yasserSurahNumberText,
+                        onValueChange = { txt ->
+                            val digits = txt.filter { it.isDigit() }.take(3)
+                            yasserSurahNumberText = digits
+                            digits.toIntOrNull()?.takeIf { it in 1..114 }?.let { num ->
+                                SurahCatalog.findSurah(num)?.let { s ->
+                                    yasserTitleAr = "سورة ${s.nameAr} — مقام العراق"
+                                }
+                            }
+                        },
+                        label = { Text(L10n.pick(lang, "السورة", "Surah #")) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.weight(0.85f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                OutlinedButton(
+                    onClick = { yasserAudioPickerLauncher.launch(arrayOf("audio/*")) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("admin_yasser_pick_mp3_btn"),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Icon(
+                        imageVector = if (yasserPickedUri != null) Icons.Rounded.CheckCircle else Icons.Rounded.UploadFile,
+                        contentDescription = null,
+                        tint = if (yasserPickedUri != null) AdminPalette.AccentEmerald else AdminPalette.GoldLuxe
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (yasserPickedUri != null) {
+                            L10n.pick(lang, "تم اختيار: $yasserPickedFileName", "Selected: $yasserPickedFileName")
+                        } else {
+                            L10n.pick(lang, "رفع ملف تلاوة MP3 من الهاتف", "Upload MP3 Recitation from Phone")
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = yasserAudioUrl,
+                    onValueChange = { yasserAudioUrl = it },
+                    label = { Text(L10n.pick(lang, "أو ضع رابط التلاوة المباشر (https://...mp3)", "Or paste direct audio link (https://...mp3)")) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("admin_yasser_iraqi_url")
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Button(
+                    onClick = {
+                        val surahNum = yasserSurahNumberText.toIntOrNull()?.coerceIn(1, 114) ?: 40
+                        val surahMeta = SurahCatalog.findSurah(surahNum)
+                        val titleClean = yasserTitleAr.trim().ifBlank { "سورة ${surahMeta.nameAr} — مقام العراق" }
+                        adminViewModel.addCustomReciterFromPhone(
+                            nameAr = "الشيخ ياسر الدوسري (مقام العراق)",
+                            nameEn = "Sheikh Yasser Al-Dosari (Iraqi Maqam)",
+                            styleAr = "مقام العراق · مضافة من الإدارة",
+                            styleEn = "Yasser Al-Dosari · Iraqi Maqam",
+                            surahTitleAr = titleClean,
+                            surahTitleEn = "Surah ${surahMeta.nameEn} — Iraqi Maqam",
+                            surahNumber = surahNum,
+                            pickedAudioUri = yasserPickedUri,
+                            remoteAudioUrl = yasserAudioUrl
+                        )
+                        if (yasserPickedUri != null || yasserAudioUrl.isNotBlank()) {
+                            yasserAudioUrl = ""
+                            yasserPickedUri = null
+                            yasserPickedFileName = ""
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("admin_publish_yasser_iraqi_btn"),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = AdminPalette.GoldLuxe,
+                        contentColor = Color(0xFF0A1713)
+                    )
+                ) {
+                    Icon(Icons.Rounded.Publish, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = L10n.pick(lang, "نشر في قسم ياسر الدوسري · المقام العراقي", "Publish to Yasser Iraqi Maqam Studio"),
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
         }
 
         // Add New Reciter & Upload Audio Glass Card

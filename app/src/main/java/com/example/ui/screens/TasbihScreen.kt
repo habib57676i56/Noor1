@@ -1,8 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -55,7 +55,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -124,35 +126,45 @@ fun TasbihScreen(viewModel: NoorViewModel) {
     var showAddCustomDialog by remember { mutableStateOf(false) }
     var showCustomTargetDialog by remember { mutableStateOf(false) }
 
-    // Physical sliding bead progress across the taut horizontal silk string (-1f = gliding forward, +1f = gliding backward)
+    // Smooth non-overshooting bead glide progress:
+    //  0f       = resting stacks (ZERO collisions!)
+    //  0f..+1f  = forward bead gliding LEFT -> RIGHT (count +1 at +1f)
+    // -1f..0f   = backward bead gliding RIGHT -> LEFT (count -1 at -1f)
     val beadGlideAnim = remember { Animatable(0f) }
+    var isDraggingBead by remember { mutableStateOf(false) }
+    var arenaWidthPx by remember { mutableFloatStateOf(1080f) }
+
+    val latestLiveCount by rememberUpdatedState(liveCount)
+    val latestBeadTheme by rememberUpdatedState(beadTheme)
 
     fun triggerForwardBead() {
-        viewModel.incrementTasbih(beadTheme.timbre)
+        if (isDraggingBead) return
         scope.launch {
-            beadGlideAnim.snapTo(-1f)
+            // If an animation was already mid-flight, finish it cleanly before starting next bead
+            if (beadGlideAnim.value > 0.05f) {
+                beadGlideAnim.snapTo(0f)
+            }
             beadGlideAnim.animateTo(
-                targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioLowBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
+                targetValue = 1f,
+                animationSpec = tween(durationMillis = 175, easing = FastOutSlowInEasing)
             )
+            viewModel.incrementTasbih(latestBeadTheme.timbre)
+            beadGlideAnim.snapTo(0f)
         }
     }
 
     fun triggerBackwardBead() {
-        if (liveCount <= 0) return
-        viewModel.decrementTasbih(beadTheme.timbre)
+        if (isDraggingBead || latestLiveCount <= 0) return
         scope.launch {
-            beadGlideAnim.snapTo(1f)
+            if (beadGlideAnim.value < -0.05f) {
+                beadGlideAnim.snapTo(0f)
+            }
             beadGlideAnim.animateTo(
-                targetValue = 0f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
+                targetValue = -1f,
+                animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing)
             )
+            viewModel.decrementTasbih(latestBeadTheme.timbre)
+            beadGlideAnim.snapTo(0f)
         }
     }
 
@@ -274,26 +286,80 @@ fun TasbihScreen(viewModel: NoorViewModel) {
                 }
             }
 
-            // 2. Full Interactive Tap/Swipe Center Arena (tap anywhere to advance bead, swipe horizontally to decrease)
-            var dragAccumX by remember { mutableFloatStateOf(0f) }
+            // 2. Full Interactive Tap + Live Hold-and-Drag Center Arena
+            //    - Single tap anywhere: smoothly glides 1 bead left -> right (+1)
+            //    - Hold & drag RIGHT (+dx): grab bead under finger and slide forward (+1)
+            //    - Hold & drag LEFT (-dx): grab counted bead and pull back (-1)
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .pointerInput(liveCount, selectedThemeId) {
-                        detectTapGestures { triggerForwardBead() }
+                    .onSizeChanged { if (it.width > 0) arenaWidthPx = it.width.toFloat() }
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onTap = { triggerForwardBead() }
+                        )
                     }
-                    .pointerInput(liveCount, selectedThemeId) {
+                    .pointerInput(Unit) {
                         detectHorizontalDragGestures(
-                            onDragStart = { dragAccumX = 0f },
-                            onDragEnd = {
-                                if (kotlin.math.abs(dragAccumX) > 45f) {
-                                    triggerBackwardBead()
-                                }
-                                dragAccumX = 0f
+                            onDragStart = {
+                                isDraggingBead = true
+                                scope.launch { beadGlideAnim.stop() }
                             },
-                            onHorizontalDrag = { _, dragAmount ->
-                                dragAccumX += dragAmount
+                            onHorizontalDrag = { change, dragAmount ->
+                                change.consume()
+                                // Full gap span is ~32% of viewport width; dragging across it moves 1 full bead
+                                val gapSpanPx = (arenaWidthPx * 0.34f).coerceAtLeast(160f)
+                                val deltaProgress = dragAmount / gapSpanPx
+                                val rawNext = beadGlideAnim.value + deltaProgress
+                                scope.launch {
+                                    when {
+                                        // Continuous drag forward past 92% -> commit bead seamlessly & keep dragging!
+                                        rawNext >= 0.92f -> {
+                                            viewModel.incrementTasbih(latestBeadTheme.timbre)
+                                            beadGlideAnim.snapTo((rawNext - 1f).coerceIn(0f, 0.25f))
+                                        }
+                                        // Continuous drag backward past -92% -> decrement seamlessly if count > 0!
+                                        rawNext <= -0.92f && latestLiveCount > 0 -> {
+                                            viewModel.decrementTasbih(latestBeadTheme.timbre)
+                                            beadGlideAnim.snapTo((rawNext + 1f).coerceIn(-0.25f, 0f))
+                                        }
+                                        // Gentle rubber-band resistance if already at 0 and pulling left
+                                        rawNext < 0f && latestLiveCount <= 0 -> {
+                                            beadGlideAnim.snapTo(rawNext.coerceAtLeast(-0.14f))
+                                        }
+                                        else -> {
+                                            beadGlideAnim.snapTo(rawNext.coerceIn(-1f, 1f))
+                                        }
+                                    }
+                                }
+                            },
+                            onDragCancel = {
+                                isDraggingBead = false
+                                scope.launch {
+                                    beadGlideAnim.animateTo(0f, tween(160, easing = FastOutSlowInEasing))
+                                }
+                            },
+                            onDragEnd = {
+                                isDraggingBead = false
+                                val current = beadGlideAnim.value
+                                scope.launch {
+                                    when {
+                                        current >= 0.36f -> {
+                                            beadGlideAnim.animateTo(1f, tween(130, easing = FastOutSlowInEasing))
+                                            viewModel.incrementTasbih(latestBeadTheme.timbre)
+                                            beadGlideAnim.snapTo(0f)
+                                        }
+                                        current <= -0.36f && latestLiveCount > 0 -> {
+                                            beadGlideAnim.animateTo(-1f, tween(130, easing = FastOutSlowInEasing))
+                                            viewModel.decrementTasbih(latestBeadTheme.timbre)
+                                            beadGlideAnim.snapTo(0f)
+                                        }
+                                        else -> {
+                                            beadGlideAnim.animateTo(0f, tween(160, easing = FastOutSlowInEasing))
+                                        }
+                                    }
+                                }
                             }
                         )
                     }
@@ -366,14 +432,14 @@ fun TasbihScreen(viewModel: NoorViewModel) {
 
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Gesture Instruction Caption matching screenshot
+                // Clear Gesture Instruction Caption (Tap + Hold-Drag Right +1 / Drag Left -1)
                 Text(
                     text = L10n.pick(
                         lang,
-                        "اضغط أي مكان للبدء\n(يمين-يسار سحب سينقص العدد)",
-                        "Tap anywhere to begin\n(swipe left-right to decrease)",
-                        "Boshlash uchun istalgan joyga bosing\n(o'ng-chapga surish sonni kamaytiradi)",
-                        "Нажмите в любом месте\n(свайп влево-вправо уменьшит счёт)"
+                        "اضغط للعد أو امسك واسحب لليمين (+١)\nاسحب لليسار للرجوع وإنقاص العدد (-١)",
+                        "Tap to count or hold & drag right (+1)\nDrag left to pull back (-1)",
+                        "Sanash uchun bosing yoki o'ngga suring (+1)\nKamaytirish uchun chapga suring (-1)",
+                        "Нажмите или тяните вправо (+1)\nПотяните влево для возврата (-1)"
                     ),
                     style = MaterialTheme.typography.bodyMedium,
                     lineHeight = 22.sp,
@@ -882,11 +948,111 @@ fun TasbihScreen(viewModel: NoorViewModel) {
 }
 
 /**
+ * Pure, zero-collision physical bead slot representation along the normalized silk cord (`t` in `0f..1f`).
+ */
+internal data class TasbihBeadSlot(
+    val t: Float,
+    val seedOffset: Int,
+    val isActive: Boolean
+)
+
+/**
+ * Computes strictly monotonic, non-overlapping bead positions along the cord for ANY interactive
+ * drag/animation progress in `[-1f..+1f]`:
+ * - `progress == 0f`       -> resting left waiting stack + open central gap + right counted stack
+ * - `progress in (0f..1f]` -> lead bead glides smoothly LEFT -> RIGHT (`gapStartT` -> `gapEndT`),
+ *                             left & right stacks advance synchronously by `+progress * beadStepT`
+ *                             so `progress = 1f` matches `progress = 0f` pixel-for-pixel (ZERO jump!)
+ * - `progress in [-1f..0f)` -> front right bead glides smoothly RIGHT -> LEFT (`gapEndT` -> `gapStartT`),
+ *                             both stacks shift synchronously by `-|progress| * beadStepT`
+ *                             so `progress = -1f` matches `progress = 0f` pixel-for-pixel (ZERO jump!)
+ */
+internal fun computeTasbihBeadSlots(
+    progress: Float,
+    beadStepT: Float,
+    gapStartT: Float = 0.34f,
+    gapEndT: Float = 0.66f
+): List<TasbihBeadSlot> {
+    val p = progress.coerceIn(-1f, 1f)
+    val safeStep = beadStepT.coerceAtLeast(0.05f)
+    val slots = mutableListOf<TasbihBeadSlot>()
+
+    when {
+        p > 0f -> {
+            // Left back stack (beads 1..5 shifting smoothly rightward to fill gapStartT)
+            for (i in 5 downTo 1) {
+                slots += TasbihBeadSlot(
+                    t = gapStartT - i * safeStep + p * safeStep,
+                    seedOffset = -i,
+                    isActive = false
+                )
+            }
+            // Active gliding bead sliding smoothly across the center gap from LEFT -> RIGHT
+            slots += TasbihBeadSlot(
+                t = gapStartT + (gapEndT - gapStartT) * p,
+                seedOffset = 0,
+                isActive = true
+            )
+            // Right counted stack (beads 0..4 shifting smoothly rightward to receive arriving bead)
+            for (i in 0..4) {
+                slots += TasbihBeadSlot(
+                    t = gapEndT + i * safeStep + p * safeStep,
+                    seedOffset = i + 1,
+                    isActive = false
+                )
+            }
+        }
+        p < 0f -> {
+            val q = -p // 0f..1f (RIGHT -> LEFT undo)
+            // Left waiting stack (beads 0..4 shifting leftward to receive returning bead at gapStartT)
+            for (i in 4 downTo 0) {
+                slots += TasbihBeadSlot(
+                    t = gapStartT - i * safeStep - q * safeStep,
+                    seedOffset = -i,
+                    isActive = false
+                )
+            }
+            // Active returning bead sliding smoothly across the center gap from RIGHT -> LEFT
+            slots += TasbihBeadSlot(
+                t = gapEndT - (gapEndT - gapStartT) * q,
+                seedOffset = 1,
+                isActive = true
+            )
+            // Right remaining stack (beads 1..5 shifting leftward to fill gapEndT)
+            for (i in 1..5) {
+                slots += TasbihBeadSlot(
+                    t = gapEndT + i * safeStep - q * safeStep,
+                    seedOffset = i + 1,
+                    isActive = false
+                )
+            }
+        }
+        else -> {
+            // Resting state: 5 beads on left (gapStartT leftward), 5 beads on right (gapEndT rightward)
+            for (i in 4 downTo 0) {
+                slots += TasbihBeadSlot(
+                    t = gapStartT - i * safeStep,
+                    seedOffset = -i,
+                    isActive = false
+                )
+            }
+            for (i in 0..4) {
+                slots += TasbihBeadSlot(
+                    t = gapEndT + i * safeStep,
+                    seedOffset = i + 1,
+                    isActive = false
+                )
+            }
+        }
+    }
+
+    return slots.sortedBy { it.t }
+}
+
+/**
  * Full-width hyper-realistic 3D Physical Horizontal Slightly-Angled Tasbih String:
  * - Taut luminous white/ivory silk thread gently ascending left-to-right across the entire viewport
- * - Tight group of 4 photorealistic 3D beads on the left, clean open central string gap,
- *   and tight group of 3 photorealistic 3D beads on the right
- * - When tapped/swiped, a 3D bead smoothly slides across the open string gap and settles with spring physics
+ * - Zero-collision continuous bead conveyor: smooth finger hold-and-drag forward (+1) or backward (-1)
  */
 @Composable
 private fun HorizontalPhysical3DMisbahaString(
@@ -900,111 +1066,72 @@ private fun HorizontalPhysical3DMisbahaString(
         val h = size.height
         if (w <= 0f || h <= 0f) return@Canvas
 
-        // Gentle upward-arching taut white silk string across the full screen width (matching screenshot)
+        // Gentle upward-arching taut white silk string across the full screen width
+        val stringSpanX = w * 1.12f
+        val stringStartX = -w * 0.06f
         fun pointOnString(t: Float): Offset {
-            val x = -w * 0.04f + t * (w * 1.08f)
-            val baseSlopeY = h * (0.64f - t * 0.25f)
-            val subtleArch = -sin(t * PI).toFloat() * h * 0.055f
+            val x = stringStartX + t * stringSpanX
+            val baseSlopeY = h * (0.64f - t * 0.24f)
+            val subtleArch = -sin(t.coerceIn(0f, 1f) * PI).toFloat() * h * 0.052f
             return Offset(x, baseSlopeY + subtleArch)
         }
 
         // 1. Taut White Silk String with subtle upper highlight & drop shadow
         val stringPath = Path()
-        val steps = 40
+        val steps = 44
         for (i in 0..steps) {
             val p = pointOnString(i.toFloat() / steps.toFloat())
             if (i == 0) stringPath.moveTo(p.x, p.y) else stringPath.lineTo(p.x, p.y)
         }
-        // Subtle string shadow
         drawPath(
             path = stringPath,
             color = Color.Black.copy(alpha = 0.55f),
             style = Stroke(width = 5.5.dp.toPx(), cap = StrokeCap.Round)
         )
-        // Main luminous silk cord
         drawPath(
             path = stringPath,
             color = theme.cordColor.copy(alpha = 0.94f),
             style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
         )
-        // Fine sheen thread
         drawPath(
             path = stringPath,
             color = Color.White.copy(alpha = 0.72f),
             style = Stroke(width = 1.1.dp.toPx(), cap = StrokeCap.Round)
         )
 
-        // Bead radius scaled gracefully to viewport width (~25-29dp on phones)
-        val beadRadius = (w * 0.072f).coerceIn(22.dp.toPx(), 32.dp.toPx())
-        // Exact spacing so adjacent spheres kiss tightly like real threaded beads
-        val beadStepT = (beadRadius * 1.94f) / (w * 1.08f)
+        // Bead radius scaled gracefully to viewport width; strictly > 2.04x diameter step -> ZERO collisions!
+        val beadRadius = (w * 0.068f).coerceIn(21.dp.toPx(), 30.dp.toPx())
+        val beadStepT = (beadRadius * 2.06f) / stringSpanX
 
-        // Left resting stack: 4 tightly packed beads (t ≈ 0.08 .. 0.37)
-        // Right resting stack: 3 tightly packed beads (t ≈ 0.72 .. 0.92)
-        // Wide open central taut silk cord gap between t ≈ 0.37 and t ≈ 0.72!
-        val leftAnchorT = 0.37f
-        val rightAnchorT = 0.73f
-
-        // Compute animated positions depending on glideFraction:
-        // glideFraction in -1f..0f -> forward click: bead slides smoothly from RIGHT cluster across gap into LEFT cluster
-        // glideFraction in 0f..+1f -> backward swipe: bead slides smoothly from LEFT cluster across gap back to RIGHT cluster
-        val movingProgress = if (glideFraction < 0f) {
-            // 1.0 (just started at rightAnchorT) -> 0.0 (arrived at leftAnchorT)
-            -glideFraction
-        } else {
-            glideFraction
-        }
-
-        // Draw static left stack beads (back-most 3 beads)
-        for (i in 3 downTo 1) {
-            val shift = if (glideFraction < 0f) (1f - movingProgress) * beadStepT else if (glideFraction > 0f) -movingProgress * beadStepT else 0f
-            val t = leftAnchorT - i * beadStepT - shift
-            val center = pointOnString(t)
-            drawRealistic3DBead(
-                center = center,
-                radius = beadRadius,
-                theme = theme,
-                seed = beadCount + i * 17,
-                showCordHoles = true
-            )
-        }
-
-        // Draw static right stack beads (3 beads on the right)
-        for (i in 0..2) {
-            val shift = if (glideFraction < 0f) -movingProgress * beadStepT else if (glideFraction > 0f) (1f - movingProgress) * beadStepT else 0f
-            val t = rightAnchorT + i * beadStepT + shift
-            if (glideFraction < 0f && i == 0) continue // Bead 0 on right is currently the active sliding bead!
-            val center = pointOnString(t)
-            drawRealistic3DBead(
-                center = center,
-                radius = beadRadius,
-                theme = theme,
-                seed = beadCount - (i + 1) * 23,
-                showCordHoles = true
-            )
-        }
-
-        // Draw the lead/active gliding bead (glides cleanly across the open string gap!)
-        val leadT = when {
-            glideFraction < 0f -> {
-                // Moves from rightAnchorT -> leftAnchorT as glideFraction goes -1f -> 0f
-                val progress = 1f + glideFraction // 0f -> 1f
-                rightAnchorT + (leftAnchorT - rightAnchorT) * progress
-            }
-            glideFraction > 0f -> {
-                // Moves from leftAnchorT -> rightAnchorT as glideFraction goes +1f -> 0f
-                val progress = 1f - glideFraction // 0f -> 1f
-                leftAnchorT + (rightAnchorT - leftAnchorT) * progress
-            }
-            else -> leftAnchorT
-        }
-        drawRealistic3DBead(
-            center = pointOnString(leadT),
-            radius = beadRadius * (1f + 0.04f * kotlin.math.abs(glideFraction)),
-            theme = theme,
-            seed = beadCount * 31 + 7,
-            showCordHoles = true
+        val slots = computeTasbihBeadSlots(
+            progress = glideFraction,
+            beadStepT = beadStepT,
+            gapStartT = 0.34f,
+            gapEndT = 0.66f
         )
+
+        // Draw non-active beads first, then active dragged/gliding bead cleanly on top
+        for (slot in slots) {
+            if (slot.isActive) continue
+            if (slot.t < -0.14f || slot.t > 1.14f) continue
+            drawRealistic3DBead(
+                center = pointOnString(slot.t),
+                radius = beadRadius,
+                theme = theme,
+                seed = (beadCount + slot.seedOffset) * 31 + 17,
+                showCordHoles = true
+            )
+        }
+        slots.firstOrNull { it.isActive }?.let { active ->
+            val liftScale = 1f + 0.045f * sin(kotlin.math.abs(glideFraction).coerceIn(0f, 1f) * PI).toFloat()
+            drawRealistic3DBead(
+                center = pointOnString(active.t),
+                radius = beadRadius * liftScale,
+                theme = theme,
+                seed = (beadCount + active.seedOffset) * 31 + 17,
+                showCordHoles = true
+            )
+        }
     }
 }
 
