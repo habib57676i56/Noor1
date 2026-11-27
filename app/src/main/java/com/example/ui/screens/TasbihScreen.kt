@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -10,7 +9,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,8 +18,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -30,26 +30,25 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.Undo
 import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.CloseFullscreen
 import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.OpenInFull
-import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.material.icons.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -61,35 +60,37 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.local.catalog.AdhkarCatalog
+import com.example.domain.model.AppLanguage
 import com.example.domain.model.TasbihPreset
+import com.example.domain.tasbih.BeadSurfaceTexture
+import com.example.domain.tasbih.RealisticBeadSoundPlayer
 import com.example.domain.tasbih.RealisticTasbihCatalog
 import com.example.domain.tasbih.TasbihBeadTheme
 import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.LiquidGlassChip
-import com.example.ui.components.MosqueHorizonSilhouette
-import com.example.ui.components.NoorScreenHeader
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.theme.AmiriFontFamily
-import com.example.ui.theme.EmeraldDeep
-import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.GoldBright
-import com.example.ui.theme.GoldPrimary
 import com.example.ui.theme.LocalNoorColors
 import com.example.viewmodel.NoorViewModel
 import kotlinx.coroutines.launch
@@ -97,11 +98,15 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+private val TasbihBgObsidian = Color(0xFF0E1213)
+private val TasbihSheetDark = Color(0xFF1A1F21)
+private val TasbihEmeraldAccent = Color(0xFF28C76F)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TasbihScreen(viewModel: NoorViewModel) {
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
-    val noorColors = LocalNoorColors.current
     val scope = rememberCoroutineScope()
 
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
@@ -114,21 +119,22 @@ fun TasbihScreen(viewModel: NoorViewModel) {
     var selectedThemeId by remember { mutableStateOf(RealisticTasbihCatalog.loadSelectedThemeId(context)) }
     val beadTheme = remember(selectedThemeId) { RealisticTasbihCatalog.byId(selectedThemeId) }
 
-    var fullScreenFocusMode by remember { mutableStateOf(false) }
+    var showDhikrDrawer by remember { mutableStateOf(false) }
+    var showAllColorsAndStatsSheet by remember { mutableStateOf(false) }
     var showAddCustomDialog by remember { mutableStateOf(false) }
     var showCustomTargetDialog by remember { mutableStateOf(false) }
 
-    // Continuous spring offset for real physical bead glide animation (-1f..+1f)
-    val beadSlideAnim = remember { Animatable(0f) }
+    // Physical sliding bead progress across the taut horizontal silk string (-1f = gliding forward, +1f = gliding backward)
+    val beadGlideAnim = remember { Animatable(0f) }
 
     fun triggerForwardBead() {
         viewModel.incrementTasbih(beadTheme.timbre)
         scope.launch {
-            beadSlideAnim.snapTo(-1f)
-            beadSlideAnim.animateTo(
+            beadGlideAnim.snapTo(-1f)
+            beadGlideAnim.animateTo(
                 targetValue = 0f,
                 animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    dampingRatio = Spring.DampingRatioLowBouncy,
                     stiffness = Spring.StiffnessMediumLow
                 )
             )
@@ -139,8 +145,8 @@ fun TasbihScreen(viewModel: NoorViewModel) {
         if (liveCount <= 0) return
         viewModel.decrementTasbih(beadTheme.timbre)
         scope.launch {
-            beadSlideAnim.snapTo(1f)
-            beadSlideAnim.animateTo(
+            beadGlideAnim.snapTo(1f)
+            beadGlideAnim.animateTo(
                 targetValue = 0f,
                 animationSpec = spring(
                     dampingRatio = Spring.DampingRatioMediumBouncy,
@@ -148,10 +154,6 @@ fun TasbihScreen(viewModel: NoorViewModel) {
                 )
             )
         }
-    }
-
-    if (fullScreenFocusMode) {
-        BackHandler { fullScreenFocusMode = false }
     }
 
     val allPresets = remember(customPresets) {
@@ -172,119 +174,91 @@ fun TasbihScreen(viewModel: NoorViewModel) {
     val target = prefs.activeTasbihTarget.coerceAtLeast(1)
     val roundsCompleted = liveCount / target
     val countInCycle = liveCount % target
+    val displayedCount = if (liveCount > 0 && countInCycle == 0) target else countInCycle
+    val countDigits = formatTasbihDigits(displayedCount.toString().padStart(2, '0'), lang)
+    val targetDigits = formatTasbihDigits(target.toString(), lang)
+    val roundsDigits = formatTasbihDigits(roundsCompleted.toString(), lang)
+    val liveAccent = if (beadTheme.id == "imperial_emerald") TasbihEmeraldAccent else beadTheme.tasselColor
 
-    if (fullScreenFocusMode) {
-        // Distraction-Free Full-Screen 100% Physical Misbaha Mode
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(Color(0xFF041510), Color(0xFF020B08))))
-        ) {
-            MosqueHorizonSilhouette(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(110.dp)
-                    .align(Alignment.BottomCenter),
-                tint = beadTheme.tasselColor.copy(alpha = 0.14f)
-            )
-            IconButton(
-                onClick = { fullScreenFocusMode = false },
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(16.dp)
-                    .size(48.dp)
-            ) {
-                Icon(Icons.Rounded.CloseFullscreen, contentDescription = "Exit focus mode", tint = GoldBright)
-            }
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                Text(
-                    text = activePreset.textAr,
-                    fontFamily = AmiriFontFamily,
-                    fontSize = 30.sp,
-                    color = GoldBright,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "$liveCount / $target" + if (roundsCompleted > 0) "  ·  ${L10n.pick(lang, "الجولة $roundsCompleted", "Round $roundsCompleted", "$roundsCompleted-davr")}" else "",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = Color.White
-                )
-                Spacer(modifier = Modifier.height(18.dp))
-
-                RealisticPhysicalMisbahaStage(
-                    beadCount = liveCount,
-                    countInCycle = countInCycle,
-                    target = target,
-                    rounds = roundsCompleted,
-                    slideFraction = beadSlideAnim.value,
-                    theme = beadTheme,
-                    onForward = { triggerForwardBead() },
-                    onBackward = { triggerBackwardBead() },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(340.dp)
-                        .testTag("tasbih_tap_button")
-                )
-
-                Spacer(modifier = Modifier.height(18.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(
-                        onClick = { triggerBackwardBead() },
-                        enabled = liveCount > 0,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.height(48.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = null, tint = GoldBright)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(L10n.pick(lang, "ترجيع (-1)", "Step Back (-1)", "Orqaga (-1)"), color = Color.White)
-                    }
-                    OutlinedButton(
-                        onClick = { viewModel.resetTasbihCounter() },
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.height(48.dp)
-                    ) {
-                        Icon(Icons.Rounded.Refresh, contentDescription = null, tint = GoldBright)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(L10n.pick(lang, "تصفير", "Reset", "Nollash"), color = Color.White)
-                    }
-                }
-            }
-        }
-        return
-    }
-
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(Color(0xFF0A0E0F), TasbihBgObsidian, Color(0xFF101516))
+                )
+            )
             .testTag("tasbih_screen")
     ) {
-        NoorScreenHeader(
-            title = L10n.pick(lang, "المسبحة الحقيقية الفاخرة", "Realistic 3D Misbaha", "Haqiqiy 3D Tasbeh"),
-            subtitle = L10n.pick(
-                lang,
-                "اسحب الخرزة للأمام أو للخلف · ٢٠ لوناً فاخراً مع صوت خرز طبيعي",
-                "Slide beads forward or backward · 20 luxury bead colors & authentic sound",
-                "Donalarni oldinga yoki orqaga suring · 20 ta hashamatli rang va tabiiy tovush"
-            ),
-            trailing = {
-                Row {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .padding(bottom = 86.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // 1. Minimalist Sleek Top Header Bar (matching physical Misbaha aesthetic)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text(
+                        text = L10n.pick(lang, "المسبحة", "Tasbih", "Tasbeh", "Тасбих"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    // Subtle active Dhikr pill (tap to switch Dhikr)
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(Color.White.copy(alpha = 0.08f))
+                            .border(0.8.dp, liveAccent.copy(alpha = 0.45f), RoundedCornerShape(50))
+                            .clickable { showDhikrDrawer = true }
+                            .padding(horizontal = 12.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = activePreset.textAr,
+                            fontFamily = AmiriFontFamily,
+                            fontSize = 14.sp,
+                            color = liveAccent,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
                         onClick = { viewModel.setTasbihVibration(!prefs.tasbihVibrationEnabled) },
                         modifier = Modifier.size(44.dp)
                     ) {
                         Icon(
                             Icons.Rounded.Vibration,
-                            contentDescription = "Vibration",
-                            tint = if (prefs.tasbihVibrationEnabled) noorColors.goldAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                            contentDescription = L10n.pick(lang, "الاهتزاز", "Vibration"),
+                            tint = if (prefs.tasbihVibrationEnabled) Color.White else Color.White.copy(alpha = 0.35f)
+                        )
+                    }
+                    IconButton(
+                        onClick = { viewModel.resetTasbihCounter() },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .testTag("tasbih_reset_button")
+                    ) {
+                        Icon(
+                            Icons.Rounded.Refresh,
+                            contentDescription = L10n.pick(lang, "تصفير", "Reset"),
+                            tint = Color.White
                         )
                     }
                     IconButton(
@@ -293,315 +267,323 @@ fun TasbihScreen(viewModel: NoorViewModel) {
                     ) {
                         Icon(
                             if (prefs.tasbihSoundEnabled) Icons.Rounded.VolumeUp else Icons.Rounded.VolumeOff,
-                            contentDescription = "Sound",
-                            tint = if (prefs.tasbihSoundEnabled) noorColors.goldAccent else MaterialTheme.colorScheme.onSurfaceVariant
+                            contentDescription = L10n.pick(lang, "الصوت", "Sound"),
+                            tint = if (prefs.tasbihSoundEnabled) Color.White else Color.White.copy(alpha = 0.45f)
                         )
-                    }
-                    IconButton(
-                        onClick = { fullScreenFocusMode = true },
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Icon(Icons.Rounded.OpenInFull, contentDescription = "Full-Screen Mode", tint = noorColors.goldAccent)
                     }
                 }
             }
-        )
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 112.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            // 1. 100% Real-Feel Physical Misbaha Interactive Stage
-            item {
-                LiquidGlassCard(
-                    strong = true,
-                    goldBorder = true,
-                    contentPadding = PaddingValues(16.dp)
+            // 2. Full Interactive Tap/Swipe Center Arena (tap anywhere to advance bead, swipe horizontally to decrease)
+            var dragAccumX by remember { mutableFloatStateOf(0f) }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .pointerInput(liveCount, selectedThemeId) {
+                        detectTapGestures { triggerForwardBead() }
+                    }
+                    .pointerInput(liveCount, selectedThemeId) {
+                        detectHorizontalDragGestures(
+                            onDragStart = { dragAccumX = 0f },
+                            onDragEnd = {
+                                if (kotlin.math.abs(dragAccumX) > 45f) {
+                                    triggerBackwardBead()
+                                }
+                                dragAccumX = 0f
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                dragAccumX += dragAmount
+                            }
+                        )
+                    }
+                    .testTag("tasbih_tap_button"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                // Cycle / Round Counter (e.g., "مرة ٣")
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "مرة $roundsDigits",
+                        "Round $roundsCompleted",
+                        "$roundsCompleted-davr",
+                        "Круг $roundsCompleted"
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = Color.White.copy(alpha = 0.85f)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Giant Luminous Emerald / Theme Live Counter (e.g. "٠٣")
+                Text(
+                    text = countDigits,
+                    fontSize = 72.sp,
+                    lineHeight = 76.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = liveAccent,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Editable Target Pill ("١٠٠ / ✎")
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { showCustomTargetDialog = true }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    Text(
+                        text = "/ $targetDigits",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.58f)
+                    )
+                    Icon(
+                        imageVector = Icons.Rounded.Edit,
+                        contentDescription = L10n.pick(lang, "تعديل الهدف", "Edit Target"),
+                        tint = Color.White.copy(alpha = 0.58f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 3. HYPER-REALISTIC 3D HORIZONTAL SLIGHTLY-ANGLED PHYSICAL MISBAHA STRING
+                HorizontalPhysical3DMisbahaString(
+                    beadCount = liveCount,
+                    glideFraction = beadGlideAnim.value,
+                    theme = beadTheme,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(136.dp)
+                )
+
+                Spacer(modifier = Modifier.height(18.dp))
+
+                // Gesture Instruction Caption matching screenshot
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "اضغط أي مكان للبدء\n(يمين-يسار سحب سينقص العدد)",
+                        "Tap anywhere to begin\n(swipe left-right to decrease)",
+                        "Boshlash uchun istalgan joyga bosing\n(o'ng-chapga surish sonni kamaytiradi)",
+                        "Нажмите в любом месте\n(свайп влево-вправо уменьшит счёт)"
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 22.sp,
+                    color = Color.White.copy(alpha = 0.62f),
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+
+            // 4. Sleek Dark Rounded Bottom Material & Dhikr Picker Panel (matching screenshot)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 0.dp),
+                shape = RoundedCornerShape(topStart = 26.dp, topEnd = 26.dp),
+                color = TasbihSheetDark,
+                tonalElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 10.dp, bottom = 14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Minimal "=" double drag handle (tap to open full Dhikr & Stats drawer)
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showAllColorsAndStatsSheet = true }
+                            .padding(horizontal = 24.dp, vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Active Dhikr Banner
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .background(EmeraldPrimary.copy(alpha = 0.22f))
-                                .border(1.dp, GoldPrimary.copy(alpha = 0.65f), RoundedCornerShape(50))
-                                .padding(horizontal = 20.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = activePreset.textAr,
-                                fontFamily = AmiriFontFamily,
-                                fontSize = 22.sp,
-                                color = if (noorColors.isDark) GoldBright else EmeraldDeep,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Physical 3D Misbaha Canvas (Swipe forward/backward or tap!)
-                        RealisticPhysicalMisbahaStage(
-                            beadCount = liveCount,
-                            countInCycle = countInCycle,
-                            target = target,
-                            rounds = roundsCompleted,
-                            slideFraction = beadSlideAnim.value,
-                            theme = beadTheme,
-                            onForward = { triggerForwardBead() },
-                            onBackward = { triggerBackwardBead() },
+                                .width(22.dp)
+                                .height(2.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = 0.65f))
+                        )
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(270.dp)
-                                .testTag("tasbih_tap_button")
+                                .width(22.dp)
+                                .height(2.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color.White.copy(alpha = 0.65f))
                         )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = L10n.pick(
-                                lang,
-                                "اضغط أو اسحب للأمام للتسبيح · اسحب للأعلى أو اضغط «ترجيع» للعودة",
-                                "Tap or swipe down/right to count · Swipe up/left or tap Back to undo",
-                                "Sanash uchun bosing yoki pastga suring · Orqaga qaytarish uchun tepaga suring"
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Forward / Step-Back / Reset Tactile Control Bar
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedButton(
-                                onClick = { triggerBackwardBead() },
-                                enabled = liveCount > 0,
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp)
-                                    .testTag("tasbih_undo_button")
-                            ) {
-                                Icon(Icons.AutoMirrored.Rounded.Undo, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = L10n.pick(lang, "ترجيع (-1)", "Back (-1)", "Orqaga (-1)"),
-                                    style = MaterialTheme.typography.labelLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            Button(
-                                onClick = { triggerForwardBead() },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = beadTheme.bodyColor,
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier
-                                    .weight(1.3f)
-                                    .height(48.dp)
-                                    .testTag("tasbih_forward_button")
-                            ) {
-                                Text(
-                                    text = L10n.pick(lang, "تسبيح (+1)", "Count (+1)", "Tasbeh (+1)"),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
-
-                            IconButton(
-                                onClick = { viewModel.resetTasbihCounter() },
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
-                                    .testTag("tasbih_reset_button")
-                            ) {
-                                Icon(Icons.Rounded.Refresh, contentDescription = "Reset", tint = noorColors.goldAccent)
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Target Presets Row
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            listOf(33, 99, 100).forEach { t ->
-                                LiquidGlassChip(
-                                    label = t.toString(),
-                                    selected = target == t,
-                                    onClick = { viewModel.updateTasbihTarget(t) },
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                            LiquidGlassChip(
-                                label = L10n.pick(lang, "مخصص", "Custom", "Maxsus"),
-                                selected = target !in listOf(33, 99, 100),
-                                onClick = { showCustomTargetDialog = true },
-                                modifier = Modifier.weight(1.2f)
-                            )
-                        }
                     }
-                }
-            }
 
-            // 2. 20 Luxury Physical Bead Colors & Materials Picker
-            item {
-                LiquidGlassCard {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Palette, contentDescription = null, tint = noorColors.goldAccent, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = L10n.pick(lang, "ألوان كرات المسبحة (٢٠ لوناً فاخراً)", "20 Luxury Bead Colors", "20 ta hashamatli tasbeh rangi"),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Text(
-                                text = L10n.pick(lang, beadTheme.nameAr, beadTheme.nameEn, beadTheme.nameUz),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = noorColors.goldAccent
-                            )
-                        }
+                    // Header row: "تشغيل الذكر" (Start Dhikr) | "عرض الكل" (Show All)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = L10n.pick(lang, "تشغيل الذكر", "Start Dhikr", "Zikrni tanlash", "Выбрать зикр"),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { showDhikrDrawer = true }
+                                .padding(horizontal = 4.dp, vertical = 4.dp)
+                        )
+                        Text(
+                            text = L10n.pick(lang, "عرض الكل", "Show All", "Barchasi", "Показать все"),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TasbihEmeraldAccent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable { showAllColorsAndStatsSheet = true }
+                                .padding(horizontal = 6.dp, vertical = 4.dp)
+                        )
+                    }
 
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.testTag("tasbih_20_colors_row")
-                        ) {
-                            items(RealisticTasbihCatalog.themes, key = { it.id }) { itemTheme ->
-                                val isSelected = itemTheme.id == beadTheme.id
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier
-                                        .width(64.dp)
-                                        .clickable {
-                                            selectedThemeId = itemTheme.id
-                                            RealisticTasbihCatalog.saveSelectedThemeId(context, itemTheme.id)
-                                        }
-                                        .testTag("bead_color_${itemTheme.id}")
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(CircleShape)
-                                            .border(
-                                                width = if (isSelected) 2.8.dp else 1.dp,
-                                                color = if (isSelected) GoldBright else Color.White.copy(alpha = 0.25f),
-                                                shape = CircleShape
-                                            )
-                                            .padding(3.dp)
-                                    ) {
-                                        Canvas(modifier = Modifier.fillMaxSize()) {
-                                            val r = size.minDimension / 2f
-                                            drawCircle(
-                                                brush = Brush.radialGradient(
-                                                    colors = listOf(itemTheme.highlightColor, itemTheme.bodyColor, itemTheme.shadowColor),
-                                                    center = Offset(size.width * 0.32f, size.height * 0.28f),
-                                                    radius = r * 1.35f
-                                                ),
-                                                radius = r
-                                            )
-                                            // Specular glass pearl highlight
-                                            drawCircle(
-                                                color = Color.White.copy(alpha = 0.65f),
-                                                radius = r * 0.22f,
-                                                center = Offset(size.width * 0.34f, size.height * 0.28f)
-                                            )
+                    // Horizontal Row of Realistic 3D Bead Material Spheres (Wood, Jade, Amber, Silver Pearl, Obsidian, etc.)
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
+                            .testTag("tasbih_20_colors_row")
+                    ) {
+                        items(RealisticTasbihCatalog.themes, key = { it.id }) { itemTheme ->
+                            val isSelected = itemTheme.id == beadTheme.id
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .width(62.dp)
+                                    .clickable {
+                                        selectedThemeId = itemTheme.id
+                                        RealisticTasbihCatalog.saveSelectedThemeId(context, itemTheme.id)
+                                        if (prefs.tasbihSoundEnabled) {
+                                            RealisticBeadSoundPlayer.playBeadClick(itemTheme.timbre)
                                         }
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = L10n.pick(lang, itemTheme.nameAr, itemTheme.nameEn, itemTheme.nameUz),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        maxLines = 1,
-                                        color = if (isSelected) noorColors.goldAccent else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        textAlign = TextAlign.Center
-                                    )
+                                    .testTag("bead_color_${itemTheme.id}")
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(54.dp)
+                                        .clip(CircleShape)
+                                        .border(
+                                            width = if (isSelected) 2.5.dp else 0.dp,
+                                            color = if (isSelected) TasbihEmeraldAccent else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .padding(if (isSelected) 3.dp else 1.dp)
+                                ) {
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        drawRealistic3DBead(
+                                            center = Offset(size.width * 0.5f, size.height * 0.5f),
+                                            radius = size.minDimension * 0.48f,
+                                            theme = itemTheme,
+                                            seed = itemTheme.id.hashCode(),
+                                            showCordHoles = false
+                                        )
+                                    }
                                 }
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(
+                                    text = L10n.pick(lang, itemTheme.nameAr, itemTheme.nameEn, itemTheme.nameUz, itemTheme.nameRu),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (isSelected) TasbihEmeraldAccent else Color.White.copy(alpha = 0.65f),
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
                     }
                 }
             }
+        }
+    }
 
-            // 3. Today / This Week / Total Stats Row
-            item {
-                val todayDisplay = maxOf(todayTotal, liveCount)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    TasbihStatMiniCard(
-                        label = L10n.pick(lang, "اليوم", "Today", "Bugun"),
-                        value = todayDisplay.toString(),
-                        modifier = Modifier.weight(1f)
-                    )
-                    TasbihStatMiniCard(
-                        label = L10n.pick(lang, "هذا الأسبوع", "This Week", "Shu hafta"),
-                        value = maxOf(stats.weekTasbih, todayDisplay).toString(),
-                        modifier = Modifier.weight(1f)
-                    )
-                    TasbihStatMiniCard(
-                        label = L10n.pick(lang, "الإجمالي", "Total", "Jami"),
-                        value = maxOf(stats.allTimeTasbih, todayDisplay).toString(),
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
-
-            // 4. Quick Dhikr Presets & Custom Dhikr Creation
-            item {
+    // Dhikr Preset & Custom Dhikr Bottom Sheet
+    if (showDhikrDrawer) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { showDhikrDrawer = false },
+            sheetState = sheetState,
+            containerColor = TasbihSheetDark
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = L10n.pick(lang, "الأذكار السريعة والمخصصة", "Quick & Custom Dhikr", "Tezkor va maxsus zikrlar"),
+                        text = L10n.pick(lang, "اختر الذكر أو أضف ذكراً مخصصاً", "Choose or Add Dhikr", "Zikrni tanlang", "Выберите или добавьте зикр"),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                     LiquidGlassChip(
-                        label = L10n.pick(lang, "إضافة ذكر", "Add Dhikr", "Zikr qo'shish"),
+                        label = L10n.pick(lang, "إضافة ذكر", "Add Dhikr"),
                         selected = true,
                         icon = Icons.Rounded.Add,
-                        onClick = { showAddCustomDialog = true }
+                        onClick = {
+                            showDhikrDrawer = false
+                            showAddCustomDialog = true
+                        }
                     )
                 }
-            }
 
-            items(allPresets.chunked(2)) { pair ->
+                // Quick Target Row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    pair.forEach { preset ->
+                    listOf(33, 99, 100, 1000).forEach { t ->
+                        LiquidGlassChip(
+                            label = "$t",
+                            selected = target == t,
+                            onClick = { viewModel.updateTasbihTarget(t) },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(allPresets, key = { it.id }) { preset ->
                         val isSelected = preset.id == prefs.activeTasbihPresetId
                         LiquidGlassCard(
                             goldBorder = isSelected,
-                            onClick = { viewModel.selectTasbihPreset(preset.id, preset.defaultTarget, preset.textAr) },
-                            contentPadding = PaddingValues(12.dp),
-                            modifier = Modifier.weight(1f)
+                            onClick = {
+                                viewModel.selectTasbihPreset(preset.id, preset.defaultTarget, preset.textAr)
+                                showDhikrDrawer = false
+                            },
+                            contentPadding = PaddingValues(12.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -610,73 +592,189 @@ fun TasbihScreen(viewModel: NoorViewModel) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = preset.textAr,
-                                        style = MaterialTheme.typography.titleSmall,
+                                        fontFamily = AmiriFontFamily,
+                                        fontSize = 19.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) noorColors.goldAccent else MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1
+                                        color = if (isSelected) TasbihEmeraldAccent else Color.White
                                     )
                                     Text(
                                         text = "${preset.textEn} · ${preset.defaultTarget}x",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1
+                                        color = Color.White.copy(alpha = 0.65f)
                                     )
                                 }
                                 if (preset.isCustom) {
                                     IconButton(
                                         onClick = { viewModel.deleteCustomDhikrPreset(preset.id) },
-                                        modifier = Modifier.size(32.dp)
+                                        modifier = Modifier.size(36.dp)
                                     ) {
                                         Icon(
                                             Icons.Rounded.DeleteOutline,
                                             contentDescription = "Delete",
-                                            tint = MaterialTheme.colorScheme.error,
-                                            modifier = Modifier.size(18.dp)
+                                            tint = MaterialTheme.colorScheme.error
                                         )
                                     }
                                 }
                             }
                         }
                     }
-                    if (pair.size == 1) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
                 }
             }
+        }
+    }
 
-            // 5. Recent Sessions History
-            if (sessions.isNotEmpty()) {
+    // Expanded All-Materials + Statistics + Session History Sheet ("عرض الكل")
+    if (showAllColorsAndStatsSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val todayDisplay = maxOf(todayTotal, liveCount)
+        ModalBottomSheet(
+            onDismissRequest = { showAllColorsAndStatsSheet = false },
+            sheetState = sheetState,
+            containerColor = TasbihSheetDark
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 540.dp)
+                    .padding(horizontal = 16.dp),
+                contentPadding = PaddingValues(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 item {
                     Text(
-                        text = L10n.pick(lang, "سجل الجلسات الأخيرة", "Recent Sessions", "Oxirgi sessiyalar"),
+                        text = L10n.pick(
+                            lang,
+                            "جميع خامات المسبحة الحقيقية (٢٠ نوعاً) والإحصائيات",
+                            "All 20 Realistic Bead Materials & Stats",
+                            "Barcha 20 ta tasbeh materiallari va statistika",
+                            "Все 20 материалов бусин и статистика"
+                        ),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                 }
-                items(sessions.take(8), key = { it.id }) { s ->
-                    LiquidGlassCard(contentPadding = PaddingValues(12.dp)) {
+
+                // Today / Week / All-Time Stats
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        TasbihStatMiniCard(
+                            label = L10n.pick(lang, "اليوم", "Today"),
+                            value = todayDisplay.toString(),
+                            modifier = Modifier.weight(1f)
+                        )
+                        TasbihStatMiniCard(
+                            label = L10n.pick(lang, "هذا الأسبوع", "This Week"),
+                            value = maxOf(stats.weekTasbih, todayDisplay).toString(),
+                            modifier = Modifier.weight(1f)
+                        )
+                        TasbihStatMiniCard(
+                            label = L10n.pick(lang, "الإجمالي", "Total"),
+                            value = maxOf(stats.allTimeTasbih, todayDisplay).toString(),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+
+                // 4-Column Grid of all 20 3D Bead Spheres
+                items(RealisticTasbihCatalog.themes.chunked(4)) { rowThemes ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        rowThemes.forEach { itemTheme ->
+                            val isSelected = itemTheme.id == beadTheme.id
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (isSelected) TasbihEmeraldAccent.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.04f))
+                                    .border(
+                                        width = if (isSelected) 1.5.dp else 0.5.dp,
+                                        color = if (isSelected) TasbihEmeraldAccent else Color.White.copy(alpha = 0.10f),
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable {
+                                        selectedThemeId = itemTheme.id
+                                        RealisticTasbihCatalog.saveSelectedThemeId(context, itemTheme.id)
+                                        if (prefs.tasbihSoundEnabled) {
+                                            RealisticBeadSoundPlayer.playBeadClick(itemTheme.timbre)
+                                        }
+                                        showAllColorsAndStatsSheet = false
+                                    }
+                                    .padding(vertical = 10.dp, horizontal = 4.dp)
+                            ) {
+                                Canvas(modifier = Modifier.size(46.dp)) {
+                                    drawRealistic3DBead(
+                                        center = Offset(size.width * 0.5f, size.height * 0.5f),
+                                        radius = size.minDimension * 0.47f,
+                                        theme = itemTheme,
+                                        seed = itemTheme.id.hashCode(),
+                                        showCordHoles = false
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = L10n.pick(lang, itemTheme.nameAr, itemTheme.nameEn, itemTheme.nameUz, itemTheme.nameRu),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    color = if (isSelected) TasbihEmeraldAccent else Color.White.copy(alpha = 0.85f),
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                        repeat(4 - rowThemes.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+
+                if (sessions.isNotEmpty()) {
+                    item {
+                        HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = L10n.pick(lang, "سجل الجلسات الأخيرة", "Recent Sessions"),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                    items(sessions.take(6), key = { it.id }) { s ->
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color.White.copy(alpha = 0.05f))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = L10n.pick(lang, s.labelAr, s.labelEn),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White
                                 )
                                 Text(
                                     text = s.dateKey,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = Color.White.copy(alpha = 0.55f)
                                 )
                             }
                             Text(
                                 text = "${s.count} / ${s.target}",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = noorColors.goldAccent
+                                color = TasbihEmeraldAccent
                             )
                         }
                     }
@@ -691,25 +789,25 @@ fun TasbihScreen(viewModel: NoorViewModel) {
         var targetText by remember { mutableStateOf("33") }
         AlertDialog(
             onDismissRequest = { showAddCustomDialog = false },
-            title = { Text(L10n.pick(lang, "إضافة ذكر مخصص", "Add Custom Dhikr", "Maxsus zikr qo'shish")) },
+            title = { Text(L10n.pick(lang, "إضافة ذكر مخصص", "Add Custom Dhikr")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedTextField(
                         value = arText,
                         onValueChange = { arText = it },
-                        label = { Text(L10n.pick(lang, "نص الذكر", "Dhikr Text", "Zikr matni")) },
+                        label = { Text(L10n.pick(lang, "نص الذكر", "Dhikr Text")) },
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = enText,
                         onValueChange = { enText = it },
-                        label = { Text(L10n.pick(lang, "الترجمة أو الاسم (اختياري)", "Label (Optional)", "Izoh (ixtiyoriy)")) },
+                        label = { Text(L10n.pick(lang, "الترجمة أو الاسم (اختياري)", "Label (Optional)")) },
                         singleLine = true
                     )
                     OutlinedTextField(
                         value = targetText,
                         onValueChange = { targetText = it.filter { c -> c.isDigit() }.take(4) },
-                        label = { Text(L10n.pick(lang, "الهدف اليومي", "Default Target", "Kunlik maqsad")) },
+                        label = { Text(L10n.pick(lang, "الهدف اليومي", "Default Target")) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true
                     )
@@ -724,12 +822,12 @@ fun TasbihScreen(viewModel: NoorViewModel) {
                         }
                     }
                 ) {
-                    Text(L10n.pick(lang, "حفظ", "Save", "Saqlash"))
+                    Text(L10n.pick(lang, "حفظ", "Save"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showAddCustomDialog = false }) {
-                    Text(L10n.pick(lang, "إلغاء", "Cancel", "Bekor qilish"))
+                    Text(L10n.pick(lang, "إلغاء", "Cancel"))
                 }
             }
         )
@@ -739,14 +837,30 @@ fun TasbihScreen(viewModel: NoorViewModel) {
         var targetStr by remember { mutableStateOf(target.toString()) }
         AlertDialog(
             onDismissRequest = { showCustomTargetDialog = false },
-            title = { Text(L10n.pick(lang, "تحديد هدف مخصص", "Set Custom Target", "Maxsus maqsad")) },
+            title = { Text(L10n.pick(lang, "تحديد هدف التسبيح", "Set Custom Target")) },
             text = {
-                OutlinedTextField(
-                    value = targetStr,
-                    onValueChange = { targetStr = it.filter { c -> c.isDigit() }.take(4) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(33, 99, 100, 1000).forEach { presetVal ->
+                            LiquidGlassChip(
+                                label = "$presetVal",
+                                selected = targetStr == presetVal.toString(),
+                                onClick = { targetStr = presetVal.toString() },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = targetStr,
+                        onValueChange = { targetStr = it.filter { c -> c.isDigit() }.take(4) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             },
             confirmButton = {
                 TextButton(
@@ -755,12 +869,12 @@ fun TasbihScreen(viewModel: NoorViewModel) {
                         showCustomTargetDialog = false
                     }
                 ) {
-                    Text(L10n.pick(lang, "تطبيق", "Apply", "Qo'llash"))
+                    Text(L10n.pick(lang, "تطبيق", "Apply"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showCustomTargetDialog = false }) {
-                    Text(L10n.pick(lang, "إلغاء", "Cancel", "Bekor qilish"))
+                    Text(L10n.pick(lang, "إلغاء", "Cancel"))
                 }
             }
         )
@@ -768,239 +882,346 @@ fun TasbihScreen(viewModel: NoorViewModel) {
 }
 
 /**
- * 100% Real-Feel Interactive Physical Misbaha Canvas:
- * - Curved braided silk cord with ornate golden Imam headpiece & hanging silk tassel (الشرابة)
- * - 3D glossy shaded spheres with realistic specular reflection, drop shadow & 11-bead golden divider
- * - Interactive Swipe Down/Right (+1) & Swipe Up/Left (-1) + Tap support with spring bead physics
+ * Full-width hyper-realistic 3D Physical Horizontal Slightly-Angled Tasbih String:
+ * - Taut luminous white/ivory silk thread gently ascending left-to-right across the entire viewport
+ * - Tight group of 4 photorealistic 3D beads on the left, clean open central string gap,
+ *   and tight group of 3 photorealistic 3D beads on the right
+ * - When tapped/swiped, a 3D bead smoothly slides across the open string gap and settles with spring physics
  */
 @Composable
-private fun RealisticPhysicalMisbahaStage(
+private fun HorizontalPhysical3DMisbahaString(
     beadCount: Int,
-    countInCycle: Int,
-    target: Int,
-    rounds: Int,
-    slideFraction: Float,
+    glideFraction: Float,
     theme: TasbihBeadTheme,
-    onForward: () -> Unit,
-    onBackward: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val lang = LocalAppLanguage.current
-    var dragAccumY by remember { mutableFloatStateOf(0f) }
-    var dragAccumX by remember { mutableFloatStateOf(0f) }
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        if (w <= 0f || h <= 0f) return@Canvas
 
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(24.dp))
-            .background(
-                Brush.radialGradient(
-                    colors = listOf(
-                        theme.bodyColor.copy(alpha = 0.22f),
-                        Color(0xFF061610).copy(alpha = 0.78f)
-                    )
-                )
+        // Gentle upward-arching taut white silk string across the full screen width (matching screenshot)
+        fun pointOnString(t: Float): Offset {
+            val x = -w * 0.04f + t * (w * 1.08f)
+            val baseSlopeY = h * (0.64f - t * 0.25f)
+            val subtleArch = -sin(t * PI).toFloat() * h * 0.055f
+            return Offset(x, baseSlopeY + subtleArch)
+        }
+
+        // 1. Taut White Silk String with subtle upper highlight & drop shadow
+        val stringPath = Path()
+        val steps = 40
+        for (i in 0..steps) {
+            val p = pointOnString(i.toFloat() / steps.toFloat())
+            if (i == 0) stringPath.moveTo(p.x, p.y) else stringPath.lineTo(p.x, p.y)
+        }
+        // Subtle string shadow
+        drawPath(
+            path = stringPath,
+            color = Color.Black.copy(alpha = 0.55f),
+            style = Stroke(width = 5.5.dp.toPx(), cap = StrokeCap.Round)
+        )
+        // Main luminous silk cord
+        drawPath(
+            path = stringPath,
+            color = theme.cordColor.copy(alpha = 0.94f),
+            style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round)
+        )
+        // Fine sheen thread
+        drawPath(
+            path = stringPath,
+            color = Color.White.copy(alpha = 0.72f),
+            style = Stroke(width = 1.1.dp.toPx(), cap = StrokeCap.Round)
+        )
+
+        // Bead radius scaled gracefully to viewport width (~25-29dp on phones)
+        val beadRadius = (w * 0.072f).coerceIn(22.dp.toPx(), 32.dp.toPx())
+        // Exact spacing so adjacent spheres kiss tightly like real threaded beads
+        val beadStepT = (beadRadius * 1.94f) / (w * 1.08f)
+
+        // Left resting stack: 4 tightly packed beads (t ≈ 0.08 .. 0.37)
+        // Right resting stack: 3 tightly packed beads (t ≈ 0.72 .. 0.92)
+        // Wide open central taut silk cord gap between t ≈ 0.37 and t ≈ 0.72!
+        val leftAnchorT = 0.37f
+        val rightAnchorT = 0.73f
+
+        // Compute animated positions depending on glideFraction:
+        // glideFraction in -1f..0f -> forward click: bead slides smoothly from RIGHT cluster across gap into LEFT cluster
+        // glideFraction in 0f..+1f -> backward swipe: bead slides smoothly from LEFT cluster across gap back to RIGHT cluster
+        val movingProgress = if (glideFraction < 0f) {
+            // 1.0 (just started at rightAnchorT) -> 0.0 (arrived at leftAnchorT)
+            -glideFraction
+        } else {
+            glideFraction
+        }
+
+        // Draw static left stack beads (back-most 3 beads)
+        for (i in 3 downTo 1) {
+            val shift = if (glideFraction < 0f) (1f - movingProgress) * beadStepT else if (glideFraction > 0f) -movingProgress * beadStepT else 0f
+            val t = leftAnchorT - i * beadStepT - shift
+            val center = pointOnString(t)
+            drawRealistic3DBead(
+                center = center,
+                radius = beadRadius,
+                theme = theme,
+                seed = beadCount + i * 17,
+                showCordHoles = true
             )
-            .border(1.2.dp, theme.tasselColor.copy(alpha = 0.45f), RoundedCornerShape(24.dp))
-            .pointerInput(beadCount) {
-                detectTapGestures { onForward() }
-            }
-            .pointerInput(beadCount) {
-                detectVerticalDragGestures(
-                    onDragStart = { dragAccumY = 0f },
-                    onDragEnd = {
-                        if (dragAccumY > 42f) onForward()
-                        else if (dragAccumY < -42f) onBackward()
-                        dragAccumY = 0f
-                    },
-                    onVerticalDrag = { _, dragAmount ->
-                        dragAccumY += dragAmount
-                    }
-                )
-            }
-            .pointerInput(beadCount) {
-                detectHorizontalDragGestures(
-                    onDragStart = { dragAccumX = 0f },
-                    onDragEnd = {
-                        if (dragAccumX > 48f) onForward()
-                        else if (dragAccumX < -48f) onBackward()
-                        dragAccumX = 0f
-                    },
-                    onHorizontalDrag = { _, dragAmount ->
-                        dragAccumX += dragAmount
-                    }
-                )
-            },
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val w = size.width
-            val h = size.height
+        }
 
-            // Graceful curved physical Misbaha loop arc from top-left down-center to bottom-right
-            fun pointOnCord(t: Float): Offset {
-                val x = w * (0.10f + t * 0.80f)
-                val curve = sin(t * PI).toFloat()
-                val y = h * (0.16f + curve * 0.64f)
-                return Offset(x, y)
-            }
-
-            // 1. Braided Silk String (الخيط الحريري)
-            val cordPath = Path()
-            val samples = 48
-            for (i in 0..samples) {
-                val p = pointOnCord(i.toFloat() / samples.toFloat())
-                if (i == 0) cordPath.moveTo(p.x, p.y) else cordPath.lineTo(p.x, p.y)
-            }
-            drawPath(
-                path = cordPath,
-                color = theme.cordColor.copy(alpha = 0.85f),
-                style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
+        // Draw static right stack beads (3 beads on the right)
+        for (i in 0..2) {
+            val shift = if (glideFraction < 0f) -movingProgress * beadStepT else if (glideFraction > 0f) (1f - movingProgress) * beadStepT else 0f
+            val t = rightAnchorT + i * beadStepT + shift
+            if (glideFraction < 0f && i == 0) continue // Bead 0 on right is currently the active sliding bead!
+            val center = pointOnString(t)
+            drawRealistic3DBead(
+                center = center,
+                radius = beadRadius,
+                theme = theme,
+                seed = beadCount - (i + 1) * 23,
+                showCordHoles = true
             )
-            // Subtle silk highlight thread
-            drawPath(
-                path = cordPath,
-                color = Color.White.copy(alpha = 0.30f),
-                style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round)
-            )
+        }
 
-            // 2. Ornate Golden Imam Headpiece & Hanging Tassel (الإمام والشرابة) on the top-left end
-            val tasselAnchor = pointOnCord(0.03f)
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(GoldBright, theme.tasselColor, Color(0xFF5A3B08)),
-                    center = tasselAnchor,
-                    radius = 11.dp.toPx()
+        // Draw the lead/active gliding bead (glides cleanly across the open string gap!)
+        val leadT = when {
+            glideFraction < 0f -> {
+                // Moves from rightAnchorT -> leftAnchorT as glideFraction goes -1f -> 0f
+                val progress = 1f + glideFraction // 0f -> 1f
+                rightAnchorT + (leftAnchorT - rightAnchorT) * progress
+            }
+            glideFraction > 0f -> {
+                // Moves from leftAnchorT -> rightAnchorT as glideFraction goes +1f -> 0f
+                val progress = 1f - glideFraction // 0f -> 1f
+                leftAnchorT + (rightAnchorT - leftAnchorT) * progress
+            }
+            else -> leftAnchorT
+        }
+        drawRealistic3DBead(
+            center = pointOnString(leadT),
+            radius = beadRadius * (1f + 0.04f * kotlin.math.abs(glideFraction)),
+            theme = theme,
+            seed = beadCount * 31 + 7,
+            showCordHoles = true
+        )
+    }
+}
+
+/**
+ * Photorealistic 3D Spherical Bead Shader rendered natively on Compose Canvas:
+ * Supports organic marbled Emerald Jade, concentric natural Wood Grain, Olive Wood,
+ * translucent Golden Amber, reflective Silver Pearl, Obsidian Glass, Turquoise Veins, and Gem Crystal.
+ */
+private fun DrawScope.drawRealistic3DBead(
+    center: Offset,
+    radius: Float,
+    theme: TasbihBeadTheme,
+    seed: Int,
+    showCordHoles: Boolean
+) {
+    // 1. Soft ambient drop shadow
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(Color.Black.copy(alpha = 0.58f), Color.Transparent),
+            center = Offset(center.x + radius * 0.12f, center.y + radius * 0.28f),
+            radius = radius * 1.15f
+        ),
+        radius = radius * 1.12f,
+        center = Offset(center.x + radius * 0.10f, center.y + radius * 0.24f)
+    )
+
+    val spherePath = Path().apply {
+        addOval(Rect(center.x - radius, center.y - radius, center.x + radius, center.y + radius))
+    }
+
+    clipPath(spherePath) {
+        // 2. Base 3D Spherical Diffuse Gradient (light from upper-left)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colorStops = arrayOf(
+                    0.0f to theme.highlightColor,
+                    0.42f to theme.bodyColor,
+                    0.82f to theme.shadowColor,
+                    1.0f to Color(0xFF040706)
                 ),
-                radius = 9.dp.toPx(),
-                center = tasselAnchor
-            )
-            // Hanging tassel strands
-            for (s in -2..2) {
-                val endX = tasselAnchor.x + s * 3.5.dp.toPx()
-                val endY = tasselAnchor.y + 34.dp.toPx() + (2 - kotlin.math.abs(s)) * 3.dp.toPx()
-                drawLine(
-                    color = theme.tasselColor.copy(alpha = 0.85f),
-                    start = Offset(tasselAnchor.x, tasselAnchor.y + 6.dp.toPx()),
-                    end = Offset(endX, endY),
-                    strokeWidth = 2.dp.toPx(),
-                    cap = StrokeCap.Round
+                center = Offset(center.x - radius * 0.30f, center.y - radius * 0.32f),
+                radius = radius * 1.48f
+            ),
+            radius = radius,
+            center = center
+        )
+
+        // 3. Procedural Realistic Surface Material Texture
+        val phase = ((seed % 11) * 0.52f)
+        when (theme.texture) {
+            BeadSurfaceTexture.JADE_MARBLE -> {
+                // Organic mottled mineral jade clouds + bright inner translucency
+                for (m in 0..5) {
+                    val ang = phase + m * 1.08f
+                    val dist = radius * (0.22f + (m % 3) * 0.20f)
+                    val blobCenter = Offset(center.x + cos(ang) * dist, center.y + sin(ang) * dist)
+                    val blobCol = if (m % 2 == 0) theme.veinColor.copy(alpha = 0.42f) else theme.highlightColor.copy(alpha = 0.28f)
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(blobCol, Color.Transparent),
+                            center = blobCenter,
+                            radius = radius * (0.45f + (m % 2) * 0.22f)
+                        ),
+                        radius = radius * 0.65f,
+                        center = blobCenter
+                    )
+                }
+            }
+
+            BeadSurfaceTexture.WOOD_GRAIN, BeadSurfaceTexture.OLIVE_WOOD -> {
+                // Realistic curved concentric hardwood growth rings & satin wood fibers
+                val ringCount = if (theme.texture == BeadSurfaceTexture.WOOD_GRAIN) 7 else 5
+                for (rIdx in 0 until ringCount) {
+                    val yOffset = (rIdx - ringCount / 2f) * (radius * 0.30f) + sin(phase) * radius * 0.08f
+                    val grainPath = Path().apply {
+                        moveTo(center.x - radius * 1.1f, center.y + yOffset + radius * 0.14f)
+                        quadraticTo(
+                            center.x,
+                            center.y + yOffset - radius * 0.24f,
+                            center.x + radius * 1.1f,
+                            center.y + yOffset + radius * 0.10f
+                        )
+                    }
+                    drawPath(
+                        path = grainPath,
+                        color = theme.veinColor.copy(alpha = if (theme.texture == BeadSurfaceTexture.WOOD_GRAIN) 0.42f else 0.26f),
+                        style = Stroke(width = (radius * 0.09f).coerceAtLeast(1.5f), cap = StrokeCap.Round)
+                    )
+                }
+            }
+
+            BeadSurfaceTexture.METALLIC_PEARL -> {
+                // Smooth metallic chrome/silver-pearl dual horizon reflection
+                drawCircle(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.White.copy(alpha = 0.85f),
+                            Color(0xFF9EA6AE).copy(alpha = 0.35f),
+                            Color(0xFF23282E).copy(alpha = 0.65f),
+                            Color.White.copy(alpha = 0.55f)
+                        ),
+                        start = Offset(center.x - radius, center.y - radius),
+                        end = Offset(center.x + radius, center.y + radius)
+                    ),
+                    radius = radius,
+                    center = center
                 )
             }
 
-            // 3. Draw 11 Visible 3D Beads with Realistic Finger-Slide Gap in the Center!
-            // Beads 0..4 are the "waiting" stack (left), gap in middle, Bead 5 slides across the gap, Beads 6..10 are the "counted" stack (right)
-            val beadPositions = listOf(
-                0.13f, 0.21f, 0.29f, 0.37f, // waiting stack
-                0.50f + slideFraction * 0.13f, // actively sliding bead across the physical gap!
-                0.66f, 0.74f, 0.82f, 0.90f // counted stack
-            )
-
-            beadPositions.forEachIndexed { idx, rawT ->
-                val t = rawT.coerceIn(0.08f, 0.95f)
-                val center = pointOnCord(t)
-                val logicalBeadNum = beadCount + (idx - 4)
-                val isDividerBead = logicalBeadNum > 0 && logicalBeadNum % 11 == 0
-                val baseRadius = when {
-                    idx == 4 -> 22.dp.toPx() // Active center bead closest to thumb
-                    isDividerBead -> 13.dp.toPx() // Classic metallic Imam/11-divider bead
-                    else -> 18.dp.toPx()
-                }
-
-                // Soft contact shadow underneath each physical bead
-                drawCircle(
-                    color = Color.Black.copy(alpha = 0.42f),
-                    radius = baseRadius * 0.98f,
-                    center = Offset(center.x + 2.dp.toPx(), center.y + 5.dp.toPx())
+            BeadSurfaceTexture.OBSIDIAN_GLASS -> {
+                // Deep obsidian mirror sheen with sharp curved glass reflection
+                drawArc(
+                    color = Color.White.copy(alpha = 0.22f),
+                    startAngle = 195f,
+                    sweepAngle = 72f,
+                    useCenter = false,
+                    topLeft = Offset(center.x - radius * 0.78f, center.y - radius * 0.78f),
+                    size = androidx.compose.ui.geometry.Size(radius * 1.56f, radius * 1.56f),
+                    style = Stroke(width = radius * 0.12f, cap = StrokeCap.Round)
                 )
+            }
 
-                if (isDividerBead) {
-                    // Ornate golden metallic divider disc
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(Color(0xFFFFF8D6), GoldBright, Color(0xFF7D5810)),
-                            center = Offset(center.x - baseRadius * 0.3f, center.y - baseRadius * 0.3f),
-                            radius = baseRadius * 1.4f
-                        ),
-                        radius = baseRadius,
-                        center = center
-                    )
-                } else {
-                    // Authentic 3D glossy gemstone/wood bead body
-                    drawCircle(
-                        brush = Brush.radialGradient(
-                            colors = listOf(theme.highlightColor, theme.bodyColor, theme.shadowColor),
-                            center = Offset(center.x - baseRadius * 0.32f, center.y - baseRadius * 0.32f),
-                            radius = baseRadius * 1.38f
-                        ),
-                        radius = baseRadius,
-                        center = center
-                    )
-
-                    // Subtle inner translucent rim bounce light (bottom-right)
-                    drawCircle(
-                        color = theme.rimGlowColor.copy(alpha = 0.22f),
-                        radius = baseRadius * 0.82f,
-                        center = center,
-                        style = Stroke(width = 1.4.dp.toPx())
-                    )
-
-                    // Primary crisp glass specular reflection dot (top-left)
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.74f),
-                        radius = baseRadius * 0.22f,
-                        center = Offset(center.x - baseRadius * 0.34f, center.y - baseRadius * 0.34f)
-                    )
-
-                    // Secondary micro pinpoint sparkle
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.40f),
-                        radius = baseRadius * 0.09f,
-                        center = Offset(center.x - baseRadius * 0.14f, center.y - baseRadius * 0.50f)
-                    )
-                }
-
-                // Subtle cord hole shadow ring at bead edges
+            BeadSurfaceTexture.GLOSSY_AMBER, BeadSurfaceTexture.CRYSTAL_GEM -> {
+                // Translucent internal caustic bounce glow at the lower-right opposite the light source
                 drawCircle(
-                    color = Color.Black.copy(alpha = 0.28f),
-                    radius = 2.5.dp.toPx(),
-                    center = Offset(center.x - baseRadius * 0.92f, center.y)
+                    brush = Brush.radialGradient(
+                        colors = listOf(theme.highlightColor.copy(alpha = 0.52f), Color.Transparent),
+                        center = Offset(center.x + radius * 0.22f, center.y + radius * 0.36f),
+                        radius = radius * 0.68f
+                    ),
+                    radius = radius * 0.68f,
+                    center = Offset(center.x + radius * 0.22f, center.y + radius * 0.36f)
+                )
+            }
+
+            BeadSurfaceTexture.TURQUOISE_VEIN -> {
+                // Fine mineral matrix veins across turquoise / lapis sphere
+                val veinPath = Path().apply {
+                    moveTo(center.x - radius * 0.75f, center.y - radius * 0.15f)
+                    quadraticTo(center.x - radius * 0.1f, center.y + radius * 0.35f, center.x + radius * 0.75f, center.y - radius * 0.25f)
+                }
+                drawPath(
+                    path = veinPath,
+                    color = theme.veinColor.copy(alpha = 0.45f),
+                    style = Stroke(width = (radius * 0.06f).coerceAtLeast(1.2f), cap = StrokeCap.Round)
                 )
             }
         }
 
-        // Top-center floating digital counter medallion (doesn't obstruct the physical bead strand)
-        Column(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = beadCount.toString(),
-                fontSize = 44.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                modifier = Modifier.testTag("tasbih_count_text")
+        // 4. Lower-Right Subtle Rim Bounce Light for realistic 3D volume
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(theme.rimGlowColor.copy(alpha = 0.28f), Color.Transparent),
+                center = Offset(center.x + radius * 0.34f, center.y + radius * 0.42f),
+                radius = radius * 0.62f
+            ),
+            radius = radius * 0.62f,
+            center = Offset(center.x + radius * 0.34f, center.y + radius * 0.42f)
+        )
+
+        // 5. Spherical Limb Darkening (authentic 3D depth near edges)
+        drawCircle(
+            brush = Brush.radialGradient(
+                colorStops = arrayOf(
+                    0.0f to Color.Transparent,
+                    0.74f to Color.Transparent,
+                    1.0f to Color.Black.copy(alpha = 0.44f)
+                ),
+                center = center,
+                radius = radius
+            ),
+            radius = radius,
+            center = center
+        )
+
+        // 6. Crisp Dual Specular Reflection (upper-left studio softbox highlight)
+        val isMatteWood = theme.texture == BeadSurfaceTexture.WOOD_GRAIN || theme.texture == BeadSurfaceTexture.OLIVE_WOOD
+        val specAlpha = if (isMatteWood) 0.32f else 0.78f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(Color.White.copy(alpha = specAlpha), Color.Transparent),
+                center = Offset(center.x - radius * 0.30f, center.y - radius * 0.34f),
+                radius = radius * 0.40f
+            ),
+            radius = radius * 0.40f,
+            center = Offset(center.x - radius * 0.30f, center.y - radius * 0.34f)
+        )
+        if (!isMatteWood) {
+            drawCircle(
+                color = Color.White.copy(alpha = 0.85f),
+                radius = radius * 0.11f,
+                center = Offset(center.x - radius * 0.34f, center.y - radius * 0.36f)
             )
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "$countInCycle / $target",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = GoldBright
-                )
-                if (rounds > 0) {
-                    Text(
-                        text = "· ${L10n.pick(lang, "الجولة $rounds", "Round $rounds", "$rounds-davr")}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color(0xFF7BE8B4),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+        }
+
+        // 7. Tiny drill-hole shadow where the white silk thread enters & exits the sphere
+        if (showCordHoles) {
+            drawCircle(
+                color = Color.Black.copy(alpha = 0.55f),
+                radius = radius * 0.11f,
+                center = Offset(center.x - radius * 0.94f, center.y + radius * 0.08f)
+            )
+            drawCircle(
+                color = Color.Black.copy(alpha = 0.55f),
+                radius = radius * 0.11f,
+                center = Offset(center.x + radius * 0.94f, center.y - radius * 0.08f)
+            )
+        }
+    }
+}
+
+private fun formatTasbihDigits(raw: String, lang: AppLanguage): String {
+    if (lang != AppLanguage.ARABIC) return raw
+    val arabicDigits = charArrayOf('٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩')
+    return buildString(raw.length) {
+        for (ch in raw) {
+            if (ch in '0'..'9') append(arabicDigits[ch - '0']) else append(ch)
         }
     }
 }
@@ -1021,17 +1242,16 @@ private fun TasbihStatMiniCard(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
                 text = value,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = noorColors.goldAccent
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
             )
         }
     }

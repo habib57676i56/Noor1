@@ -462,23 +462,27 @@ class MushafCoordinateRepository(private val appContext: Context) {
         const val DEFAULT_MUSHAF_WIDTH = 1024
         const val DEFAULT_MUSHAF_HEIGHT = 1656
 
-        // Standard 15-line King Fahd Complex Madinah Mushaf text area proportions (width_1024 PNGs)
-        const val STANDARD_LEFT = 0.088f
-        const val STANDARD_RIGHT = 0.912f
-        const val STANDARD_TOP = 0.078f
-        const val STANDARD_BOTTOM = 0.922f
+        // Standard 15-line King Fahd Complex Madinah Mushaf text area proportions (`android.quran.com/data/width_1024`)
+        // `width_1024` PNGs contain the tight 15-line Quran text block without outer page header chrome,
+        // so line 1 starts near y=0.024 and line 15 ends near y=0.976 (eliminating 1-line vertical lag!).
+        const val STANDARD_LEFT = 0.052f
+        const val STANDARD_RIGHT = 0.948f
+        const val STANDARD_TOP = 0.024f
+        const val STANDARD_BOTTOM = 0.976f
 
         // Special ornate inner frame on Pages 1 & 2 (Al-Fatiha & opening of Al-Baqarah)
         // Calibrated to King Fahd Complex `width_1024/page001.png` & `page002.png` inner cartouche
-        const val SPECIAL_P12_LEFT = 0.168f
-        const val SPECIAL_P12_RIGHT = 0.832f
-        const val SPECIAL_P12_TOP = 0.285f
-        const val SPECIAL_P12_BOTTOM = 0.755f
+        const val SPECIAL_P12_LEFT = 0.160f
+        const val SPECIAL_P12_RIGHT = 0.840f
+        const val SPECIAL_P12_TOP = 0.268f
+        const val SPECIAL_P12_BOTTOM = 0.736f
 
         val GLYPH_DB_MIRRORS = listOf(
             "https://android.quran.com/data/databases/ayahinfo_1024.zip",
             "https://files.quran.app/hafs/databases/ayahinfo_1024.zip",
             "https://files.quran.app/data/databases/ayahinfo_1024.zip",
+            "https://android.quran.com/data/ayahinfo_1024.zip",
+            "https://files.quran.app/hafs/databases/ayahinfo_1024.db",
             "https://files.quran.app/data/databases/v4/ayahinfo_1024.db"
         )
 
@@ -596,8 +600,12 @@ class MushafCoordinateRepository(private val appContext: Context) {
             val bottomBound = if (isOpening) SPECIAL_P12_BOTTOM else STANDARD_BOTTOM
 
             val usedLines = lineWords.map { it.lineNumber }.distinct().sorted()
-            val minLine = if (isOpening) (usedLines.minOrNull() ?: 2) else 1
-            val maxLine = if (isOpening) (usedLines.maxOrNull() ?: 8) else 15
+            // CRITICAL FIX for Page 2 (Al-Baqarah 2:1-5): On both Page 1 and Page 2, the ornate inner
+            // frame ALWAYS has 7 fixed lines (lines 2..8): on Page 1 line 2 is Bismillah (1:1), and on
+            // Page 2 line 2 is Bismillah (header) while Ayah 2:1 (الم) starts on line 3!
+            // Using `usedLines.minOrNull()` collapsed line 2 on Page 2 and shifted every line upward by 1!
+            val minLine = if (isOpening) 2 else 1
+            val maxLine = if (isOpening) maxOf(8, usedLines.maxOrNull() ?: 8) else 15
             val lineSlots = (maxLine - minLine + 1).coerceAtLeast(1)
             val lineHeight = (bottomBound - topBound) / lineSlots.toFloat()
             val lineInsetY = lineHeight * 0.06f

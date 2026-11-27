@@ -36,26 +36,26 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("3.8.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v3.8.0", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("3.9.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v3.9.0", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v3.8.0 passes default v3.8.0 gate, while older v3.7.0 / v3.6.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.8.0", defaultConfig))
+        // New build v3.9.0 passes default v3.9.0 gate, while older v3.8.0 / v3.7.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.8.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.7.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.6.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "3.8.0", the newly updated v3.8.0 (or v3.9.0) APK opens automatically
-        // while older v3.7.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.8.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.7.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.8.0", forcedWithMin))
+        // with minSupportedVersion = "3.9.0", the newly updated v3.9.0 (or v4.0.0) APK opens automatically
+        // while older v3.8.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.9.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.8.0", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("3.9.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 3.9.0 blocks 3.8.0 until user updates to 3.9.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.9.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.8.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.9.0", raisedConfig))
+        // Raising minSupportedVersion to 4.0.0 blocks 3.9.0 until user updates to 4.0.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.0.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
@@ -69,11 +69,15 @@ class NoorFinalUpgradeTest {
         assertEquals(AppLanguage.ARABIC, AppLanguage.fromSystemLocale(java.util.Locale.forLanguageTag("ar-SA")))
         assertEquals(AppLanguage.ARABIC, AppLanguage.fromSystemLocale(java.util.Locale.forLanguageTag("ar-SY")))
         assertEquals(AppLanguage.UZBEK, AppLanguage.fromSystemLocale(java.util.Locale.forLanguageTag("uz-UZ")))
+        assertEquals(AppLanguage.RUSSIAN, AppLanguage.fromSystemLocale(java.util.Locale.forLanguageTag("ru-RU")))
+        assertEquals(AppLanguage.RUSSIAN, AppLanguage.fromSystemLocale(java.util.Locale.forLanguageTag("ru")))
         assertEquals(AppLanguage.ENGLISH, AppLanguage.fromSystemLocale(java.util.Locale.US))
         assertEquals(AppLanguage.ENGLISH, AppLanguage.fromSystemLocale(java.util.Locale.FRANCE))
         assertEquals(AppLanguage.ENGLISH, AppLanguage.fromCode("en"))
         assertEquals(AppLanguage.ARABIC, AppLanguage.fromCode("ar"))
         assertEquals(AppLanguage.UZBEK, AppLanguage.fromCode("uz"))
+        assertEquals(AppLanguage.RUSSIAN, AppLanguage.fromCode("ru"))
+        assertFalse(AppLanguage.RUSSIAN.isRtl)
     }
 
     @Test
@@ -356,5 +360,62 @@ class NoorFinalUpgradeTest {
         assertTrue(makkahNoon.shafiAsrThresholdMeters > makkahNoon.meridianShadowMeters)
         assertTrue(makkahNoon.hanafiAsrThresholdMeters > makkahNoon.shafiAsrThresholdMeters)
         assertTrue(makkahNoon.daysToNextKaabaZenith in 0..365)
+    }
+
+    @Test
+    fun russianLocalization_translatesPrayersAndCoreNavigationCleanly() {
+        assertEquals("Фаджр", com.example.ui.i18n.L10n.prayerName(com.example.domain.model.PrayerName.FAJR, AppLanguage.RUSSIAN))
+        assertEquals("Зухр", com.example.ui.i18n.L10n.prayerName(com.example.domain.model.PrayerName.DHUHR, AppLanguage.RUSSIAN))
+        assertEquals("Магриб", com.example.ui.i18n.L10n.prayerName(com.example.domain.model.PrayerName.MAGHRIB, AppLanguage.RUSSIAN))
+        assertEquals("Настройки", com.example.ui.i18n.L10n.pick(AppLanguage.RUSSIAN, "الإعدادات", "Settings"))
+        assertEquals("Тасбих", com.example.ui.i18n.L10n.pick(AppLanguage.RUSSIAN, "المسبحة", "Tasbih"))
+        assertEquals("Ближайшие мечети", com.example.ui.i18n.L10n.pick(AppLanguage.RUSSIAN, "المساجد القريبة", "Nearby Mosques"))
+    }
+
+    @Test
+    fun madinahMushafPage2AndBismillahQueue_fixAlBaqarahOffsetAndYasserDosariShortSurahs() {
+        // 1. Page 2 (Al-Baqarah 2:1 الم) must start on slot line 3 BELOW Bismillah line 2 (NOT collapsed to SPECIAL_P12_TOP!)
+        val page1 = com.example.data.quran.MushafCoordinateRepository.buildVerifiedBundledPageLayout(1)!!
+        val page2 = com.example.data.quran.MushafCoordinateRepository.buildVerifiedBundledPageLayout(2)!!
+        val fatiha1_2 = page1.findAyah(1, 2)!!.lineRegions.first().bounds // line 3 on page 1
+        val baqarah2_1 = page2.findAyah(2, 1)!!.lineRegions.first().bounds // line 3 on page 2
+        assertEquals(
+            "Page 2 Ayah 2:1 (الم) must align at exact line 3 vertical level matching Page 1 Ayah 1:2",
+            fatiha1_2.top,
+            baqarah2_1.top,
+            0.003f
+        )
+        assertTrue(
+            "Page 2 must reserve line 2 as Bismillah header line",
+            page2.surahHeaderLines.contains(2)
+        )
+        // Standard 15-line pages align tightly to width_1024 PNGs (no 1-line vertical lag)
+        assertTrue(com.example.data.quran.MushafCoordinateRepository.STANDARD_TOP <= 0.03f)
+        assertTrue(com.example.data.quran.MushafCoordinateRepository.STANDARD_BOTTOM >= 0.97f)
+
+        // 2. Sheikh Yasser Al-Dosari continuous queue MUST insert Bismillah (001001.mp3, ayahNumber=0) before short Surahs (112, 113, 114),
+        //    and NEVER before Surah 1 (Al-Fatihah) or Surah 9 (At-Tawbah)!
+        val ikhlasTracks = com.example.viewmodel.NoorViewModel.buildSurahTracksWithBismillah(
+            surahNumber = 112,
+            verses = listOf(
+                com.example.domain.model.QuranVerse(112, 1, 6222, "قُلْ هُوَ اللَّهُ أَحَدٌ", "", "", pageNumber = 604),
+                com.example.domain.model.QuranVerse(112, 2, 6223, "اللَّهُ الصَّمَدُ", "", "", pageNumber = 604)
+            ),
+            reciter = QuranReciter.YASSER_AL_DOSARI,
+            includeOpeningBismillah = true
+        )
+        assertEquals(3, ikhlasTracks.size)
+        assertEquals(0, ikhlasTracks.first().ayahNumber)
+        assertTrue(ikhlasTracks.first().audioUrl.contains("Yasser_Ad-Dussary_128kbps/001001.mp3"))
+        assertEquals(1, ikhlasTracks[1].ayahNumber)
+
+        val tawbahTracks = com.example.viewmodel.NoorViewModel.buildSurahTracksWithBismillah(
+            surahNumber = 9,
+            verses = listOf(com.example.domain.model.QuranVerse(9, 1, 1236, "بَرَاءَةٌ", "", "", pageNumber = 187)),
+            reciter = QuranReciter.YASSER_AL_DOSARI,
+            includeOpeningBismillah = true
+        )
+        assertEquals(1, tawbahTracks.size)
+        assertEquals(1, tawbahTracks.first().ayahNumber)
     }
 }

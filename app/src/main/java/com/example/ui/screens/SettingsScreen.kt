@@ -434,31 +434,47 @@ fun SettingsScreen(
         item {
             LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
                 Text(
-                    text = L10n.pick(lang, "اللغة (Language / Til)", "Language (اللغة / Til)", "Til (O'zbekcha / العربية / English)"),
+                    text = L10n.pick(
+                        lang,
+                        "اللغة (العربية / English / O'zbekcha / Русский)",
+                        "Language (Arabic / English / Uzbek / Russian)",
+                        "Til (O'zbekcha / العربية / English / Русский)",
+                        "Язык (Русский / العربية / English / O'zbekcha)"
+                    ),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = noorColors.goldAccent
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    LiquidGlassChip(
-                        label = "العربية",
-                        selected = prefs.language == AppLanguage.ARABIC,
-                        onClick = { viewModel.setLanguage(AppLanguage.ARABIC) },
-                        modifier = Modifier.weight(1f).testTag("lang_arabic_btn")
-                    )
-                    LiquidGlassChip(
-                        label = "English",
-                        selected = prefs.language == AppLanguage.ENGLISH,
-                        onClick = { viewModel.setLanguage(AppLanguage.ENGLISH) },
-                        modifier = Modifier.weight(1f).testTag("lang_english_btn")
-                    )
-                    LiquidGlassChip(
-                        label = "O'zbekcha",
-                        selected = prefs.language == AppLanguage.UZBEK,
-                        onClick = { viewModel.setLanguage(AppLanguage.UZBEK) },
-                        modifier = Modifier.weight(1f).testTag("lang_uzbek_btn")
-                    )
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        LiquidGlassChip(
+                            label = "العربية",
+                            selected = prefs.language == AppLanguage.ARABIC,
+                            onClick = { viewModel.setLanguage(AppLanguage.ARABIC) },
+                            modifier = Modifier.weight(1f).testTag("lang_arabic_btn")
+                        )
+                        LiquidGlassChip(
+                            label = "English",
+                            selected = prefs.language == AppLanguage.ENGLISH,
+                            onClick = { viewModel.setLanguage(AppLanguage.ENGLISH) },
+                            modifier = Modifier.weight(1f).testTag("lang_english_btn")
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        LiquidGlassChip(
+                            label = "O'zbekcha",
+                            selected = prefs.language == AppLanguage.UZBEK,
+                            onClick = { viewModel.setLanguage(AppLanguage.UZBEK) },
+                            modifier = Modifier.weight(1f).testTag("lang_uzbek_btn")
+                        )
+                        LiquidGlassChip(
+                            label = "Русский",
+                            selected = prefs.language == AppLanguage.RUSSIAN,
+                            onClick = { viewModel.setLanguage(AppLanguage.RUSSIAN) },
+                            modifier = Modifier.weight(1f).testTag("lang_russian_btn")
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))

@@ -85,6 +85,7 @@ fun LiveHadithEncyclopediaScreen(
         AppLanguage.ARABIC -> "ar"
         AppLanguage.ENGLISH -> "en"
         AppLanguage.UZBEK -> "uz"
+        AppLanguage.RUSSIAN -> "ru"
     }
 
     var categories by remember { mutableStateOf<List<LiveHadithCategory>>(emptyList()) }

@@ -98,7 +98,7 @@ fun IslamicCardDesignerScreen(
         mutableStateOf(
             when (lang) {
                 AppLanguage.UZBEK -> firstTemplate.subtitleUz
-                AppLanguage.ENGLISH -> firstTemplate.subtitleEn
+                AppLanguage.ENGLISH, AppLanguage.RUSSIAN -> firstTemplate.subtitleEn
                 AppLanguage.ARABIC -> ""
             }
         )
@@ -331,7 +331,7 @@ fun IslamicCardDesignerScreen(
                                     referenceText = tmpl.referenceAr
                                     subtitleText = when (lang) {
                                         AppLanguage.UZBEK -> tmpl.subtitleUz
-                                        AppLanguage.ENGLISH -> tmpl.subtitleEn
+                                        AppLanguage.ENGLISH, AppLanguage.RUSSIAN -> tmpl.subtitleEn
                                         AppLanguage.ARABIC -> ""
                                     }
                                 },

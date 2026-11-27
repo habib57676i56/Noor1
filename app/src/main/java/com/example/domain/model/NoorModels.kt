@@ -5,7 +5,8 @@ import java.util.Locale
 enum class AppLanguage(val code: String) {
     ARABIC("ar"),
     ENGLISH("en"),
-    UZBEK("uz");
+    UZBEK("uz"),
+    RUSSIAN("ru");
 
     val isRtl: Boolean get() = this == ARABIC
 
@@ -15,6 +16,7 @@ enum class AppLanguage(val code: String) {
             return when {
                 lang == "ar" || lang.startsWith("ar-") || lang.startsWith("ar_") -> ARABIC
                 lang == "uz" || lang.startsWith("uz-") || lang.startsWith("uz_") -> UZBEK
+                lang == "ru" || lang.startsWith("ru-") || lang.startsWith("ru_") -> RUSSIAN
                 else -> ENGLISH
             }
         }

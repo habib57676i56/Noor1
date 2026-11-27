@@ -785,6 +785,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         _statusBanner.value = when (lang) {
             AppLanguage.ARABIC -> if (clean.isBlank()) "تم مسح الاسم" else "تم تحديث الاسم بنجاح: $clean"
             AppLanguage.UZBEK -> if (clean.isBlank()) "Ism tozalandi" else "Ism muvaffaqiyatli yangilandi: $clean"
+            AppLanguage.RUSSIAN -> if (clean.isBlank()) "Имя очищено" else "Имя обновлено: $clean"
             AppLanguage.ENGLISH -> if (clean.isBlank()) "Name cleared" else "Name updated: $clean"
         }
     }
@@ -795,6 +796,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         _statusBanner.value = when (lang) {
             AppLanguage.ARABIC -> "تم تحديث صورة الحساب بنجاح"
             AppLanguage.UZBEK -> "Profil rasmi yangilandi"
+            AppLanguage.RUSSIAN -> "Фото профиля обновлено"
             AppLanguage.ENGLISH -> "Profile photo updated"
         }
     }
@@ -1615,10 +1617,14 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            // Engine B: Gapless pre-buffered per-Ayah queue fallback
+            // Engine B: Gapless pre-buffered per-Ayah queue (used by Sheikh Yasser Al-Dosari & others)
             val tracks = mutableListOf<AudioTrackItem>()
 
-            suspend fun appendSurahTracks(sNum: Int, existing: List<QuranVerse>? = null) {
+            suspend fun appendSurahTracks(
+                sNum: Int,
+                existing: List<QuranVerse>? = null,
+                includeOpeningBismillah: Boolean = true
+            ) {
                 val meta = SurahCatalog.findSurah(sNum)
                 val verses = existing?.takeIf { it.isNotEmpty() }
                     ?: when (val res = repo.loadSurahVerses(sNum, reciter)) {
@@ -1635,35 +1641,33 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         }
                     }
-                verses.forEach { v ->
-                    tracks += AudioTrackItem(
-                        id = "ayah_${reciter.id}_${sNum}_${v.numberInSurah}",
-                        titleAr = "سورة ${meta.nameAr} · آية ${v.numberInSurah}",
-                        titleEn = "${meta.nameEn} · Ayah ${v.numberInSurah}",
-                        subtitleAr = reciter.nameAr,
-                        subtitleEn = reciter.nameEn,
-                        audioUrl = SurahCatalog.audioUrlForAyah(sNum, v.numberInSurah, reciter),
-                        category = com.example.domain.model.AudioCategory.QURAN_RECITERS,
-                        surahNumber = sNum,
-                        ayahNumber = v.numberInSurah,
-                        pageNumber = v.pageNumber.takeIf { it in 1..604 } ?: meta.startPage,
-                        reciterId = reciter.id
-                    )
-                }
+                tracks += buildSurahTracksWithBismillah(
+                    surahNumber = sNum,
+                    verses = verses,
+                    reciter = reciter,
+                    includeOpeningBismillah = includeOpeningBismillah
+                )
             }
 
-            appendSurahTracks(surahNumber, surahVerses)
+            // Include opening Bismillah when starting a Surah from Ayah 1 (except Al-Fatihah & At-Tawbah),
+            // and ALWAYS between consecutive Surahs (especially short Surahs in Juz Amma!).
+            val includeStartBismillah = !repeatRange && clampedStart == 1 && surahNumber != 1 && surahNumber != 9
+            appendSurahTracks(surahNumber, surahVerses, includeOpeningBismillah = includeStartBismillah)
             if (myToken != playbackRequestToken.get()) return@launch
             if (!repeatRange && surahNumber < 114) {
-                val nextSurahEnd = if (surahNumber >= 100) minOf(114, surahNumber + 3) else surahNumber + 1
+                val nextSurahEnd = if (surahNumber >= 78) minOf(114, surahNumber + 10) else minOf(114, surahNumber + 2)
                 for (nextS in (surahNumber + 1)..nextSurahEnd) {
-                    appendSurahTracks(nextS)
+                    appendSurahTracks(nextS, includeOpeningBismillah = true)
                     if (myToken != playbackRequestToken.get()) return@launch
                 }
             }
 
             if (tracks.isEmpty() || myToken != playbackRequestToken.get()) return@launch
-            val startIdx = tracks.indexOfFirst { it.surahNumber == surahNumber && it.ayahNumber == clampedStart }.coerceAtLeast(0)
+            val startIdx = if (includeStartBismillah) {
+                tracks.indexOfFirst { it.surahNumber == surahNumber && it.ayahNumber == 0 }.coerceAtLeast(0)
+            } else {
+                tracks.indexOfFirst { it.surahNumber == surahNumber && it.ayahNumber == clampedStart }.coerceAtLeast(0)
+            }
 
             if (repeatRange && clampedEndAyah != null) {
                 val endIdx = tracks.indexOfLast { it.surahNumber == surahNumber && it.ayahNumber == clampedEndAyah }
@@ -2158,5 +2162,58 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         liveRecitationListener.stopListening()
         adhanAudioPlayer.stop()
         dhikrTtsHelper.shutdown()
+    }
+
+    companion object {
+        /**
+         * Builds the per-Ayah audio track queue for a Surah, inserting a dedicated Bismillah track
+         * (`001001.mp3` by the exact same reciter, `ayahNumber = 0`) right before Ayah 1 whenever
+         * `includeOpeningBismillah` is true and the Surah is neither Al-Fatihah (1) nor At-Tawbah (9).
+         * Guarantees Sheikh Yasser Al-Dosari (and all Engine B reciters) recite Bismillah cleanly
+         * before every Surah and between consecutive short Surahs without prematurely highlighting Ayah 1.
+         */
+        fun buildSurahTracksWithBismillah(
+            surahNumber: Int,
+            verses: List<QuranVerse>,
+            reciter: QuranReciter,
+            includeOpeningBismillah: Boolean = true
+        ): List<AudioTrackItem> {
+            val meta = SurahCatalog.findSurah(surahNumber)
+            val result = mutableListOf<AudioTrackItem>()
+            val firstPage = verses.firstOrNull()?.pageNumber?.takeIf { it in 1..604 } ?: meta.startPage
+
+            if (includeOpeningBismillah && surahNumber != 1 && surahNumber != 9) {
+                result += AudioTrackItem(
+                    id = "bismillah_${reciter.id}_$surahNumber",
+                    titleAr = "سورة ${meta.nameAr} · بسم الله الرحمن الرحيم",
+                    titleEn = "${meta.nameEn} · Bismillah",
+                    subtitleAr = reciter.nameAr,
+                    subtitleEn = reciter.nameEn,
+                    audioUrl = SurahCatalog.audioUrlForAyah(1, 1, reciter),
+                    category = com.example.domain.model.AudioCategory.QURAN_RECITERS,
+                    surahNumber = surahNumber,
+                    ayahNumber = 0,
+                    pageNumber = firstPage,
+                    reciterId = reciter.id
+                )
+            }
+
+            verses.forEach { v ->
+                result += AudioTrackItem(
+                    id = "ayah_${reciter.id}_${surahNumber}_${v.numberInSurah}",
+                    titleAr = "سورة ${meta.nameAr} · آية ${v.numberInSurah}",
+                    titleEn = "${meta.nameEn} · Ayah ${v.numberInSurah}",
+                    subtitleAr = reciter.nameAr,
+                    subtitleEn = reciter.nameEn,
+                    audioUrl = SurahCatalog.audioUrlForAyah(surahNumber, v.numberInSurah, reciter),
+                    category = com.example.domain.model.AudioCategory.QURAN_RECITERS,
+                    surahNumber = surahNumber,
+                    ayahNumber = v.numberInSurah,
+                    pageNumber = v.pageNumber.takeIf { it in 1..604 } ?: meta.startPage,
+                    reciterId = reciter.id
+                )
+            }
+            return result
+        }
     }
 }

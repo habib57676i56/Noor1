@@ -156,7 +156,12 @@ fun MushafAyahHighlightOverlay(
     val preset = highlightStyle.colorPreset
 
     val activeRegion = remember(layout, activeRecitedAyah) {
-        activeRecitedAyah?.let { (s, a) -> layout.findAyah(s, a) }
+        activeRecitedAyah?.let { (s, a) ->
+            // Do not highlight Bismillah during recitation playback:
+            // - On Al-Fatihah (1:1), highlighting starts cleanly on Ayah 1:2 (الحمد لله رب العالمين)
+            // - On Surah Bismillah headers (ayahNumber <= 0), wait until Ayah 1 begins!
+            if (a <= 0 || (s == 1 && a == 1)) null else layout.findAyah(s, a)
+        }
     }
     val activeWordRegion = remember(activeRegion, activeWordPosition) {
         if (activeRegion != null && activeWordPosition != null && activeWordPosition > 0) {

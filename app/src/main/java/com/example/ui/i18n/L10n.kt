@@ -7,25 +7,34 @@ import com.example.domain.model.PrayerName
 val LocalAppLanguage = compositionLocalOf { AppLanguage.fromSystemLocale() }
 
 object L10n {
+    fun pick(lang: AppLanguage, ar: String, en: String, uz: String, ru: String): String = when (lang) {
+        AppLanguage.ARABIC -> ar
+        AppLanguage.ENGLISH -> en
+        AppLanguage.UZBEK -> uz
+        AppLanguage.RUSSIAN -> ru
+    }
+
     fun pick(lang: AppLanguage, ar: String, en: String, uz: String): String = when (lang) {
         AppLanguage.ARABIC -> ar
         AppLanguage.ENGLISH -> en
         AppLanguage.UZBEK -> uz
+        AppLanguage.RUSSIAN -> translateToRussian(en)
     }
 
     fun pick(lang: AppLanguage, ar: String, en: String): String = when (lang) {
         AppLanguage.ARABIC -> ar
         AppLanguage.ENGLISH -> en
         AppLanguage.UZBEK -> translateToUzbek(en)
+        AppLanguage.RUSSIAN -> translateToRussian(en)
     }
 
     fun prayerName(prayer: PrayerName, lang: AppLanguage): String = when (prayer) {
-        PrayerName.FAJR -> pick(lang, "الفجر", "Fajr", "Bomdod")
-        PrayerName.SUNRISE -> pick(lang, "الشروق", "Sunrise", "Quyosh chiqishi")
-        PrayerName.DHUHR -> pick(lang, "الظهر", "Dhuhr", "Peshin")
-        PrayerName.ASR -> pick(lang, "العصر", "Asr", "Asr")
-        PrayerName.MAGHRIB -> pick(lang, "المغرب", "Maghrib", "Shom")
-        PrayerName.ISHA -> pick(lang, "العشاء", "Isha", "Xufton")
+        PrayerName.FAJR -> pick(lang, "الفجر", "Fajr", "Bomdod", "Фаджр")
+        PrayerName.SUNRISE -> pick(lang, "الشروق", "Sunrise", "Quyosh chiqishi", "Восход")
+        PrayerName.DHUHR -> pick(lang, "الظهر", "Dhuhr", "Peshin", "Зухр")
+        PrayerName.ASR -> pick(lang, "العصر", "Asr", "Asr", "Аср")
+        PrayerName.MAGHRIB -> pick(lang, "المغرب", "Maghrib", "Shom", "Магриб")
+        PrayerName.ISHA -> pick(lang, "العشاء", "Isha", "Xufton", "Иша")
     }
 
     fun formatCountdown(remainingMillis: Long, lang: AppLanguage): String {
@@ -42,6 +51,9 @@ object L10n {
         }
         val hour24 = cal.get(java.util.Calendar.HOUR_OF_DAY)
         val minute = cal.get(java.util.Calendar.MINUTE)
+        if (lang == AppLanguage.RUSSIAN) {
+            return String.format(java.util.Locale.US, "%02d:%02d", hour24, minute)
+        }
         val isPm = hour24 >= 12
         val hour12 = when {
             hour24 == 0 -> 12
@@ -52,6 +64,7 @@ object L10n {
             AppLanguage.ARABIC -> if (isPm) "م" else "ص"
             AppLanguage.UZBEK -> if (isPm) "PM" else "AM"
             AppLanguage.ENGLISH -> if (isPm) "PM" else "AM"
+            AppLanguage.RUSSIAN -> ""
         }
         return String.format(java.util.Locale.US, "%d:%02d %s", hour12, minute, period)
     }
@@ -405,5 +418,292 @@ object L10n {
         "Golden Islamic Astrolabe" to "Oltin Islomiy Asturlob",
         "Interactive Brass Astrolabe & 15 Historic Arabic Stars Live" to "Interaktiv oltin asturlob va 15 tarixiy arab yulduzlari jonli xaritasi",
         "Astrolabe" to "Asturlob"
+    )
+
+    private fun translateToRussian(en: String): String {
+        RUSSIAN_EXACT[en]?.let { return it }
+
+        if (en.startsWith("Settings (")) {
+            return en.replaceFirst("Settings", "Настройки")
+        }
+        if (en.startsWith("Page ") && en.endsWith(" / 604")) {
+            val page = en.removePrefix("Page ").removeSuffix(" / 604")
+            return "Страница $page / 604"
+        }
+        if (en.startsWith("Loading Madinah Mushaf page ")) {
+            val rest = en.removePrefix("Loading Madinah Mushaf page ").removeSuffix("...")
+            return "Загрузка страницы $rest Мединского мусхафа..."
+        }
+        if (en.startsWith("Recording: ")) {
+            return "Запись: ${en.removePrefix("Recording: ")}"
+        }
+        if (en.startsWith("Last recording (")) {
+            return "Последняя запись (${en.removePrefix("Last recording (")}"
+        }
+        if (en.startsWith("SpeechRecognizer error code: ")) {
+            return "Код ошибки распознавания речи: ${en.removePrefix("SpeechRecognizer error code: ")}"
+        }
+        if (en.startsWith("Test Mode")) {
+            return en.replaceFirst("Test Mode", "Режим проверки")
+        }
+        if (en.startsWith("Download Surah ")) {
+            return en.replaceFirst("Download Surah ", "Скачать суру ").replace(" Pages", " (страницы)")
+        }
+        if (en.startsWith("Download Full Juz ")) {
+            return "Скачать полный Джуз ${en.removePrefix("Download Full Juz ")}"
+        }
+        if (en.startsWith("Synced Recitation: ")) {
+            return "Синхронное чтение: ${en.removePrefix("Synced Recitation: ").replace("Ayah", "Аят").replace("Word", "Слово")}"
+        }
+        if (en.endsWith(" Prayer Alert")) {
+            val prayer = en.removeSuffix(" Prayer Alert")
+            return "Напоминание о намазе $prayer"
+        }
+        if (en.startsWith("Round ")) {
+            return "Круг ${en.removePrefix("Round ")}"
+        }
+        return en
+    }
+
+    private val RUSSIAN_EXACT: Map<String, String> = mapOf(
+        // Bottom Navigation & Main Sections
+        "Home" to "Главная",
+        "Quran" to "Коран",
+        "Holy Quran" to "Священный Коран",
+        "Prayers" to "Намаз",
+        "Prayer Times" to "Время намаза",
+        "Qibla" to "Кибла",
+        "Adhkar" to "Азкары",
+        "Tasbih" to "Тасбих",
+        "Settings" to "Настройки",
+        "More" to "Ещё",
+        "Calendar" to "Календарь",
+        "Hijri Calendar" to "Календарь Хиджры",
+        "Open Quran" to "Открыть Коран",
+        "Resume Reading" to "Продолжить чтение",
+        "Listen Quran" to "Слушать Коран",
+        "Adhan" to "Азан",
+        "Nearby Mosques" to "Ближайшие мечети",
+        "Live GPS distance & directions" to "Точный GPS, расстояние и маршрут",
+
+        // Settings Screen
+        "Account, language, reciter, alerts, support & privacy" to "Аккаунт, язык, чтец, уведомления, поддержка и конфиденциальность",
+        "Verified NOOR Account" to "Подтверждённый аккаунт NOOR",
+        "Sign Out" to "Выйти",
+        "Open Super Admin Control Center" to "Открыть панель Супер-Админа",
+        "NOOR — Founder, Support & Announcements" to "NOOR — Основатель, поддержка и объявления",
+        "About the Founder — Osama" to "Об основателе — Усама",
+        "Official Contact & Support Center" to "Официальный центр поддержки",
+        "Notification & Announcements Center" to "Центр уведомлений и объявлений",
+        "Personal Greeting Name (Local Only)" to "Имя для приветствия (локально)",
+        "Enter your name..." to "Введите ваше имя...",
+        "Save" to "Сохранить",
+        "Preferred Quran Reciter" to "Предпочитаемый чтец Корана",
+        "Audio Streaming Quality" to "Качество аудиопотока",
+        "Daily Quran Goal (Ayahs)" to "Дневная цель Корана (аяты)",
+        "Language (اللغة)" to "Язык (Language)",
+        "Language / Til" to "Язык (Русский / العربية / English / O'zbekcha)",
+        "Appearance" to "Оформление",
+        "Dark" to "Тёмная",
+        "Light" to "Светлая",
+        "System" to "Системная",
+        "Prayer Times & Location" to "Время намаза и геолокация",
+        "Adhan Voice & Sound Settings" to "Голос азана и настройки звука",
+        "Customize" to "Настроить",
+        "Offline Local Super Admin" to "Локальная панель администратора",
+        "Hub" to "Центр",
+        "Notifications & Reminders" to "Уведомления и напоминания",
+        "Persistent Prayer Times Bar" to "Постоянная панель времени намаза",
+        "Pre-Prayer Alert" to "Напоминание перед намазом",
+        "Off" to "Выкл",
+        "m" to "мин",
+        "Morning Adhkar (6:30 AM)" to "Утренние азкары (06:30)",
+        "Evening Adhkar (5:30 PM)" to "Вечерние азкары (17:30)",
+        "Daily Quran Reminder (9:00 PM)" to "Напоминание о Коране (21:00)",
+        "Tasbih Reminder (3:00 PM)" to "Напоминание о тасбихе (15:00)",
+        "Send Test Notification" to "Отправить тестовое уведомление",
+        "Sound & Haptics" to "Звук и вибрация",
+        "Tasbih & Adhkar Vibration" to "Вибрация тасбиха и азкаров",
+        "Tasbih Click Sound" to "Звук бусин тасбиха",
+        "Home Screen Shortcuts & Widgets" to "Ярлыки и виджеты главного экрана",
+        "Privacy & Local Backup" to "Конфиденциальность и резервная копия",
+        "Backup" to "Резервная копия",
+        "Restore" to "Восстановить",
+        "Reset Application" to "Сбросить приложение",
+        "Confirm Full Reset" to "Подтвердить полный сброс",
+        "Reset" to "Сброс",
+        "Cancel" to "Отмена",
+        "Close" to "Закрыть",
+        "Apply" to "Применить",
+
+        // Quran Reader & Mushaf Interactive Menu
+        "Surah" to "Сура",
+        "Choose Surah" to "Выбрать суру",
+        "Choose Reciter" to "Выбрать чтеца",
+        "Reciter" to "Чтец",
+        "Prev" to "Назад",
+        "Next" to "Далее",
+        "← Previous" to "← Предыдущий",
+        "Next →" to "Следующий →",
+        "Full-Screen Mode" to "Полноэкранный режим",
+        "Exit Full-Screen" to "Выйти из полного экрана",
+        "Highlight Settings" to "Настройки выделения",
+        "Tap an Ayah for actions · Tap empty space for full screen" to "Нажмите на аят для действий · Нажмите пустое место для полного экрана",
+        "Read Here" to "Читать отсюда",
+        "Listen" to "Слушать",
+        "Memorize" to "Заучивание",
+        "Tafsir" to "Тафсир",
+        "I'rab" to "И'раб",
+        "Sarf" to "Сарф",
+        "Repeat Range" to "Повтор диапазона",
+        "Saved" to "Сохранено",
+        "Favorite" to "Избранное",
+        "Add Hifz" to "В план Хифза",
+        "Copy" to "Копировать",
+        "Share" to "Поделиться",
+        "Close menu" to "Закрыть меню",
+        "Tap outside the Ayah to dismiss" to "Нажмите вне аята, чтобы закрыть",
+        "Positioned below Ayah to keep text clear" to "Расположено под аятом, чтобы не закрывать текст",
+        "Ayah copied to clipboard" to "Аят скопирован в буфер обмена",
+        "Share Ayah" to "Поделиться аятом",
+        "Jump in Madinah Mushaf" to "Перейти в Мединском мусхафе",
+        "Page Number (1 - 604)" to "Номер страницы (1 - 604)",
+        "Or Juz Number (1 - 30)" to "Или номер Джуза (1 - 30)",
+        "Go to Juz" to "Перейти к Джузу",
+        "Go to Page" to "Перейти к странице",
+        "Retry" to "Повторить",
+        "Uthmani Text" to "Усманский текст",
+        "Download Coordinates" to "Скачать координаты",
+        "Download All 604 Pages" to "Скачать все 604 страницы",
+        "Import Local ZIP Pack (Offline)" to "Импортировать локальный ZIP (офлайн)",
+        "Clear Cached Pages" to "Очистить кэш страниц",
+        "Offline Madinah Mushaf Manager (604 Pages)" to "Менеджер офлайн-мусхафа (604 стр.)",
+        "Exact glyph coordinates DB activated" to "База точных координат аятов активирована",
+        "Invalid glyph coordinates file" to "Неверный файл координат аятов",
+
+        // Tasbih
+        "Realistic 3D Misbaha" to "Реалистичные 3D чётки",
+        "20 Luxury Bead Colors" to "20 материалов и цветов бусин",
+        "Step Back" to "Назад",
+        "Step Back (-1)" to "Назад (-1)",
+        "Back (-1)" to "Назад (-1)",
+        "Count (+1)" to "Счёт (+1)",
+        "Today" to "Сегодня",
+        "This Week" to "Эта неделя",
+        "Total" to "Всего",
+        "Custom" to "Свой",
+        "Add Dhikr" to "Добавить зикр",
+        "Add Custom Dhikr" to "Добавить свой зикр",
+        "Dhikr Text" to "Текст зикра",
+        "Label (Optional)" to "Перевод или название",
+        "Default Target" to "Цель по умолчанию",
+        "Set Custom Target" to "Установить свою цель",
+        "Quick & Custom Dhikr" to "Быстрые и свои зикры",
+        "Recent Sessions" to "Недавние сессии",
+        "Start Dhikr" to "Выбрать зикр",
+        "Show All" to "Показать все",
+        "Tap anywhere to begin (swipe left-right to decrease)" to "Нажмите в любом месте (свайп влево-вправо уменьшит счёт)",
+
+        // Memorization, Recitation, STT & Recorder
+        "Quran Memorization" to "Заучивание Корана (Хифз)",
+        "Calm space for memorization, recitation & review" to "Спокойное пространство для заучивания, чтения и повторения",
+        "Recite" to "Чтение",
+        "Test" to "Проверка",
+        "Progress" to "Прогресс",
+        "More Tools" to "Ещё инструменты",
+        "Stop" to "Стоп",
+        "Record" to "Запись",
+        "Pause" to "Пауза",
+        "Resume" to "Продолжить",
+        "Check" to "Проверить",
+        "Evaluate" to "Оценить",
+        "Clear" to "Очистить",
+        "Recognized" to "Распознано",
+        "Play Recording" to "Прослушать запись",
+        "Play My Recording" to "Прослушать мою запись",
+        "Pause Recording" to "Пауза записи",
+        "Delete Recording" to "Удалить запись",
+        "Record Voice" to "Записать голос",
+        "Stop & Save" to "Стоп и сохранить",
+        "Start Reciting" to "Начать чтение",
+        "Stop & Evaluate" to "Стоп и оценить",
+        "Voice Input" to "Голосовой ввод",
+        "Range:" to "Диапазон:",
+        "Reveal" to "Показать",
+        "Hide to Test" to "Скрыть для теста",
+        "Word-by-Word Check" to "Проверка по словам",
+        "Excellent" to "Отлично",
+        "Good — Minor Review" to "Хорошо — нужно немного повторить",
+        "Needs Revision" to "Требуется повторение",
+
+        // Dashboard, Reminders & Ecosystem
+        "Account & Display Name" to "Аккаунт и имя",
+        "Change Profile Photo" to "Изменить фото профиля",
+        "Change Name" to "Изменить имя",
+        "Prayed ✓" to "Совершён ✓",
+        "Entered — tap to mark prayed" to "Время наступило — нажмите для отметки",
+        "Not entered yet" to "Время ещё не наступило",
+        "Today's Prayer Times" to "Время намазов сегодня",
+        "See All" to "Смотреть все",
+        "Assalamu Alaikum" to "Ассаляму алейкум",
+        "Daily" to "День",
+        "Weekly" to "Неделя",
+        "Monthly" to "Месяц",
+        "Today's Worship Checklist" to "Список поклонений на сегодня",
+        "Personal Worship Dashboard" to "Личная панель поклонений",
+        "Morning, Evening & Tahajjud Reminders" to "Утренние, вечерние и Тахаджуд напоминания",
+        "Morning Prayer & Adhkar" to "Фаджр и утренние азкары",
+        "Evening Adhkar Reminder" to "Вечерние азкары",
+        "Tahajjud & Qiyam Al-Layl" to "Тахаджуд и ночная молитва",
+        "Next Prayer" to "Следующий намаз",
+        "Essential Daily Islamic Tools" to "Основные исламские инструменты",
+        "Zakat Calculator" to "Калькулятор Закята",
+        "99 Names of Allah" to "99 имён Аллаха",
+        "Wudu, Umrah & Ruqyah" to "Вуду, Умра и Рукья",
+        "Zakat" to "Закят",
+        "99 Names" to "99 имён",
+        "Guides" to "Гиды",
+        "Missed Prayers (Qada)" to "Пропущенные намазы (Каза)",
+        "Inheritance (Mirath)" to "Наследство (Мирас)",
+        "Islamic Card Designer" to "Конструктор открыток",
+        "Qada" to "Каза",
+        "Mirath" to "Мирас",
+        "Cards" to "Открытки",
+        "Live Online Super-Features" to "Онлайн-функции в реальном времени",
+        "Live Makkah & Madinah" to "Мекка и Медина — прямой эфир",
+        "Global Quran & Tafsir" to "Поиск по Корану и Тафсир",
+        "Live Hadith Encyclopedia" to "Энциклопедия Хадисов",
+        "Haramain" to "Харамейн",
+        "Quran Search" to "Поиск Корана",
+        "Live Hadith" to "Хадисы",
+        "Quran I'rab & Sarf" to "И'раб и Сарф Корана",
+        "I'rab & Sarf" to "И'раб и Сарф",
+        "Crescent Observatory" to "Наблюдение Луны и затмений",
+        "Crescent Lab" to "Луна и затмения",
+        "Global Adhan & Qira'at" to "Азан мира и редкие Кирааты",
+        "Ummah Pulse" to "Пульс Уммы",
+        "Remember us in your sincere prayers" to "Не забывайте нас в ваших искренних дуа",
+        "Show More" to "Показать больше",
+        "Show Less" to "Свернуть",
+        "Quran Mutashabihat Lab" to "Муташабихат Корана",
+        "Mutashabihat" to "Муташабихат",
+        "Seerah Atlas & Shama'il" to "Атлас Сиры и Шамаиль",
+        "Seerah Atlas" to "Атлас Сиры",
+        "Quran Root & Qira'at Universe" to "Корни Корана и 10 Кираатов",
+        "Root Galaxy" to "Галактика корней",
+        "3D Earth & Qibla Globe" to "3D Земля и Кибла",
+        "3D Globe" to "3D Глобус",
+        "Quranic Soul Remedy" to "Исцеление сердца Кораном",
+        "Soul Remedy" to "Исцеление сердца",
+        "Cosmic Signs & 25 Prophets" to "Знамения и 25 Пророков",
+        "25 Prophets" to "25 Пророков",
+        "Golden Calligraphy Studio" to "Студия каллиграфии",
+        "Calligraphy" to "Каллиграфия",
+        "Islamic Acoustic Sanctuary" to "Звуки спокойствия",
+        "Sanctuary" to "Спокойствие",
+        "Golden Islamic Astrolabe" to "Исламская астролябия",
+        "Astrolabe" to "Астролябия",
+        "Videos" to "Видео",
+        "NOOR Videos" to "NOOR Видео"
     )
 }

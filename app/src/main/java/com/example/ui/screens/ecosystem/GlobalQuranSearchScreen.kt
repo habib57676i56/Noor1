@@ -99,6 +99,7 @@ fun GlobalQuranSearchScreen(
                 AppLanguage.ARABIC -> "quran-simple-clean"
                 AppLanguage.ENGLISH -> "en.sahih"
                 AppLanguage.UZBEK -> "uz.sodik"
+                AppLanguage.RUSSIAN -> "ru.kuliev"
             }
         )
     }

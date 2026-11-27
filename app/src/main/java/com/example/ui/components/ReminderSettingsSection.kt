@@ -705,7 +705,7 @@ fun formatReminderTime(hour: Int, minute: Int, lang: AppLanguage): String {
     }
     return when (lang) {
         AppLanguage.ARABIC -> String.format(Locale.US, "%02d:%02d %s", h12, safeM, if (isAm) "ص" else "م")
-        AppLanguage.UZBEK -> String.format(Locale.US, "%02d:%02d", safeH, safeM)
+        AppLanguage.UZBEK, AppLanguage.RUSSIAN -> String.format(Locale.US, "%02d:%02d", safeH, safeM)
         AppLanguage.ENGLISH -> String.format(Locale.US, "%02d:%02d %s", h12, safeM, if (isAm) "AM" else "PM")
     }
 }

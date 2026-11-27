@@ -61,26 +61,31 @@ object NoorAlarmScheduler {
         "morning" -> when (lang) {
             AppLanguage.ARABIC -> "تذكير صلاة الصبح وأذكار الصباح" to "أصبحنا وأصبح الملك لله — حافظ على صلاة الصبح وأذكار الصباح"
             AppLanguage.UZBEK -> "Bomdod va tonggi zikrlar eslatmasi" to "Bomdod namozi va tonggi zikrlarni o'qish vaqti keldi"
+            AppLanguage.RUSSIAN -> "Напоминание о Фаджре и утренних азкарах" to "Начните утро с намаза Фаджр и поминания Аллаха"
             AppLanguage.ENGLISH -> "Morning Prayer & Adhkar Reminder" to "Begin your morning with Fajr prayer and remembrance of Allah"
         }
         "evening" -> when (lang) {
             AppLanguage.ARABIC -> "تذكير المساء وأذكار المساء" to "أمسينا وأمسى الملك لله — حافظ على ورد أذكار المساء والسكينة"
             AppLanguage.UZBEK -> "Kechki zikrlar eslatmasi" to "Kechki zikrlar va sokinlik virdini o'qish vaqti keldi"
+            AppLanguage.RUSSIAN -> "Напоминание о вечерних азкарах" to "Время вечерних азкаров и спокойного поминания Аллаха"
             AppLanguage.ENGLISH -> "Evening Adhkar Reminder" to "Keep your evening Adhkar routine and peaceful remembrance"
         }
         "tahajjud" -> when (lang) {
             AppLanguage.ARABIC -> "تذكير صلاة التهجد وقيام الليل" to "قم في الثلث الأخير من الليل — وقت استجابة الدعاء ومناجاة الله"
             AppLanguage.UZBEK -> "Tahajjud va tungi namoz eslatmasi" to "Kechaning so'nggi uchdan bir qismida Tahajjud va duo vaqti keldi"
+            AppLanguage.RUSSIAN -> "Напоминание о Тахаджуде и ночной молитве" to "Благословенная последняя треть ночи — время молитвы и дуа"
             AppLanguage.ENGLISH -> "Tahajjud & Qiyam Al-Layl Reminder" to "Rise for the blessed night prayer and heartfelt supplication"
         }
         "quran" -> when (lang) {
             AppLanguage.ARABIC -> "ورد القرآن اليومي" to "خصّص دقائق لتلاوة كتاب الله اليوم"
             AppLanguage.UZBEK -> "Kunlik Qur'on virdi" to "Bugun Qur'oni Karim tilovati uchun bir necha daqiqa ajrating"
+            AppLanguage.RUSSIAN -> "Ежедневное чтение Корана" to "Уделите несколько минут чтению Священного Корана сегодня"
             AppLanguage.ENGLISH -> "Daily Quran Reading" to "Take a peaceful moment to read the Holy Quran"
         }
         else -> when (lang) {
             AppLanguage.ARABIC -> "تذكير التسبيح" to "سبحان الله والحمد لله والله أكبر"
             AppLanguage.UZBEK -> "Tasbeh eslatmasi" to "Subhanalloh, Alhamdulillah, Allohu Akbar"
+            AppLanguage.RUSSIAN -> "Напоминание о тасбихе" to "Субханаллах, Альхамдулиллях, Аллаху Акбар"
             AppLanguage.ENGLISH -> "Tasbih Reminder" to "SubhanAllah, Alhamdulillah, Allahu Akbar"
         }
     }
@@ -116,6 +121,7 @@ object NoorAlarmScheduler {
                 val (prayerTitle, prayerBody) = when (lang) {
                     AppLanguage.ARABIC -> "حان الآن موعد صلاة $pName" to "حيّ على الصلاة — ${prefs.cityNameAr}"
                     AppLanguage.UZBEK -> "$pName namozi vaqti kirdi" to "Namozga shoshiling — ${prefs.cityNameEn}"
+                    AppLanguage.RUSSIAN -> "Наступило время намаза $pName" to "Спешите к намазу — ${prefs.cityNameEn}"
                     AppLanguage.ENGLISH -> "Time for $pName Prayer" to "It is time for $pName in ${prefs.cityNameEn}"
                 }
 
@@ -139,6 +145,8 @@ object NoorAlarmScheduler {
                                 "متبقي ${prefs.prePrayerAlertMinutes} دقيقة على دخول وقت صلاة $pName"
                             AppLanguage.UZBEK -> "$pName namozidan oldin eslatma" to
                                 "$pName namozigacha ${prefs.prePrayerAlertMinutes} daqiqa qoldi"
+                            AppLanguage.RUSSIAN -> "Скоро намаз $pName" to
+                                "До намаза $pName осталось ${prefs.prePrayerAlertMinutes} мин."
                             AppLanguage.ENGLISH -> "Upcoming $pName Prayer" to
                                 "${prefs.prePrayerAlertMinutes} minutes remaining until $pName"
                         }
@@ -374,6 +382,14 @@ object NoorAlarmScheduler {
             PrayerName.ASR -> "Asr"
             PrayerName.MAGHRIB -> "Shom"
             PrayerName.ISHA -> "Xufton"
+        }
+        AppLanguage.RUSSIAN -> when (prayer) {
+            PrayerName.FAJR -> "Фаджр"
+            PrayerName.SUNRISE -> "Восход"
+            PrayerName.DHUHR -> "Зухр"
+            PrayerName.ASR -> "Аср"
+            PrayerName.MAGHRIB -> "Магриб"
+            PrayerName.ISHA -> "Иша"
         }
         AppLanguage.ENGLISH -> when (prayer) {
             PrayerName.FAJR -> "Fajr"

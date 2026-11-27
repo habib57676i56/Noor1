@@ -480,6 +480,29 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         }
 
         // 3. Normal uninterrupted progression across Ayahs (1 -> 2 -> 3 -> 4 ...)
+        // During opening Bismillah of Surahs 2..114 (except At-Tawbah 9) before Ayah 1 starts,
+        // keep playingAyah = null so Ayah 1 does not highlight prematurely during Bismillah!
+        val firstAyah = manifest.ayahs.firstOrNull()
+        if (firstAyah != null &&
+            manifest.surahNumber != 1 &&
+            manifest.surahNumber != 9 &&
+            firstAyah.startMs > 400L &&
+            positionMs < firstAyah.startMs - 150L
+        ) {
+            val page = continuousPageResolver?.invoke(manifest.surahNumber, firstAyah.ayahNumber)
+            updateState {
+                it.copy(
+                    currentPositionMs = positionMs,
+                    playingSurah = manifest.surahNumber,
+                    playingAyah = null,
+                    playingPageNumber = page ?: it.playingPageNumber,
+                    activeWordPosition = null,
+                    titleAr = "$continuousSurahTitleAr • بسم الله الرحمن الرحيم",
+                    titleEn = "$continuousSurahTitleEn • Bismillah"
+                )
+            }
+            return
+        }
         val activeRange = manifest.findAyahAt(positionMs) ?: return
         applyContinuousRangeState(manifest, activeRange, positionMs)
     }
@@ -729,7 +752,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 isContinuousStream = false,
                 currentTrack = track,
                 playingSurah = track.surahNumber,
-                playingAyah = track.ayahNumber,
+                playingAyah = track.ayahNumber?.takeIf { it > 0 },
                 playingPageNumber = track.pageNumber,
                 activeWordPosition = null,
                 repeatRangeLabel = repeatRangeLabelActive,
@@ -860,7 +883,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                         isContinuousStream = false,
                         currentTrack = nextTrack,
                         playingSurah = nextTrack.surahNumber,
-                        playingAyah = nextTrack.ayahNumber,
+                        playingAyah = nextTrack.ayahNumber?.takeIf { it > 0 },
                         playingPageNumber = nextTrack.pageNumber,
                         activeWordPosition = null,
                         repeatRangeLabel = repeatRangeLabelActive,

@@ -953,12 +953,20 @@ private fun MadinahMushafSinglePageCard(
     var pageLayout by remember(pageNumber) { mutableStateOf(preloadedLayout) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
-    LaunchedEffect(preloadedLayout) {
+    val readyImage = loadResult as? MushafPageLoadResult.Ready
+    val actualOriginalWidth = readyImage?.originalWidth ?: 0
+    val actualOriginalHeight = readyImage?.originalHeight ?: 0
+
+    LaunchedEffect(preloadedLayout, actualOriginalWidth, actualOriginalHeight) {
         if (preloadedLayout != null && preloadedLayout.pageNumber == pageNumber) {
-            // Only adopt preloadedLayout if we don't already have an image-calibrated EXACT_GLYPH_DB layout
             val current = pageLayout
-            if (current == null || current.pageNumber != pageNumber ||
-                preloadedLayout.precision == CoordinatePrecision.EXACT_GLYPH_DB
+            val hasRealDimensions = actualOriginalWidth > 0 && actualOriginalHeight > 0
+            val matchesRealHeight = !hasRealDimensions ||
+                (preloadedLayout.imageWidth == actualOriginalWidth && preloadedLayout.imageHeight == actualOriginalHeight)
+            if (current == null || current.pageNumber != pageNumber) {
+                pageLayout = preloadedLayout
+            } else if (matchesRealHeight && preloadedLayout.precision == CoordinatePrecision.EXACT_GLYPH_DB &&
+                current.precision != CoordinatePrecision.EXACT_GLYPH_DB
             ) {
                 pageLayout = preloadedLayout
             }
@@ -968,10 +976,6 @@ private fun MadinahMushafSinglePageCard(
     LaunchedEffect(pageNumber, reloadNonce) {
         loadResult = imageManager.loadPageBitmap(pageNumber)
     }
-
-    val readyImage = loadResult as? MushafPageLoadResult.Ready
-    val actualOriginalWidth = readyImage?.originalWidth ?: 0
-    val actualOriginalHeight = readyImage?.originalHeight ?: 0
 
     // CRITICAL FIX: Always re-resolve pageLayout whenever coordReloadNonce increments (e.g. after
     // ayahinfo_1024.db downloads) OR once the true PNG originalWidth x originalHeight is known!
