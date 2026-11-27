@@ -58,6 +58,7 @@ import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.NoorSectionHeader
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalIs24HourFormat
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.GoldBright
 import com.example.ui.theme.GoldPrimary
@@ -332,8 +333,9 @@ fun GlobalUmmahPulseScreen(
                     )
                     val callingNow = prayers.firstOrNull { abs(nowMs - it.second) <= 12 * 60_000L }
                     val nextPrayer = prayers.firstOrNull { it.second > nowMs } ?: prayers.first()
-                    val localTimeStr = SimpleDateFormat("hh:mm a", Locale.US).apply { timeZone = tz }.format(Date(nowMs))
-                    val nextTimeStr = SimpleDateFormat("hh:mm a", Locale.US).apply { timeZone = tz }.format(Date(nextPrayer.second))
+                    val is24Hour = LocalIs24HourFormat.current
+                    val localTimeStr = L10n.formatPrayerTime(nowMs, city.tzId, lang, is24Hour)
+                    val nextTimeStr = L10n.formatPrayerTime(nextPrayer.second, city.tzId, lang, is24Hour, includeSeconds = true)
 
                     LiquidGlassCard(
                         goldBorder = callingNow != null,

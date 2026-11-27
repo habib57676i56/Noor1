@@ -18,6 +18,7 @@ import com.example.domain.model.PrayerName
 import com.example.domain.prayer.PrayerTimeCalculator
 import com.example.notifications.PrayerNotificationController
 import com.example.shortcuts.NoorShortcutManager
+import com.example.ui.i18n.L10n
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -109,7 +110,6 @@ class PrayerTimesWidgetProvider : AppWidgetProvider() {
             )
 
             val dateFmt = SimpleDateFormat("EEE, d MMM", locale).apply { timeZone = tz }
-            val timeFmt = SimpleDateFormat("hh:mm", locale).apply { timeZone = tz }
 
             val dateLine = if (isAr) {
                 "${hijri.day} ${hijri.monthNameAr} ${hijri.year} هـ · ${prefs.cityNameAr}"
@@ -167,11 +167,11 @@ class PrayerTimesWidgetProvider : AppWidgetProvider() {
                 rv.setTextViewText(R.id.widget_lbl_maghrib, PrayerNotificationController.prayerLabel(PrayerName.MAGHRIB, isAr))
                 rv.setTextViewText(R.id.widget_lbl_isha, PrayerNotificationController.prayerLabel(PrayerName.ISHA, isAr))
 
-                rv.setTextViewText(R.id.widget_time_fajr, timeFmt.format(Date(todaySchedule.fajrMillis)))
-                rv.setTextViewText(R.id.widget_time_dhuhr, timeFmt.format(Date(todaySchedule.dhuhrMillis)))
-                rv.setTextViewText(R.id.widget_time_asr, timeFmt.format(Date(todaySchedule.asrMillis)))
-                rv.setTextViewText(R.id.widget_time_maghrib, timeFmt.format(Date(todaySchedule.maghribMillis)))
-                rv.setTextViewText(R.id.widget_time_isha, timeFmt.format(Date(todaySchedule.ishaMillis)))
+                rv.setTextViewText(R.id.widget_time_fajr, L10n.formatSystemTime(context, todaySchedule.fajrMillis, prefs.timezoneId, prefs.language, compact = true))
+                rv.setTextViewText(R.id.widget_time_dhuhr, L10n.formatSystemTime(context, todaySchedule.dhuhrMillis, prefs.timezoneId, prefs.language, compact = true))
+                rv.setTextViewText(R.id.widget_time_asr, L10n.formatSystemTime(context, todaySchedule.asrMillis, prefs.timezoneId, prefs.language, compact = true))
+                rv.setTextViewText(R.id.widget_time_maghrib, L10n.formatSystemTime(context, todaySchedule.maghribMillis, prefs.timezoneId, prefs.language, compact = true))
+                rv.setTextViewText(R.id.widget_time_isha, L10n.formatSystemTime(context, todaySchedule.ishaMillis, prefs.timezoneId, prefs.language, compact = true))
 
                 rv.setTextColor(R.id.widget_lbl_fajr, if (nextInfo.nextPrayer == PrayerName.FAJR) highlight else normal)
                 rv.setTextColor(R.id.widget_time_fajr, if (nextInfo.nextPrayer == PrayerName.FAJR) highlight else normal)

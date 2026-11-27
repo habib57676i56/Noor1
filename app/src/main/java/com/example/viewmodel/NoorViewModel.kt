@@ -491,12 +491,14 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
 
         val isOfficialSync = matchedOfficial != null
         val todaySchedule = if (matchedOfficial != null) {
-            AlAdhanPrayerApiService.applyOffsets(matchedOfficial.first, prefs.offsets)
+            val officialWithOffsets = AlAdhanPrayerApiService.applyOffsets(matchedOfficial.first, prefs.offsets)
+            AlAdhanPrayerApiService.mergeOfficialWithSubSecondPrecision(officialWithOffsets, offlineToday)
         } else {
             offlineToday
         }
         val tomorrowSchedule = if (matchedOfficial?.second != null) {
-            AlAdhanPrayerApiService.applyOffsets(matchedOfficial.second!!, prefs.offsets)
+            val officialWithOffsets = AlAdhanPrayerApiService.applyOffsets(matchedOfficial.second!!, prefs.offsets)
+            AlAdhanPrayerApiService.mergeOfficialWithSubSecondPrecision(officialWithOffsets, offlineTomorrow)
         } else {
             offlineTomorrow
         }

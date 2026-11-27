@@ -54,6 +54,7 @@ import com.example.ui.components.LiquidGlassCard
 import com.example.ui.components.NoorScreenHeader
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalIs24HourFormat
 import com.example.ui.theme.AmiriFontFamily
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.GoldBright
@@ -241,7 +242,10 @@ fun SacredTimeAndMeeqatScreen(
         SacredMeeqatCalculator.computeSnapshot(latitude, longitude, nowMillis)
     }
 
-    val timeFmt = remember { SimpleDateFormat("hh:mm a", Locale.US) }
+    val is24Hour = LocalIs24HourFormat.current
+    val timeFmt = remember(is24Hour) {
+        SimpleDateFormat(if (is24Hour) "HH:mm:ss" else "h:mm:ss a", Locale.US)
+    }
     val cal = remember(nowMillis) { Calendar.getInstance().apply { timeInMillis = nowMillis } }
     val dayProgressFraction = remember(nowMillis) {
         val secs = cal.get(Calendar.HOUR_OF_DAY) * 3600 + cal.get(Calendar.MINUTE) * 60 + cal.get(Calendar.SECOND)

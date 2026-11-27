@@ -99,6 +99,29 @@ object AlAdhanPrayerApiService {
         )
     }
 
+    /**
+     * Combines official minute-level authority timings from AlAdhan with sub-second VSOP87
+     * astronomical precision: whenever the VSOP87 astronomical time falls inside the exact
+     * same official clock minute (`official <= astro < official + 60s`), preserves the real
+     * astronomical seconds and milliseconds without ever altering the official ministry minute.
+     */
+    fun mergeOfficialWithSubSecondPrecision(
+        official: DailyPrayerSchedule,
+        astronomical: DailyPrayerSchedule
+    ): DailyPrayerSchedule {
+        fun refine(offMs: Long, astroMs: Long): Long =
+            if (astroMs >= offMs && astroMs < offMs + 60_000L) astroMs else offMs
+
+        return official.copy(
+            fajrMillis = refine(official.fajrMillis, astronomical.fajrMillis),
+            sunriseMillis = refine(official.sunriseMillis, astronomical.sunriseMillis),
+            dhuhrMillis = refine(official.dhuhrMillis, astronomical.dhuhrMillis),
+            asrMillis = refine(official.asrMillis, astronomical.asrMillis),
+            maghribMillis = refine(official.maghribMillis, astronomical.maghribMillis),
+            ishaMillis = refine(official.ishaMillis, astronomical.ishaMillis)
+        )
+    }
+
     internal fun buildTimingsUrl(
         year: Int,
         month: Int,

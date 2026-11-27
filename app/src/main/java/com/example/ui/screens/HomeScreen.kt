@@ -120,6 +120,7 @@ import com.example.ui.components.NoorUserAvatar
 import com.example.ui.components.prayerIcon
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalIs24HourFormat
 import com.example.ui.theme.AmiriFontFamily
 import com.example.ui.theme.EmeraldDeep
 import com.example.ui.theme.EmeraldPrimary
@@ -193,6 +194,7 @@ fun HomeScreen(
     onOpenLunarObservatory: () -> Unit = {}
 ) {
     val lang = LocalAppLanguage.current
+    val is24Hour = LocalIs24HourFormat.current
     val noorColors = LocalNoorColors.current
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val dashboard by viewModel.prayerDashboard.collectAsStateWithLifecycle()
@@ -822,9 +824,15 @@ fun HomeScreen(
                                     maxLines = 1
                                 )
                                 Text(
-                                    text = L10n.formatTime12h(timeMs, prefs.timezoneId, lang)
-                                        .replace(" AM", "").replace(" PM", "").replace(" ص", "").replace(" م", ""),
-                                    style = MaterialTheme.typography.labelSmall,
+                                    text = L10n.formatPrayerTime(
+                                        millis = timeMs,
+                                        timeZoneId = prefs.timezoneId,
+                                        lang = lang,
+                                        is24Hour = is24Hour,
+                                        includeSeconds = false,
+                                        compact = true
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"),
                                     color = when {
                                         isLogged -> Color(0xFF4ADE80)
                                         isNext -> noorColors.goldAccent

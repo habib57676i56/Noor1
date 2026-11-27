@@ -1,10 +1,13 @@
 package com.example.ui.i18n
 
+import android.content.Context
+import android.text.format.DateFormat
 import androidx.compose.runtime.compositionLocalOf
 import com.example.domain.model.AppLanguage
 import com.example.domain.model.PrayerName
 
 val LocalAppLanguage = compositionLocalOf { AppLanguage.fromSystemLocale() }
+val LocalIs24HourFormat = compositionLocalOf { false }
 
 object L10n {
     fun pick(lang: AppLanguage, ar: String, en: String, uz: String, ru: String): String = when (lang) {
@@ -45,29 +48,74 @@ object L10n {
         return String.format(java.util.Locale.US, "%02d:%02d:%02d", hours, minutes, seconds)
     }
 
-    fun formatTime12h(millis: Long, timeZoneId: String, lang: AppLanguage): String {
+    /**
+     * Formats a prayer timestamp strictly honoring the phone's 12-hour or 24-hour clock format:
+     * - 24-hour system (`is24Hour = true`): `04:55`, `13:05`, `15:02`, `22:40` (or with `:ss` when [includeSeconds] is true).
+     * - 12-hour system (`is24Hour = false`): `4:55 ص`, `1:05 م`, `3:02 م`, `10:40 م` (or compact `1:05`, `5:20`, `6:41`).
+     */
+    fun formatPrayerTime(
+        millis: Long,
+        timeZoneId: String,
+        lang: AppLanguage,
+        is24Hour: Boolean,
+        includeSeconds: Boolean = false,
+        compact: Boolean = false
+    ): String {
         val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone(timeZoneId)).apply {
             timeInMillis = millis
         }
         val hour24 = cal.get(java.util.Calendar.HOUR_OF_DAY)
         val minute = cal.get(java.util.Calendar.MINUTE)
-        if (lang == AppLanguage.RUSSIAN) {
-            return String.format(java.util.Locale.US, "%02d:%02d", hour24, minute)
+        val second = cal.get(java.util.Calendar.SECOND)
+
+        if (is24Hour) {
+            return if (includeSeconds) {
+                String.format(java.util.Locale.US, "%02d:%02d:%02d", hour24, minute, second)
+            } else {
+                String.format(java.util.Locale.US, "%02d:%02d", hour24, minute)
+            }
         }
+
         val isPm = hour24 >= 12
         val hour12 = when {
             hour24 == 0 -> 12
             hour24 > 12 -> hour24 - 12
             else -> hour24
         }
+        val core = if (includeSeconds) {
+            String.format(java.util.Locale.US, "%d:%02d:%02d", hour12, minute, second)
+        } else {
+            String.format(java.util.Locale.US, "%d:%02d", hour12, minute)
+        }
+        if (compact) return core
+
         val period = when (lang) {
             AppLanguage.ARABIC -> if (isPm) "م" else "ص"
             AppLanguage.UZBEK -> if (isPm) "PM" else "AM"
             AppLanguage.ENGLISH -> if (isPm) "PM" else "AM"
-            AppLanguage.RUSSIAN -> ""
+            AppLanguage.RUSSIAN -> if (isPm) "PM" else "AM"
         }
-        return String.format(java.util.Locale.US, "%d:%02d %s", hour12, minute, period)
+        return "$core $period"
     }
+
+    fun formatSystemTime(
+        context: Context,
+        millis: Long,
+        timeZoneId: String,
+        lang: AppLanguage,
+        includeSeconds: Boolean = false,
+        compact: Boolean = false
+    ): String = formatPrayerTime(
+        millis = millis,
+        timeZoneId = timeZoneId,
+        lang = lang,
+        is24Hour = DateFormat.is24HourFormat(context),
+        includeSeconds = includeSeconds,
+        compact = compact
+    )
+
+    fun formatTime12h(millis: Long, timeZoneId: String, lang: AppLanguage): String =
+        formatPrayerTime(millis, timeZoneId, lang, is24Hour = false, includeSeconds = false, compact = false)
 
     private fun translateToUzbek(en: String): String {
         UZBEK_EXACT[en]?.let { return it }

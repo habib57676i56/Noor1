@@ -17,10 +17,8 @@ import com.example.data.local.prefs.UserPreferences
 import com.example.domain.model.AppLanguage
 import com.example.domain.model.PrayerName
 import com.example.domain.prayer.PrayerTimeCalculator
-import java.text.SimpleDateFormat
+import com.example.ui.i18n.L10n
 import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import java.util.TimeZone
 
 /**
@@ -64,7 +62,6 @@ object PrayerNotificationController {
         val now = System.currentTimeMillis()
         val tz = TimeZone.getTimeZone(prefs.timezoneId)
         val isAr = prefs.language == AppLanguage.ARABIC
-        val locale = if (isAr) Locale("ar") else Locale.ENGLISH
 
         val todayCal = Calendar.getInstance(tz).apply { timeInMillis = now }
         val tomorrowCal = (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 1) }
@@ -77,12 +74,11 @@ object PrayerNotificationController {
         )
         val nextInfo = PrayerTimeCalculator.computeNextPrayer(now, todaySchedule, tomorrowSchedule)
 
-        val timeFmt = SimpleDateFormat("hh:mm", locale).apply { timeZone = tz }
-        val fajrStr = timeFmt.format(Date(todaySchedule.fajrMillis))
-        val dhuhrStr = timeFmt.format(Date(todaySchedule.dhuhrMillis))
-        val asrStr = timeFmt.format(Date(todaySchedule.asrMillis))
-        val maghribStr = timeFmt.format(Date(todaySchedule.maghribMillis))
-        val ishaStr = timeFmt.format(Date(todaySchedule.ishaMillis))
+        val fajrStr = L10n.formatSystemTime(context, todaySchedule.fajrMillis, prefs.timezoneId, prefs.language, compact = true)
+        val dhuhrStr = L10n.formatSystemTime(context, todaySchedule.dhuhrMillis, prefs.timezoneId, prefs.language, compact = true)
+        val asrStr = L10n.formatSystemTime(context, todaySchedule.asrMillis, prefs.timezoneId, prefs.language, compact = true)
+        val maghribStr = L10n.formatSystemTime(context, todaySchedule.maghribMillis, prefs.timezoneId, prefs.language, compact = true)
+        val ishaStr = L10n.formatSystemTime(context, todaySchedule.ishaMillis, prefs.timezoneId, prefs.language, compact = true)
 
         val nextName = prayerLabel(nextInfo.nextPrayer, isAr)
         val cityLabel = if (isAr) prefs.cityNameAr else prefs.cityNameEn

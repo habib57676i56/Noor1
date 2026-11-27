@@ -55,6 +55,7 @@ import com.example.domain.model.AppLanguage
 import com.example.domain.model.NextPrayerInfo
 import com.example.domain.model.PrayerName
 import com.example.ui.i18n.L10n
+import com.example.ui.i18n.LocalIs24HourFormat
 import com.example.ui.theme.EmeraldDeep
 import com.example.ui.theme.EmeraldSoft
 import com.example.ui.theme.GoldBright
@@ -83,6 +84,7 @@ fun HeroPrayerGlassCard(
     onOpenTahajjudReminders: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val is24Hour = LocalIs24HourFormat.current
     val heroShape = RoundedCornerShape(30.dp)
 
     val infiniteTransition = rememberInfiniteTransition(label = "hero_emerald_shimmer")
@@ -311,18 +313,26 @@ fun HeroPrayerGlassCard(
                             )
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = L10n.formatTime12h(nextInfo.nextPrayerMillis, timezoneId, lang),
-                                style = MaterialTheme.typography.labelLarge,
+                                text = L10n.formatPrayerTime(
+                                    millis = nextInfo.nextPrayerMillis,
+                                    timeZoneId = timezoneId,
+                                    lang = lang,
+                                    is24Hour = is24Hour,
+                                    includeSeconds = true
+                                ),
+                                style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                         }
 
                         if (iqamahDelayMinutes > 0) {
-                            val iqTime = L10n.formatTime12h(
-                                nextInfo.nextPrayerMillis + iqamahDelayMinutes * 60_000L,
-                                timezoneId,
-                                lang
+                            val iqTime = L10n.formatPrayerTime(
+                                millis = nextInfo.nextPrayerMillis + iqamahDelayMinutes * 60_000L,
+                                timeZoneId = timezoneId,
+                                lang = lang,
+                                is24Hour = is24Hour,
+                                includeSeconds = false
                             )
                             Text(
                                 text = L10n.pick(

@@ -2,6 +2,7 @@ package com.example
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.format.DateFormat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -27,6 +28,7 @@ import com.example.shortcuts.NoorShortcutManager
 import com.example.ui.admin.AdminControlCenterScreen
 import com.example.ui.components.Noor3DLaunchSplashOverlay
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalIs24HourFormat
 import com.example.ui.navigation.NoorAppShell
 import com.example.ui.screens.ForceUpdateGateScreen
 import com.example.ui.screens.MaintenanceModeScreen
@@ -40,10 +42,12 @@ import com.example.viewmodel.NoorViewModel
 class MainActivity : ComponentActivity() {
 
     private var incomingShortcutRoute by mutableStateOf<String?>(null)
+    private var isSystem24HourFormat by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        isSystem24HourFormat = DateFormat.is24HourFormat(this)
         incomingShortcutRoute = intent?.getStringExtra(NoorShortcutManager.EXTRA_SHORTCUT_ROUTE)
         setContent {
             val viewModel: NoorViewModel = viewModel()
@@ -122,6 +126,7 @@ class MainActivity : ComponentActivity() {
 
             CompositionLocalProvider(
                 LocalAppLanguage provides prefs.language,
+                LocalIs24HourFormat provides isSystem24HourFormat,
                 LocalLayoutDirection provides layoutDirection
             ) {
                 NoorTheme(
@@ -185,6 +190,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isSystem24HourFormat = DateFormat.is24HourFormat(this)
     }
 
     override fun onNewIntent(intent: Intent) {

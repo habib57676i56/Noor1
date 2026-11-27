@@ -76,6 +76,7 @@ import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.prayerIcon
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalIs24HourFormat
 import com.example.ui.theme.LocalNoorColors
 import com.example.viewmodel.NoorViewModel
 
@@ -87,6 +88,7 @@ fun PrayerTimesScreen(
 ) {
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
+    val is24Hour = LocalIs24HourFormat.current
     val isAr = lang == AppLanguage.ARABIC
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val dashboard by viewModel.prayerDashboard.collectAsStateWithLifecycle()
@@ -444,14 +446,26 @@ fun PrayerTimesScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
-                                    text = L10n.formatTime12h(millis, prefs.timezoneId, lang),
-                                    style = MaterialTheme.typography.titleMedium,
+                                    text = L10n.formatPrayerTime(
+                                        millis = millis,
+                                        timeZoneId = prefs.timezoneId,
+                                        lang = lang,
+                                        is24Hour = is24Hour,
+                                        includeSeconds = true
+                                    ),
+                                    style = MaterialTheme.typography.titleMedium.copy(fontFeatureSettings = "tnum"),
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 val iqDelay = if (prefs.iqamahDelays.enabled && prayer.isFard) prefs.iqamahDelays.delayFor(prayer) else 0
                                 if (iqDelay > 0) {
-                                    val iqTime = L10n.formatTime12h(millis + iqDelay * 60_000L, prefs.timezoneId, lang)
+                                    val iqTime = L10n.formatPrayerTime(
+                                        millis = millis + iqDelay * 60_000L,
+                                        timeZoneId = prefs.timezoneId,
+                                        lang = lang,
+                                        is24Hour = is24Hour,
+                                        includeSeconds = false
+                                    )
                                     Text(
                                         text = L10n.pick(lang, "إقامة $iqTime", "Iqamah $iqTime", "Iqomat $iqTime"),
                                         style = MaterialTheme.typography.labelSmall,
@@ -573,6 +587,7 @@ private fun ScheduleCompactCard(
             fontWeight = FontWeight.Bold
         )
         Spacer(modifier = Modifier.height(8.dp))
+        val is24Hour = LocalIs24HourFormat.current
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -585,8 +600,15 @@ private fun ScheduleCompactCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = L10n.formatTime12h(schedule.timeFor(p), timeZoneId, lang).replace(" AM", "").replace(" PM", "").replace(" ص", "").replace(" م", ""),
-                        style = MaterialTheme.typography.labelMedium,
+                        text = L10n.formatPrayerTime(
+                            millis = schedule.timeFor(p),
+                            timeZoneId = timeZoneId,
+                            lang = lang,
+                            is24Hour = is24Hour,
+                            includeSeconds = false,
+                            compact = true
+                        ),
+                        style = MaterialTheme.typography.labelMedium.copy(fontFeatureSettings = "tnum"),
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface
                     )

@@ -36,25 +36,25 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("4.2.3", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v4.2.3", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.2.4", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.2.4", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v4.2.3 passes default v4.2.3 gate, while older v4.2.2 / v3.9.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.3", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.2", defaultConfig))
+        // New build v4.2.4 passes default v4.2.4 gate, while older v4.2.3 / v3.9.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.4", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.3", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "4.2.3", the newly updated v4.2.3 (or v4.3.0) APK opens automatically
-        // while older v4.2.2 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.3")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.2", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.3", forcedWithMin))
+        // with minSupportedVersion = "4.2.4", the newly updated v4.2.4 (or v4.3.0) APK opens automatically
+        // while older v4.2.3 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.4")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.3", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.4", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.3.0 blocks 4.2.3 until user updates to 4.3.0
+        // Raising minSupportedVersion to 4.3.0 blocks 4.2.4 until user updates to 4.3.0
         val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.3.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.3", raisedConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.4", raisedConfig))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
@@ -706,5 +706,62 @@ class NoorFinalUpgradeTest {
             madhhab = com.example.domain.model.AsrMadhhab.SHAFI
         )
         assertEquals(4L, (diyanet.asrMillis - mwl.asrMillis) / 60_000L)
+    }
+
+    @Test
+    fun vsop87MicroPrecisionAndSystem12h24hFormatting_matchExactAstronomicalSecondsAndClockModes() {
+        // 1. VSOP87 astronomical engine preserves exact sub-minute seconds & milliseconds (no whole-minute truncation!)
+        val damascus = com.example.domain.prayer.CityCatalog.findById("damascus")
+        val tz = java.util.TimeZone.getTimeZone("Asia/Damascus")
+        val schedule = com.example.domain.prayer.PrayerTimeCalculator.calculateForDate(
+            year = 2026,
+            month = 11,
+            day = 27,
+            latitude = damascus.latitude,
+            longitude = damascus.longitude,
+            timeZone = tz,
+            method = com.example.domain.model.CalculationMethod.EGYPT,
+            madhhab = com.example.domain.model.AsrMadhhab.SHAFI
+        )
+        // Verify at least one prayer carries real non-zero seconds/milliseconds rather than rounded :00.000
+        val hasSubMinutePrecision = schedule.allOrdered().any { (_, ms) -> (ms % 60_000L) != 0L }
+        assertTrue("Expected real astronomical seconds/milliseconds precision", hasSubMinutePrecision)
+
+        // Sub-second merger keeps official AlAdhan minute and adopts real astronomical seconds when within same minute
+        val officialBase = schedule.copy(
+            asrMillis = schedule.asrMillis - (schedule.asrMillis % 60_000L)
+        )
+        val merged = com.example.data.remote.AlAdhanPrayerApiService.mergeOfficialWithSubSecondPrecision(
+            official = officialBase,
+            astronomical = schedule
+        )
+        assertEquals(schedule.asrMillis, merged.asrMillis)
+
+        // 2. System 12-hour vs 24-hour clock formatting across afternoon & night hours (13:05, 15:02:18, 22:40)
+        fun calMs(h: Int, m: Int, s: Int): Long = java.util.Calendar.getInstance(tz).apply {
+            set(2026, java.util.Calendar.NOVEMBER, 27, h, m, s)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        val t1305 = calMs(13, 5, 0)
+        val t150218 = calMs(15, 2, 18)
+        val t1720 = calMs(17, 20, 0)
+        val t1841 = calMs(18, 41, 0)
+        val t2240 = calMs(22, 40, 9)
+
+        // 12-hour phone system -> 1:05, 3:02:18, 5:20, 6:41, 10:40
+        assertEquals("1:05 م", com.example.ui.i18n.L10n.formatPrayerTime(t1305, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = false))
+        assertEquals("1:05", com.example.ui.i18n.L10n.formatPrayerTime(t1305, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = false, compact = true))
+        assertEquals("5:20", com.example.ui.i18n.L10n.formatPrayerTime(t1720, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = false, compact = true))
+        assertEquals("6:41", com.example.ui.i18n.L10n.formatPrayerTime(t1841, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = false, compact = true))
+        assertEquals("3:02:18 م", com.example.ui.i18n.L10n.formatPrayerTime(t150218, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = false, includeSeconds = true))
+        assertEquals("3:02:18 PM", com.example.ui.i18n.L10n.formatPrayerTime(t150218, "Asia/Damascus", AppLanguage.ENGLISH, is24Hour = false, includeSeconds = true))
+
+        // 24-hour phone system -> 13:05, 15:02:18, 17:20, 18:41, 22:40:09
+        assertEquals("13:05", com.example.ui.i18n.L10n.formatPrayerTime(t1305, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = true))
+        assertEquals("15:02:18", com.example.ui.i18n.L10n.formatPrayerTime(t150218, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = true, includeSeconds = true))
+        assertEquals("17:20", com.example.ui.i18n.L10n.formatPrayerTime(t1720, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = true, compact = true))
+        assertEquals("18:41", com.example.ui.i18n.L10n.formatPrayerTime(t1841, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = true, compact = true))
+        assertEquals("22:40:09", com.example.ui.i18n.L10n.formatPrayerTime(t2240, "Asia/Damascus", AppLanguage.ENGLISH, is24Hour = true, includeSeconds = true))
     }
 }

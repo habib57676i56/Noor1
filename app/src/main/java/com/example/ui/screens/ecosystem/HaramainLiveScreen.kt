@@ -69,6 +69,7 @@ import com.example.ui.components.LiquidGlassChip
 import com.example.ui.components.NoorScreenHeader
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
+import com.example.ui.i18n.LocalIs24HourFormat
 import com.example.ui.theme.AmiriFontFamily
 import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.GoldBright
@@ -131,6 +132,7 @@ fun HaramainLiveScreen(
 ) {
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
+    val is24Hour = LocalIs24HourFormat.current
     val noorColors = LocalNoorColors.current
     val scope = rememberCoroutineScope()
 
@@ -143,12 +145,15 @@ fun HaramainLiveScreen(
     var makkahClock by remember { mutableStateOf("") }
     var webViewRef by remember { mutableStateOf<WebView?>(null) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(is24Hour, lang) {
         while (true) {
-            val sdf = SimpleDateFormat("hh:mm:ss a", Locale.US).apply {
-                timeZone = TimeZone.getTimeZone("Asia/Riyadh")
-            }
-            makkahClock = sdf.format(Date())
+            makkahClock = L10n.formatPrayerTime(
+                millis = System.currentTimeMillis(),
+                timeZoneId = "Asia/Riyadh",
+                lang = lang,
+                is24Hour = is24Hour,
+                includeSeconds = true
+            )
             delay(1000L)
         }
     }
