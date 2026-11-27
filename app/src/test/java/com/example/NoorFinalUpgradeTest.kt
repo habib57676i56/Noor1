@@ -36,25 +36,25 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("4.2.4", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v4.2.4", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.2.5", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.2.5", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v4.2.4 passes default v4.2.4 gate, while older v4.2.3 / v3.9.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.4", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.3", defaultConfig))
+        // New build v4.2.5 passes default v4.2.5 gate, while older v4.2.4 / v3.9.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.5", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.4", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "4.2.4", the newly updated v4.2.4 (or v4.3.0) APK opens automatically
-        // while older v4.2.3 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.4")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.3", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.4", forcedWithMin))
+        // with minSupportedVersion = "4.2.5", the newly updated v4.2.5 (or v4.3.0) APK opens automatically
+        // while older v4.2.4 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.5")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.4", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.5", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.3.0 blocks 4.2.4 until user updates to 4.3.0
+        // Raising minSupportedVersion to 4.3.0 blocks 4.2.5 until user updates to 4.3.0
         val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.3.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.4", raisedConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.5", raisedConfig))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
@@ -763,5 +763,25 @@ class NoorFinalUpgradeTest {
         assertEquals("17:20", com.example.ui.i18n.L10n.formatPrayerTime(t1720, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = true, compact = true))
         assertEquals("18:41", com.example.ui.i18n.L10n.formatPrayerTime(t1841, "Asia/Damascus", AppLanguage.ARABIC, is24Hour = true, compact = true))
         assertEquals("22:40:09", com.example.ui.i18n.L10n.formatPrayerTime(t2240, "Asia/Damascus", AppLanguage.ENGLISH, is24Hour = true, includeSeconds = true))
+    }
+
+    @Test
+    fun appApkShareHelper_buildsCleanApkFilenameMimeTypeAndOfficialTelegramCaption() {
+        assertEquals("application/vnd.android.package-archive", com.example.util.AppApkShareHelper.APK_MIME_TYPE)
+        assertEquals(
+            "com.aistudio.noorislamic.slcwho.fileprovider",
+            com.example.util.AppApkShareHelper.fileProviderAuthority("com.aistudio.noorislamic.slcwho")
+        )
+        assertEquals("NOOR_v4.2.5.apk", com.example.util.AppApkShareHelper.buildApkFileName("v4.2.5"))
+        assertEquals("NOOR_v4.2.5.apk", com.example.util.AppApkShareHelper.buildApkFileName("4.2.5"))
+        assertTrue(com.example.util.AppApkShareHelper.buildApkFileName("  ").endsWith(".apk"))
+
+        // All 4 supported languages include the official Telegram channel URL and APK instructions
+        for (lang in AppLanguage.entries) {
+            val caption = com.example.util.AppApkShareHelper.buildShareCaption(lang, "v4.2.5", "")
+            assertTrue("Caption for $lang must include official Telegram URL", caption.contains("https://t.me/Noor_ui"))
+            assertTrue("Caption for $lang must mention APK", caption.contains("APK"))
+            assertTrue("Caption for $lang must include version tag", caption.contains("v4.2.5"))
+        }
     }
 }

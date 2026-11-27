@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.Backup
 import androidx.compose.material.icons.rounded.Campaign
@@ -34,6 +35,7 @@ import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Security
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.SupportAgent
 import androidx.compose.material.icons.rounded.Verified
 import androidx.compose.material.icons.rounded.VerifiedUser
@@ -41,6 +43,7 @@ import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,9 +78,12 @@ import com.example.ui.components.NoorScreenHeader
 import com.example.ui.components.NoorSectionHeader
 import com.example.ui.components.NoorUserAvatar
 import com.example.ui.components.SpiritualRemindersStudioSection
+import com.example.data.cloud.AppVersionGate
+import com.example.data.cloud.NoorPlatformConstants
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
 import com.example.ui.theme.LocalNoorColors
+import com.example.util.AppApkShareHelper
 import com.example.viewmodel.NoorViewModel
 import kotlinx.coroutines.launch
 
@@ -102,10 +108,12 @@ fun SettingsScreen(
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val currentUserProfile by viewModel.currentUserProfile.collectAsStateWithLifecycle()
     val resolvedRole by viewModel.resolvedAdminRole.collectAsStateWithLifecycle()
+    val globalConfig by viewModel.globalAppConfig.collectAsStateWithLifecycle()
     val noorColors = LocalNoorColors.current
 
     var showResetConfirm by remember { mutableStateOf(false) }
     var showEditProfileNameDialog by remember { mutableStateOf(false) }
+    var isPreparingApkShare by remember { mutableStateOf(false) }
 
     // Zero-permission Android Photo Picker for custom profile avatar
     val pickAvatarLauncher = rememberLauncherForActivityResult(
@@ -910,6 +918,137 @@ fun SettingsScreen(
                     Icon(Icons.Rounded.DeleteForever, null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(L10n.pick(lang, "إعادة ضبط التطبيق", "Reset Application"))
+                }
+            }
+        }
+
+        // 6. Share App as APK + Official Telegram Channel (very last item in Settings)
+        item {
+            val officialTelegramUrl = remember(globalConfig.updateChannelUrl) {
+                AppVersionGate.resolveSafeUpdateUrl(globalConfig.updateChannelUrl)
+            }
+            LiquidGlassCard(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp)
+                    .testTag("settings_share_app_card")
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Rounded.Share,
+                        contentDescription = null,
+                        tint = noorColors.goldAccent
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = L10n.pick(
+                            lang,
+                            "مشاركة التطبيق",
+                            "Share App",
+                            "Ilovani ulashish",
+                            "Поделиться приложением"
+                        ),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "أرسل تطبيق نور مباشرةً بصيغة ملف APK قابل للتثبيت مع رابط قناة التليجرام الرسمية للتحديثات.",
+                        "Send NOOR directly as an installable APK file along with our official Telegram updates channel.",
+                        "NOOR ilovasini o'rnatiladigan APK fayl sifatida rasmiy Telegram kanal havolasi bilan ulashing.",
+                        "Отправьте NOOR напрямую в виде APK-файла вместе со ссылкой на официальный Telegram-канал."
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.Send,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = officialTelegramUrl,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Spacer(modifier = Modifier.height(14.dp))
+                Button(
+                    onClick = {
+                        if (!isPreparingApkShare) {
+                            isPreparingApkShare = true
+                            scope.launch {
+                                val result = AppApkShareHelper.prepareAndShareApk(
+                                    context = context,
+                                    lang = lang,
+                                    versionTag = NoorPlatformConstants.APP_VERSION_TAG,
+                                    rawTelegramUrl = officialTelegramUrl
+                                )
+                                isPreparingApkShare = false
+                                result.onFailure {
+                                    viewModel.showBannerMessage(
+                                        L10n.pick(
+                                            lang,
+                                            "تعذّر تجهيز ملف APK للمشاركة. حاول مرة أخرى.",
+                                            "Unable to prepare the APK file for sharing. Please try again.",
+                                            "APK faylini ulashish uchun tayyorlab bo'lmadi. Qayta urinib ko'ring.",
+                                            "Не удалось подготовить APK для отправки. Попробуйте ещё раз."
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    enabled = !isPreparingApkShare,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp)
+                        .testTag("settings_share_app_apk_button"),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    if (isPreparingApkShare) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "جاري تجهيز ملف APK...",
+                                "Preparing APK...",
+                                "APK tayyorlanmoqda...",
+                                "Подготовка APK..."
+                            )
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Rounded.Share,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = L10n.pick(
+                                lang,
+                                "مشاركة التطبيق (APK)",
+                                "Share App (APK)",
+                                "Ilovani ulashish (APK)",
+                                "Поделиться (APK)"
+                            ),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
         }

@@ -16,8 +16,8 @@ android {
     applicationId = "com.aistudio.noorislamic.slcwho"
     minSdk = 24
     targetSdk = 36
-    versionCode = 47
-    versionName = "4.2.4"
+    versionCode = 48
+    versionName = "4.2.5"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
