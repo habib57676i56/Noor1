@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -172,6 +173,8 @@ fun MadinahMushafReaderView(
     isAudioPlaying: Boolean,
     isNightTheme: Boolean,
     isFullScreen: Boolean = false,
+    isToolbarCollapsed: Boolean = false,
+    jumpToPageRequest: Pair<Int, Int>? = null,
     onToggleFullScreen: () -> Unit = {},
     highlightStyle: MushafHighlightStyle,
     bookmarkedKeys: Set<Pair<Int, Int>>,
@@ -305,6 +308,28 @@ fun MadinahMushafReaderView(
         }
     }
 
+    // Imperative Jump-to-Page (e.g., tapping the top "Last Read Page" shortcut icon!)
+    LaunchedEffect(jumpToPageRequest) {
+        val req = jumpToPageRequest ?: return@LaunchedEffect
+        val targetIndex = (req.second.coerceIn(1, MadinahMushafPageCatalog.TOTAL_PAGES) - 1)
+        zoomScale = 1f
+        zoomOffset = Offset.Zero
+        selectedAyah = null
+        showContextualMenu = false
+        if (pagerState.currentPage != targetIndex) {
+            runCatching { pagerState.animateScrollToPage(targetIndex) }
+        }
+    }
+
+    // Whenever live recitation starts or moves from one Ayah to the next, clear any static
+    // selection marker immediately so ONLY the moving recitation highlight tracks the active Ayah!
+    LaunchedEffect(activeRecitedAyah) {
+        if (activeRecitedAyah != null) {
+            selectedAyah = null
+            showContextualMenu = false
+        }
+    }
+
     val currentPageNumber = pagerState.currentPage + 1
     val currentMeta = remember(currentPageNumber) { MadinahMushafPageCatalog.pageMeta(currentPageNumber) }
 
@@ -354,6 +379,7 @@ fun MadinahMushafReaderView(
         cm?.setPrimaryClip(ClipData.newPlainText("Quran Ayah", text))
         onStatusBanner(L10n.pick(lang, "تم نسخ الآية بنجاح", "Ayah copied to clipboard"))
         showContextualMenu = false
+        selectedAyah = null
     }
 
     fun shareAyahIntent(ayah: AyahPageRegion) {
@@ -372,6 +398,7 @@ fun MadinahMushafReaderView(
             context.startActivity(Intent.createChooser(intent, L10n.pick(lang, "مشاركة الآية", "Share Ayah")))
         }
         showContextualMenu = false
+        selectedAyah = null
     }
 
     val fullScreenPaperBg = if (nightInvertEnabled) MushafNightPaper else MushafPaperBg
@@ -390,43 +417,31 @@ fun MadinahMushafReaderView(
             .testTag("madinah_mushaf_image_reader"),
         verticalArrangement = Arrangement.spacedBy(if (isFullScreen) 0.dp else 8.dp)
     ) {
-        // Top Mushaf Toolbar — hidden cleanly in Full-Screen Mushaf Mode
-        if (!isFullScreen) {
+        // Compact Collapsible Mushaf Tools Strip — hides smoothly when header is folded or Full-Screen
+        AnimatedVisibility(visible = !isFullScreen && !isToolbarCollapsed) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(if (nightInvertEnabled) Color(0xFF0E211A) else Color(0xFFF3EAD5))
-                    .border(1.dp, MushafBorderGold.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                    .border(1.dp, MushafBorderGold.copy(alpha = 0.45f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = L10n.pick(
-                            lang,
-                            "سورة ${currentMeta.primarySurahNameAr} · الجزء ${currentMeta.juzNumber} · ص $currentPageNumber",
-                            "${currentMeta.primarySurahNameEn} · Juz ${currentMeta.juzNumber} · p.$currentPageNumber"
-                        ),
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = if (nightInvertEnabled) GoldBright else EmeraldDeep,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = L10n.pick(
-                            lang,
-                            "اضغط على آية للخيارات · اضغط مساحة فارغة لملء الشاشة",
-                            "Tap an Ayah for actions · Tap empty space for full screen"
-                        ),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (nightInvertEnabled) Color(0xFFB5CEC4) else Color(0xFF5D5242),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "الجزء ${currentMeta.juzNumber} · ص $currentPageNumber",
+                        "Juz ${currentMeta.juzNumber} · p.$currentPageNumber"
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (nightInvertEnabled) GoldBright else EmeraldDeep,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
@@ -547,6 +562,7 @@ fun MadinahMushafReaderView(
                 nightMode = nightInvertEnabled,
                 onReadFromHere = {
                     showContextualMenu = false
+                    selectedAyah = null
                     onReadFromAyah(activeSelected.surahNumber, activeSelected.ayahNumber)
                 },
                 onOpenTafsir = { openLinguisticSheet(activeSelected, LinguisticSheetTab.TAFSIR) },
@@ -554,10 +570,12 @@ fun MadinahMushafReaderView(
                 onOpenSarf = { openLinguisticSheet(activeSelected, LinguisticSheetTab.SARF) },
                 onPlaySingleAyah = {
                     showContextualMenu = false
+                    selectedAyah = null
                     onPlaySingleAyah(activeSelected.surahNumber, activeSelected.ayahNumber, activeSelected.pageNumber)
                 },
                 onRepeatRange = {
                     showContextualMenu = false
+                    selectedAyah = null
                     repeatRangeTarget = activeSelected.surahNumber to activeSelected.ayahNumber
                 },
                 onCopyAyah = { copyAyahToClipboard(activeSelected) },
@@ -571,10 +589,12 @@ fun MadinahMushafReaderView(
                 },
                 onAddToMemorization = {
                     showContextualMenu = false
+                    selectedAyah = null
                     onAddToMemorization(activeSelected.surahNumber, activeSelected.ayahNumber)
                 },
                 onOpenInMemorization = {
                     showContextualMenu = false
+                    selectedAyah = null
                     onOpenInMemorization(activeSelected.surahNumber, activeSelected.ayahNumber)
                 },
                 onDismiss = {
@@ -680,6 +700,7 @@ fun MadinahMushafReaderView(
                 nightMode = nightInvertEnabled,
                 onReadFromHere = {
                     showContextualMenu = false
+                    selectedAyah = null
                     onReadFromAyah(activeSelected.surahNumber, activeSelected.ayahNumber)
                 },
                 onOpenTafsir = { openLinguisticSheet(activeSelected, LinguisticSheetTab.TAFSIR) },
@@ -687,10 +708,12 @@ fun MadinahMushafReaderView(
                 onOpenSarf = { openLinguisticSheet(activeSelected, LinguisticSheetTab.SARF) },
                 onPlaySingleAyah = {
                     showContextualMenu = false
+                    selectedAyah = null
                     onPlaySingleAyah(activeSelected.surahNumber, activeSelected.ayahNumber, activeSelected.pageNumber)
                 },
                 onRepeatRange = {
                     showContextualMenu = false
+                    selectedAyah = null
                     repeatRangeTarget = activeSelected.surahNumber to activeSelected.ayahNumber
                 },
                 onCopyAyah = { copyAyahToClipboard(activeSelected) },
@@ -704,10 +727,12 @@ fun MadinahMushafReaderView(
                 },
                 onAddToMemorization = {
                     showContextualMenu = false
+                    selectedAyah = null
                     onAddToMemorization(activeSelected.surahNumber, activeSelected.ayahNumber)
                 },
                 onOpenInMemorization = {
                     showContextualMenu = false
+                    selectedAyah = null
                     onOpenInMemorization(activeSelected.surahNumber, activeSelected.ayahNumber)
                 },
                 onDismiss = {
@@ -719,43 +744,45 @@ fun MadinahMushafReaderView(
 
         // Bottom Page Turn Controls + Active Synced Verse Strip — hidden cleanly in Full-Screen Mode
         if (!isFullScreen) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        if (pagerState.currentPage > 0) {
-                            scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
-                        }
-                    },
-                    enabled = pagerState.currentPage > 0,
-                    modifier = Modifier.testTag("mushaf_prev_page_btn")
+            AnimatedVisibility(visible = !isToolbarCollapsed) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, contentDescription = "Previous page")
-                    Text(L10n.pick(lang, "السابقة", "Prev"))
-                }
+                    OutlinedButton(
+                        onClick = {
+                            if (pagerState.currentPage > 0) {
+                                scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+                            }
+                        },
+                        enabled = pagerState.currentPage > 0,
+                        modifier = Modifier.testTag("mushaf_prev_page_btn")
+                    ) {
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowLeft, contentDescription = "Previous page")
+                        Text(L10n.pick(lang, "السابقة", "Prev"))
+                    }
 
-                TextButton(onClick = { showJumpDialog = true }) {
-                    Text(
-                        text = L10n.pick(lang, "صفحة $currentPageNumber / ٦٠٤", "Page $currentPageNumber / 604"),
-                        fontWeight = FontWeight.Bold,
-                        color = noorColors.goldAccent
-                    )
-                }
+                    TextButton(onClick = { showJumpDialog = true }) {
+                        Text(
+                            text = L10n.pick(lang, "صفحة $currentPageNumber / ٦٠٤", "Page $currentPageNumber / 604"),
+                            fontWeight = FontWeight.Bold,
+                            color = noorColors.goldAccent
+                        )
+                    }
 
-                OutlinedButton(
-                    onClick = {
-                        if (pagerState.currentPage < MadinahMushafPageCatalog.TOTAL_PAGES - 1) {
-                            scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                        }
-                    },
-                    enabled = pagerState.currentPage < MadinahMushafPageCatalog.TOTAL_PAGES - 1,
-                    modifier = Modifier.testTag("mushaf_next_page_btn")
-                ) {
-                    Text(L10n.pick(lang, "التالية", "Next"))
-                    Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = "Next page")
+                    OutlinedButton(
+                        onClick = {
+                            if (pagerState.currentPage < MadinahMushafPageCatalog.TOTAL_PAGES - 1) {
+                                scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                            }
+                        },
+                        enabled = pagerState.currentPage < MadinahMushafPageCatalog.TOTAL_PAGES - 1,
+                        modifier = Modifier.testTag("mushaf_next_page_btn")
+                    ) {
+                        Text(L10n.pick(lang, "التالية", "Next"))
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = "Next page")
+                    }
                 }
             }
 

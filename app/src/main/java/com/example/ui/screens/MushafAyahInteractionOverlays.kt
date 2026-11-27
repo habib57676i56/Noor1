@@ -449,7 +449,7 @@ fun MushafAyahContextualMenu(
                         Icon(Icons.Rounded.PlayCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text(
-                            text = L10n.pick(lang, "اقرأ من هنا", "Read Here"),
+                            text = L10n.pick(lang, "بدء القراءة", "Start Reading"),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
@@ -505,6 +505,30 @@ fun MushafAyahContextualMenu(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ContextualMiniActionChip(
+                        icon = Icons.Rounded.ContentCopy,
+                        label = L10n.pick(lang, "نسخ", "Copy"),
+                        ink = ink,
+                        nightMode = nightMode,
+                        testTag = "mushaf_menu_copy",
+                        onClick = onCopyAyah
+                    )
+                    ContextualMiniActionChip(
+                        icon = Icons.Rounded.Share,
+                        label = L10n.pick(lang, "مشاركة", "Share"),
+                        ink = ink,
+                        nightMode = nightMode,
+                        testTag = "mushaf_menu_share",
+                        onClick = onShareAyah
+                    )
+                    ContextualMiniActionChip(
+                        icon = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
+                        label = if (isBookmarked) L10n.pick(lang, "محفوظة", "Saved") else L10n.pick(lang, "مفضلة", "Favorite"),
+                        ink = if (isBookmarked) GoldPrimary else ink,
+                        nightMode = nightMode,
+                        testTag = "mushaf_menu_bookmark",
+                        onClick = onToggleBookmark
+                    )
+                    ContextualMiniActionChip(
                         icon = Icons.Rounded.AutoStories,
                         label = L10n.pick(lang, "التفسير", "Tafsir"),
                         ink = ink,
@@ -537,36 +561,12 @@ fun MushafAyahContextualMenu(
                         onClick = onRepeatRange
                     )
                     ContextualMiniActionChip(
-                        icon = if (isBookmarked) Icons.Rounded.Bookmark else Icons.Rounded.BookmarkBorder,
-                        label = if (isBookmarked) L10n.pick(lang, "محفوظة", "Saved") else L10n.pick(lang, "مفضلة", "Favorite"),
-                        ink = if (isBookmarked) GoldPrimary else ink,
-                        nightMode = nightMode,
-                        testTag = "mushaf_menu_bookmark",
-                        onClick = onToggleBookmark
-                    )
-                    ContextualMiniActionChip(
                         icon = Icons.Rounded.PlaylistAdd,
                         label = L10n.pick(lang, "خطة حفظ", "Add Hifz"),
                         ink = ink,
                         nightMode = nightMode,
                         testTag = "mushaf_menu_add_hifz",
                         onClick = onAddToMemorization
-                    )
-                    ContextualMiniActionChip(
-                        icon = Icons.Rounded.ContentCopy,
-                        label = L10n.pick(lang, "نسخ", "Copy"),
-                        ink = ink,
-                        nightMode = nightMode,
-                        testTag = "mushaf_menu_copy",
-                        onClick = onCopyAyah
-                    )
-                    ContextualMiniActionChip(
-                        icon = Icons.Rounded.Share,
-                        label = L10n.pick(lang, "مشاركة", "Share"),
-                        ink = ink,
-                        nightMode = nightMode,
-                        testTag = "mushaf_menu_share",
-                        onClick = onShareAyah
                     )
                 }
 

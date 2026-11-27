@@ -1261,8 +1261,8 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         _verseSearchResults.value = repo.searchVersesOffline(query)
     }
 
-    fun saveLastRead(surahNumber: Int, ayahNumber: Int) = viewModelScope.launch {
-        repo.recordQuranReadingProgress(surahNumber, ayahNumber, versesDelta = 1)
+    fun saveLastRead(surahNumber: Int, ayahNumber: Int, pageNumber: Int? = null) = viewModelScope.launch {
+        repo.recordQuranReadingProgress(surahNumber, ayahNumber, pageNumber = pageNumber, versesDelta = 1)
         cloudRepo.incrementDailyAnalytics(quranVersesDelta = 1L, section = "quran")
     }
 
@@ -1574,7 +1574,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                     repeatRangeEndAyah = if (repeatRange && clampedEndAyah != null) clampedEndAyah else null,
                     repeatRangeLabel = rangeLabel,
                     initialSpeed = preferences.value.audioPlaybackSpeed,
-                    onAyahChanged = { s, a, _ -> saveLastRead(s, a) },
+                    onAyahChanged = { s, a, page -> saveLastRead(s, a, page) },
                     onSurahCompleted = null
                 )
                 return@launch
@@ -1624,7 +1624,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                     repeatRangeEndAyah = if (repeatRange && clampedEndAyah != null) clampedEndAyah else null,
                     repeatRangeLabel = rangeLabel,
                     initialSpeed = preferences.value.audioPlaybackSpeed,
-                    onAyahChanged = { s, a, _ -> saveLastRead(s, a) },
+                    onAyahChanged = { s, a, page -> saveLastRead(s, a, page) },
                     onSurahCompleted = if (!repeatRange && surahNumber < 114) {
                         { playFromMushafAyah(surahNumber + 1, 1, explicitReciter = reciter) }
                     } else {

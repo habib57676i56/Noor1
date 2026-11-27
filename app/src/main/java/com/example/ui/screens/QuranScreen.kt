@@ -73,7 +73,8 @@ import com.example.viewmodel.NoorViewModel
 fun QuranScreen(
     viewModel: NoorViewModel,
     onOpenSurah: (Int) -> Unit,
-    onOpenAudioLibrary: () -> Unit = {}
+    onOpenAudioLibrary: () -> Unit = {},
+    onBack: (() -> Unit)? = null
 ) {
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
@@ -109,8 +110,9 @@ fun QuranScreen(
             .testTag("quran_screen")
     ) {
         NoorScreenHeader(
-            title = L10n.pick(lang, "القرآن الكريم", "The Holy Quran"),
-            subtitle = L10n.pick(lang, "١١٤ سورة · ٣٠ جزءاً · ٦٠٤ صفحة مع التفسير والتلاوة", "114 Surahs · 30 Juz · 604 Mushaf Pages & Tafsir"),
+            title = L10n.pick(lang, "فهرس القرآن الكريم", "Quran Index"),
+            subtitle = L10n.pick(lang, "١١٤ سورة · ٣٠ جزءاً · ٦٠٤ صفحة مع البحث والعلامات", "114 Surahs · 30 Juz · 604 Pages & Bookmarks"),
+            onBack = onBack,
             trailing = {
                 IconButton(
                     onClick = onOpenAudioLibrary,
@@ -163,14 +165,18 @@ fun QuranScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
+                            val savedPage = prefs.lastReadPage.coerceIn(1, 604)
+                            val savedPageMeta = remember(savedPage) {
+                                com.example.data.local.catalog.MadinahMushafPageCatalog.pageMeta(savedPage)
+                            }
                             Text(
                                 text = L10n.pick(
                                     lang,
-                                    "الجزء ${lastReadSurah.startJuz} · صفحة ${lastReadSurah.startPage}",
-                                    "Juz ${lastReadSurah.startJuz} · Page ${lastReadSurah.startPage}"
+                                    "الجزء ${savedPageMeta.juzNumber} · آخر صفحة قرأتها: ص $savedPage",
+                                    "Juz ${savedPageMeta.juzNumber} · Last Read Page: p.$savedPage"
                                 ),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.78f)
+                                color = Color.White.copy(alpha = 0.84f)
                             )
                         }
                         Icon(

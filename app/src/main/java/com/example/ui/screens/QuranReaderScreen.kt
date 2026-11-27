@@ -9,6 +9,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,9 +31,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.AutoStories
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.BookmarkBorder
+import androidx.compose.material.icons.rounded.FormatListBulleted
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.Pause
@@ -63,6 +69,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -135,7 +142,10 @@ fun QuranReaderScreen(
     onNavigateToSurah: (Int) -> Unit = {},
     onOpenInMemorization: (surahNumber: Int, ayahNumber: Int) -> Unit = { _, _ -> },
     ecosystemViewModel: EcosystemViewModel? = null,
-    onFullScreenChanged: (Boolean) -> Unit = {}
+    onFullScreenChanged: (Boolean) -> Unit = {},
+    openAtLastReadPage: Boolean = false,
+    showBackButton: Boolean = true,
+    onOpenSurahIndex: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
@@ -161,6 +171,21 @@ fun QuranReaderScreen(
     var useMushafPageImages by rememberSaveable { mutableStateOf(true) }
     val effectiveMushafImageMode = useMushafPageImages && globalConfig.featureMushafImagesEnabled
     val revealedInMemorize = remember { mutableStateMapOf<Int, Boolean>() }
+
+    // Collapsible Top Controls Bar + Imperative "Last Read Page" Jump Request
+    var isTopControlsCollapsed by rememberSaveable { mutableStateOf(false) }
+    var showMoreReaderOptions by rememberSaveable { mutableStateOf(false) }
+    var activeMushafPage by remember(surahNumber, openAtLastReadPage) {
+        mutableIntStateOf(
+            if (openAtLastReadPage || prefs.lastReadSurah == surahNumber) {
+                prefs.lastReadPage.coerceIn(1, 604)
+            } else {
+                surahMeta.startPage
+            }
+        )
+    }
+    var jumpToPageNonce by remember { mutableIntStateOf(0) }
+    var jumpToPageRequest by remember { mutableStateOf<Pair<Int, Int>?>(null) }
 
     // Clean Full-Screen Mushaf Mode (toggled by single-tapping an empty Mushaf area)
     var isMushafFullScreen by rememberSaveable { mutableStateOf(false) }
@@ -215,11 +240,16 @@ fun QuranReaderScreen(
         viewModel.loadSurah(surahNumber)
     }
 
-    // Preserve reading position on exit ONLY when restored or navigated by user (never clobber with 1)
+    // Preserve reading position on exit ONLY when user interacted (never overwrite saved lastReadPage with unrelated page)
     DisposableEffect(surahNumber) {
         onDispose {
-            if ((restoredInitialPositionForSurah || userHasInteractedWithSurah) && lastVisibleAyah > 0) {
-                viewModel.saveLastRead(surahNumber, lastVisibleAyah)
+            if (userHasInteractedWithSurah && lastVisibleAyah > 0) {
+                val pageToSave = if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode) {
+                    activeMushafPage
+                } else {
+                    null
+                }
+                viewModel.saveLastRead(surahNumber, lastVisibleAyah, pageNumber = pageToSave)
             }
         }
     }
@@ -231,7 +261,7 @@ fun QuranReaderScreen(
     }
 
     // Sync Surah verses into the on-device QuranVerseTrackerEngine & restore last-read position
-    val headerItemsOffset = if (surahNumber != 1 && surahNumber != 9) 2 else 1
+    val headerItemsOffset = if (surahNumber != 1 && surahNumber != 9) 1 else 0
 
     LaunchedEffect(readerState, surahNumber) {
         val st = readerState
@@ -418,29 +448,502 @@ fun QuranReaderScreen(
             .testTag("quran_reader_screen")
     ) {
         if (!isFullScreenActive) {
-            NoorScreenHeader(
-                title = L10n.pick(lang, "سورة ${surahMeta.nameAr}", surahMeta.nameEn),
-                subtitle = L10n.pick(
+            val activePageMeta = remember(activeMushafPage) {
+                com.example.data.local.catalog.MadinahMushafPageCatalog.pageMeta(activeMushafPage)
+            }
+            val savedLastReadPage = prefs.lastReadPage.coerceIn(1, 604)
+            val isMushafImgView = prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode
+            val headerTitle = if (isMushafImgView) {
+                L10n.pick(
                     lang,
-                    "${if (surahMeta.isMeccan) "مكية" else "مدنية"} · ${surahMeta.verseCount} آية · الجزء ${surahMeta.startJuz} · ص ${surahMeta.startPage}",
-                    "${surahMeta.meaningEn} · ${surahMeta.verseCount} Ayahs · Juz ${surahMeta.startJuz} · p.${surahMeta.startPage}"
-                ),
-                onBack = {
-                    viewModel.saveLastRead(surahNumber, lastVisibleAyah)
-                    viewModel.stopLiveRecitationTracking()
-                    onBack()
-                },
-                trailing = {
-                    Row {
-                        IconButton(onClick = { viewModel.setQuranFontSize(prefs.quranFontSizeSp - 2) }) {
-                            Icon(Icons.Rounded.TextDecrease, contentDescription = "Smaller text", tint = noorColors.goldAccent)
+                    "سورة ${activePageMeta.primarySurahNameAr} · ص $activeMushafPage",
+                    "${activePageMeta.primarySurahNameEn} · p.$activeMushafPage"
+                )
+            } else {
+                L10n.pick(lang, "سورة ${surahMeta.nameAr}", surahMeta.nameEn)
+            }
+
+            // Ultra-Compact Always-Accessible Top Strip (Title + Last-Read Page Icon + Index + Collapse Toggle)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(noorColors.glassSurfaceStrong.copy(alpha = 0.94f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (showBackButton) {
+                        IconButton(
+                            onClick = {
+                                if (userHasInteractedWithSurah) {
+                                    viewModel.saveLastRead(
+                                        surahNumber,
+                                        lastVisibleAyah,
+                                        pageNumber = if (isMushafImgView) activeMushafPage else null
+                                    )
+                                }
+                                viewModel.stopLiveRecitationTracking()
+                                onBack()
+                            },
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("quran_reader_back_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = L10n.pick(lang, "رجوع", "Back"),
+                                tint = noorColors.goldAccent
+                            )
                         }
-                        IconButton(onClick = { viewModel.setQuranFontSize(prefs.quranFontSizeSp + 2) }) {
-                            Icon(Icons.Rounded.TextIncrease, contentDescription = "Larger text", tint = noorColors.goldAccent)
+                    }
+
+                    if (onOpenSurahIndex != null) {
+                        IconButton(
+                            onClick = onOpenSurahIndex,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("quran_open_index_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.FormatListBulleted,
+                                contentDescription = L10n.pick(lang, "فهرس السور والصفحات", "Surah & Page Index"),
+                                tint = noorColors.goldAccent
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = headerTitle,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = primaryInk,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp)
+                    )
+
+                    // Top "Last Read Page" Shortcut Icon Pill — 1 tap opens your exact last-read page!
+                    Surface(
+                        onClick = {
+                            val targetPage = prefs.lastReadPage.coerceIn(1, 604)
+                            useMushafPageImages = true
+                            val alreadyOnTarget = prefs.quranDisplayMode == QuranDisplayMode.MUSHAF &&
+                                activeMushafPage == targetPage
+                            if (prefs.quranDisplayMode != QuranDisplayMode.MUSHAF) {
+                                viewModel.setQuranDisplayMode(QuranDisplayMode.MUSHAF)
+                            }
+                            if (alreadyOnTarget) {
+                                viewModel.showBannerMessage(
+                                    L10n.pick(
+                                        lang,
+                                        "أنت الآن في آخر صفحة قرأتها (صفحة $targetPage)",
+                                        "Already on your last read page (p.$targetPage)"
+                                    )
+                                )
+                            } else {
+                                jumpToPageNonce++
+                                jumpToPageRequest = jumpToPageNonce to targetPage
+                                activeMushafPage = targetPage
+                                viewModel.showBannerMessage(
+                                    L10n.pick(
+                                        lang,
+                                        "آخر صفحة قرأتها: صفحة $targetPage",
+                                        "Opened last read page: p.$targetPage"
+                                    )
+                                )
+                            }
+                        },
+                        shape = RoundedCornerShape(14.dp),
+                        color = EmeraldDeep.copy(alpha = 0.88f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GoldPrimary.copy(alpha = 0.72f)),
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .testTag("quran_last_read_page_btn")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoStories,
+                                contentDescription = L10n.pick(lang, "آخر صفحة قرأتها", "Last read page"),
+                                tint = GoldBright,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = L10n.pick(lang, "ص $savedLastReadPage", "p.$savedLastReadPage"),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    // Collapsible Top Bar Chevron Toggle ("طي / إظهار")
+                    IconButton(
+                        onClick = { isTopControlsCollapsed = !isTopControlsCollapsed },
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("quran_header_collapse_btn")
+                    ) {
+                        Icon(
+                            imageVector = if (isTopControlsCollapsed) {
+                                Icons.Rounded.KeyboardArrowDown
+                            } else {
+                                Icons.Rounded.KeyboardArrowUp
+                            },
+                            contentDescription = if (isTopControlsCollapsed) {
+                                L10n.pick(lang, "إظهار شريط التحكم", "Expand top controls")
+                            } else {
+                                L10n.pick(lang, "طي شريط التحكم", "Collapse top controls")
+                            },
+                            tint = noorColors.goldAccent
+                        )
+                    }
+                }
+
+                // Compact Collapsible Controls Deck: ONLY 3 clean mode tabs + slim action strip
+                AnimatedVisibility(visible = !isTopControlsCollapsed) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Row 1: ONLY the 3 Clean Mode Tabs (Madinah Mushaf Images | Tafsir | Memorization)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("quran_mode_tabs_row"),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val modes = listOf(
+                                Triple(
+                                    QuranDisplayMode.MUSHAF,
+                                    L10n.pick(lang, "مصحف المدينة", "Mushaf"),
+                                    "quran_mode_mushaf"
+                                ),
+                                Triple(
+                                    QuranDisplayMode.STUDY,
+                                    L10n.pick(lang, "التفسير", "Tafsir"),
+                                    "quran_mode_tafsir"
+                                ),
+                                Triple(
+                                    QuranDisplayMode.MEMORIZE,
+                                    L10n.pick(lang, "التحفيظ", "Memorize"),
+                                    "quran_mode_memorize"
+                                )
+                            )
+                            modes.forEach { (mode, label, tag) ->
+                                val isSelected = prefs.quranDisplayMode == mode
+                                Surface(
+                                    onClick = {
+                                        if (mode == QuranDisplayMode.MUSHAF) {
+                                            useMushafPageImages = true
+                                        }
+                                        viewModel.setQuranDisplayMode(mode)
+                                    },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isSelected) EmeraldPrimary else noorColors.glassSurface,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = if (isSelected) 1.2.dp else 0.8.dp,
+                                        color = if (isSelected) GoldBright else noorColors.goldAccent.copy(alpha = 0.28f)
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .heightIn(min = 38.dp)
+                                        .testTag(tag)
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) Color.White else primaryInk,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Row 2: Slim Single Action Strip (Play Sheikh | Reciter | Options)
+                        val isSheikhPlaying = audioState.hasActiveSession &&
+                            (audioState.playingSurah == surahNumber || isMushafImgView)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Button(
+                                onClick = {
+                                    if (isSheikhPlaying) {
+                                        viewModel.toggleAudioPauseResume()
+                                    } else {
+                                        val startSurah = if (isMushafImgView) activePageMeta.primarySurahNumber else surahNumber
+                                        viewModel.playFromMushafAyah(
+                                            surahNumber = startSurah,
+                                            startAyah = if (startSurah == surahNumber) lastVisibleAyah.coerceAtLeast(1) else 1
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .heightIn(min = 42.dp)
+                                    .testTag("play_and_follow_audio_btn"),
+                                colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = Color.White),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isSheikhPlaying && audioState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isSheikhPlaying && audioState.isPlaying) {
+                                        L10n.pick(lang, "إيقاف", "Pause")
+                                    } else {
+                                        L10n.pick(lang, "استماع", "Listen")
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1
+                                )
+                            }
+
+                            ChooseReciterButton(
+                                selectedReciter = prefs.quranReciter,
+                                onSelectReciter = { viewModel.setQuranReciter(it) },
+                                customReciters = customReciters,
+                                selectedCustomReciterId = selectedCustomReciterId,
+                                onSelectCustomReciter = { custom ->
+                                    viewModel.selectMushafCustomReciter(custom)
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            IconButton(
+                                onClick = { showMoreReaderOptions = !showMoreReaderOptions },
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (showMoreReaderOptions) EmeraldPrimary.copy(alpha = 0.25f) else noorColors.glassSurface)
+                                    .border(
+                                        0.8.dp,
+                                        if (showMoreReaderOptions) GoldBright else noorColors.goldAccent.copy(alpha = 0.3f),
+                                        RoundedCornerShape(12.dp)
+                                    )
+                                    .testTag("reader_more_options_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Tune,
+                                    contentDescription = L10n.pick(lang, "خيارات إضافية", "More Options"),
+                                    tint = if (showMoreReaderOptions) GoldBright else noorColors.goldAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+
+                        // Optional Collapsible Extra Options (Theme, Font Size for Tafsir/Hifz, Auto-Scroll, Mic Follow)
+                        AnimatedVisibility(visible = showMoreReaderOptions) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                HorizontalDivider(color = noorColors.goldAccent.copy(alpha = 0.2f))
+
+                                // Reading Theme Chips + Font Size (in Tafsir / Memorize)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    LazyRow(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        items(QuranReadingTheme.entries) { theme ->
+                                            val label = when (theme) {
+                                                QuranReadingTheme.AUTO -> L10n.pick(lang, "تلقائي", "Auto")
+                                                QuranReadingTheme.SEPIA -> L10n.pick(lang, "ورقي", "Sepia")
+                                                QuranReadingTheme.NIGHT -> L10n.pick(lang, "ليلي", "Night")
+                                                QuranReadingTheme.LIGHT -> L10n.pick(lang, "نهاري", "Light")
+                                            }
+                                            LiquidGlassChip(
+                                                label = label,
+                                                selected = prefs.quranReadingTheme == theme,
+                                                onClick = { viewModel.setQuranReadingTheme(theme) }
+                                            )
+                                        }
+                                    }
+                                    if (!isMushafImgView) {
+                                        Row {
+                                            IconButton(onClick = { viewModel.setQuranFontSize(prefs.quranFontSizeSp - 2) }) {
+                                                Icon(Icons.Rounded.TextDecrease, contentDescription = "Smaller text", tint = noorColors.goldAccent)
+                                            }
+                                            IconButton(onClick = { viewModel.setQuranFontSize(prefs.quranFontSizeSp + 2) }) {
+                                                Icon(Icons.Rounded.TextIncrease, contentDescription = "Larger text", tint = noorColors.goldAccent)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Auto-Scroll + Live Mic Auto-Follow + Recite Panel
+                                val isListening = liveRecitation.isActive
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (autoScrollMode == AutoScrollMode.RUNNING) {
+                                                autoScrollMode = AutoScrollMode.PAUSED
+                                                viewModel.saveLastRead(surahNumber, lastVisibleAyah)
+                                            } else {
+                                                showAutoScrollControls = true
+                                                viewModel.stopLiveRecitationTracking()
+                                                autoScrollMode = AutoScrollMode.RUNNING
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 42.dp)
+                                            .testTag("auto_scroll_toggle_button"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.SwapVert,
+                                            contentDescription = null,
+                                            tint = if (autoScrollMode == AutoScrollMode.RUNNING) GoldBright else noorColors.goldAccent,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = L10n.pick(lang, "تمرير", "Scroll"),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            maxLines = 1
+                                        )
+                                    }
+
+                                    LiquidGlassChip(
+                                        label = if (isListening) {
+                                            L10n.pick(lang, "إيقاف التتبع", "Stop Mic")
+                                        } else {
+                                            L10n.pick(lang, "تتبع صوتي", "Mic Follow")
+                                        },
+                                        selected = isListening,
+                                        onClick = {
+                                            if (isListening || liveRecitation.status == LiveRecitationStatus.PAUSED) {
+                                                viewModel.stopLiveRecitationTracking()
+                                            } else {
+                                                val hasMic = ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.RECORD_AUDIO
+                                                ) == PackageManager.PERMISSION_GRANTED
+                                                if (hasMic) {
+                                                    if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
+                                                    autoScrollMode = AutoScrollMode.STOPPED
+                                                    viewModel.startLiveRecitationTracking()
+                                                } else {
+                                                    showMicPermissionDialog = true
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .testTag("listen_and_follow_button")
+                                    )
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            if (ecosystemViewModel != null) {
+                                                if (!showRecitationPanel) {
+                                                    if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
+                                                    recitationTargetAyah = lastVisibleAyah.coerceAtLeast(1)
+                                                }
+                                                showRecitationPanel = !showRecitationPanel
+                                            } else {
+                                                onOpenInMemorization(surahNumber, lastVisibleAyah.coerceAtLeast(1))
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .heightIn(min = 42.dp)
+                                            .testTag("in_reader_recite_btn"),
+                                        shape = RoundedCornerShape(12.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Rounded.RecordVoiceOver,
+                                            contentDescription = null,
+                                            tint = if (showRecitationPanel) GoldBright else noorColors.goldAccent,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = L10n.pick(lang, "تسميع", "Recite"),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                if (prefs.quranDisplayMode == QuranDisplayMode.STUDY || prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        if (prefs.quranDisplayMode == QuranDisplayMode.STUDY) {
+                                            LiquidGlassChip(
+                                                label = L10n.pick(lang, "التفسير", "Tafsir"),
+                                                selected = showTafsir,
+                                                onClick = { showTafsir = !showTafsir }
+                                            )
+                                            LiquidGlassChip(
+                                                label = "EN",
+                                                selected = showEnglish,
+                                                onClick = { showEnglish = !showEnglish }
+                                            )
+                                        } else if (prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
+                                            LiquidGlassChip(
+                                                label = L10n.pick(lang, "تكرار الآية ${repeatPerAyah}x", "Repeat ${repeatPerAyah}x"),
+                                                selected = repeatPerAyah > 1,
+                                                onClick = {
+                                                    repeatPerAyah = when (repeatPerAyah) {
+                                                        1 -> 3
+                                                        3 -> 5
+                                                        else -> 1
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
-            )
+
+                HorizontalDivider(color = noorColors.goldAccent.copy(alpha = 0.2f))
+            }
 
             // Sticky Sheikh Audio Follow-Along Bar (real verse-by-verse sync across same or flowed Surah!)
             val bannerSurahNum = audioState.playingSurah ?: surahNumber
@@ -521,313 +1024,15 @@ fun QuranReaderScreen(
             contentPadding = if (isFullScreenActive) {
                 PaddingValues(0.dp)
             } else {
-                PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 120.dp)
+                PaddingValues(
+                    start = if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode) 8.dp else 16.dp,
+                    end = if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && effectiveMushafImageMode) 8.dp else 16.dp,
+                    top = 4.dp,
+                    bottom = 120.dp
+                )
             },
-            verticalArrangement = Arrangement.spacedBy(if (isFullScreenActive) 0.dp else 12.dp)
+            verticalArrangement = Arrangement.spacedBy(if (isFullScreenActive) 0.dp else 10.dp)
         ) {
-            // Simplified Reading Mode + Primary Actions + Single "Choose Reciter" Button + Collapsible Options
-            if (!isFullScreenActive) {
-            item(key = "reader_controls_deck") {
-                var showMoreReaderOptions by rememberSaveable { mutableStateOf(false) }
-                LiquidGlassCard(contentPadding = PaddingValues(14.dp)) {
-                    // Row 1: Display Modes (Study, Mushaf, Memorize)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val modes = listOf(
-                            QuranDisplayMode.STUDY to L10n.pick(lang, "تفسير ودراسة", "Study"),
-                            QuranDisplayMode.MUSHAF to L10n.pick(lang, "المصحف", "Mushaf"),
-                            QuranDisplayMode.MEMORIZE to L10n.pick(lang, "حفظ ومراجعة", "Memorize")
-                        )
-                        modes.forEach { (mode, label) ->
-                            LiquidGlassChip(
-                                label = label,
-                                selected = prefs.quranDisplayMode == mode,
-                                onClick = { viewModel.setQuranDisplayMode(mode) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Row 2: Two Clear Primary Actions (Listen to Sheikh | Recite & Memorize)
-                    val isSheikhPlayingThisSurah = audioState.hasActiveSession && audioState.playingSurah == surahNumber
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Button(
-                            onClick = {
-                                if (isSheikhPlayingThisSurah) {
-                                    viewModel.toggleAudioPauseResume()
-                                } else {
-                                    viewModel.playFromMushafAyah(
-                                        surahNumber = surahNumber,
-                                        startAyah = lastVisibleAyah.coerceAtLeast(1)
-                                    )
-                                }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("play_and_follow_audio_btn"),
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = Color.White),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isSheikhPlayingThisSurah && audioState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (isSheikhPlayingThisSurah && audioState.isPlaying) {
-                                    L10n.pick(lang, "إيقاف مؤقت", "Pause")
-                                } else {
-                                    L10n.pick(lang, "استماع للشيخ", "Listen")
-                                },
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Button(
-                            onClick = {
-                                if (ecosystemViewModel != null) {
-                                    if (!showRecitationPanel) {
-                                        if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
-                                        recitationTargetAyah = lastVisibleAyah.coerceAtLeast(1)
-                                    }
-                                    showRecitationPanel = !showRecitationPanel
-                                } else {
-                                    onOpenInMemorization(surahNumber, lastVisibleAyah.coerceAtLeast(1))
-                                }
-                            },
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 48.dp)
-                                .testTag("in_reader_recite_btn"),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (showRecitationPanel) GoldPrimary else EmeraldDeep,
-                                contentColor = if (showRecitationPanel) Color(0xFF071B14) else GoldBright
-                            ),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.RecordVoiceOver,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = L10n.pick(lang, "تسميعي وتسجيل", "Recite & Hifz"),
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // Row 3: ONE Unified "Choose Reciter" Button + Collapsible "More Options" Button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        ChooseReciterButton(
-                            selectedReciter = prefs.quranReciter,
-                            onSelectReciter = { viewModel.setQuranReciter(it) },
-                            customReciters = customReciters,
-                            selectedCustomReciterId = selectedCustomReciterId,
-                            onSelectCustomReciter = { custom ->
-                                viewModel.selectMushafCustomReciter(custom)
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedButton(
-                            onClick = { showMoreReaderOptions = !showMoreReaderOptions },
-                            modifier = Modifier
-                                .heightIn(min = 48.dp)
-                                .testTag("reader_more_options_btn"),
-                            shape = RoundedCornerShape(14.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Tune,
-                                contentDescription = L10n.pick(lang, "خيارات القراءة", "Reading Options"),
-                                tint = if (showMoreReaderOptions) GoldBright else noorColors.goldAccent,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = L10n.pick(lang, "خيارات", "Options"),
-                                maxLines = 1
-                            )
-                        }
-                    }
-
-                    // Collapsible Secondary Options (Theme, Auto-Scroll, Live Mic Follow, Mushaf Image/Text, Study/Repeat)
-                    AnimatedVisibility(visible = showMoreReaderOptions) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            HorizontalDivider(color = noorColors.goldAccent.copy(alpha = 0.2f))
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            // Reading Theme Chips
-                            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                items(QuranReadingTheme.entries) { theme ->
-                                    val label = when (theme) {
-                                        QuranReadingTheme.AUTO -> L10n.pick(lang, "تلقائي", "Auto")
-                                        QuranReadingTheme.SEPIA -> L10n.pick(lang, "ورقي مريح", "Sepia")
-                                        QuranReadingTheme.NIGHT -> L10n.pick(lang, "ليلي", "Night")
-                                        QuranReadingTheme.LIGHT -> L10n.pick(lang, "نهاري", "Light")
-                                    }
-                                    LiquidGlassChip(
-                                        label = label,
-                                        selected = prefs.quranReadingTheme == theme,
-                                        onClick = { viewModel.setQuranReadingTheme(theme) }
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            // Auto-Scroll + Live Mic Auto-Follow
-                            val isListening = liveRecitation.isActive
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        if (autoScrollMode == AutoScrollMode.RUNNING) {
-                                            autoScrollMode = AutoScrollMode.PAUSED
-                                            viewModel.saveLastRead(surahNumber, lastVisibleAyah)
-                                        } else {
-                                            showAutoScrollControls = true
-                                            viewModel.stopLiveRecitationTracking()
-                                            autoScrollMode = AutoScrollMode.RUNNING
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .heightIn(min = 48.dp)
-                                        .testTag("auto_scroll_toggle_button"),
-                                    shape = RoundedCornerShape(14.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.SwapVert,
-                                        contentDescription = null,
-                                        tint = if (autoScrollMode == AutoScrollMode.RUNNING) GoldBright else noorColors.goldAccent,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = L10n.pick(lang, "تمرير تلقائي", "Auto-Scroll"),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-
-                                LiquidGlassChip(
-                                    label = if (isListening) {
-                                        L10n.pick(lang, "إيقاف التتبع الصوتي", "Stop Mic Follow")
-                                    } else {
-                                        L10n.pick(lang, "تتبع صوتي حي", "Live Mic Follow")
-                                    },
-                                    selected = isListening,
-                                    onClick = {
-                                        if (isListening || liveRecitation.status == LiveRecitationStatus.PAUSED) {
-                                            viewModel.stopLiveRecitationTracking()
-                                        } else {
-                                            val hasMic = ContextCompat.checkSelfPermission(
-                                                context,
-                                                Manifest.permission.RECORD_AUDIO
-                                            ) == PackageManager.PERMISSION_GRANTED
-                                            if (hasMic) {
-                                                if (audioState.isPlaying) viewModel.toggleAudioPauseResume()
-                                                autoScrollMode = AutoScrollMode.STOPPED
-                                                viewModel.startLiveRecitationTracking()
-                                            } else {
-                                                showMicPermissionDialog = true
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("listen_and_follow_button")
-                                )
-                            }
-
-                            // Mushaf Page Image vs Interactive Text sub-toggle + Study/Memorize sub-toggles
-                            if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF && globalConfig.featureMushafImagesEnabled) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    LiquidGlassChip(
-                                        label = L10n.pick(lang, "مصحف المدينة المصوّر (٦٠٤ ص)", "Madinah Mushaf Images (604p)"),
-                                        selected = effectiveMushafImageMode,
-                                        onClick = { useMushafPageImages = true },
-                                        modifier = Modifier.weight(1f).testTag("mushaf_image_mode_chip")
-                                    )
-                                    LiquidGlassChip(
-                                        label = L10n.pick(lang, "نص عثماني تفاعلي", "Uthmani Text"),
-                                        selected = !effectiveMushafImageMode,
-                                        onClick = { useMushafPageImages = false },
-                                        modifier = Modifier.weight(1f).testTag("mushaf_text_mode_chip")
-                                    )
-                                }
-                            } else if (prefs.quranDisplayMode == QuranDisplayMode.STUDY || prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (prefs.quranDisplayMode == QuranDisplayMode.STUDY) {
-                                        LiquidGlassChip(
-                                            label = L10n.pick(lang, "التفسير", "Tafsir"),
-                                            selected = showTafsir,
-                                            onClick = { showTafsir = !showTafsir }
-                                        )
-                                        LiquidGlassChip(
-                                            label = "EN",
-                                            selected = showEnglish,
-                                            onClick = { showEnglish = !showEnglish }
-                                        )
-                                    } else if (prefs.quranDisplayMode == QuranDisplayMode.MEMORIZE) {
-                                        LiquidGlassChip(
-                                            label = L10n.pick(lang, "تكرار الآية ${repeatPerAyah}x", "Repeat ${repeatPerAyah}x"),
-                                            selected = repeatPerAyah > 1,
-                                            onClick = {
-                                                repeatPerAyah = when (repeatPerAyah) {
-                                                    1 -> 3
-                                                    3 -> 5
-                                                    else -> 1
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            } // end if (!isFullScreenActive)
 
             // Integrated In-Reader "My Recitation & Memorization" Panel (real Mic Recording + Arabic STT + Word Evaluation)
             val readyForRecitation = readerState as? SurahReaderState.Ready
@@ -923,10 +1128,16 @@ fun QuranReaderScreen(
                             val syncedPage = audioState.playingPageNumber
                                 ?: activeSyncedVerseObj?.pageNumber
                                 ?: liveRecitation.trackedPage
-                            val initialPageForSurah = state.verses
-                                .firstOrNull { it.numberInSurah == lastVisibleAyah }
-                                ?.pageNumber
-                                ?: surahMeta.startPage
+                            val initialPageForSurah = if (openAtLastReadPage) {
+                                prefs.lastReadPage.coerceIn(1, 604)
+                            } else if (prefs.lastReadSurah == surahNumber) {
+                                prefs.lastReadPage.coerceIn(1, 604)
+                            } else {
+                                state.verses
+                                    .firstOrNull { it.numberInSurah == lastVisibleAyah }
+                                    ?.pageNumber
+                                    ?: surahMeta.startPage
+                            }
                             val isDarkReader = prefs.quranReadingTheme == QuranReadingTheme.NIGHT ||
                                 (prefs.quranReadingTheme == QuranReadingTheme.AUTO && noorColors.isDark)
                             val bookmarkedPairs = remember(bookmarks) {
@@ -946,18 +1157,21 @@ fun QuranReaderScreen(
                                 isAudioPlaying = audioState.isPlaying,
                                 isNightTheme = isDarkReader,
                                 isFullScreen = isFullScreenActive,
+                                isToolbarCollapsed = isTopControlsCollapsed,
+                                jumpToPageRequest = jumpToPageRequest,
                                 onToggleFullScreen = { isMushafFullScreen = !isMushafFullScreen },
                                 highlightStyle = highlightStyle,
                                 bookmarkedKeys = bookmarkedPairs,
                                 loadPageVerses = { pageNum -> viewModel.loadVersesForMushafPage(pageNum) },
                                 onPageChanged = { pageNum, primarySurah, isUserNavigation ->
+                                    activeMushafPage = pageNum
                                     if (isUserNavigation) {
                                         val firstAyahOnPage = state.verses
                                             .firstOrNull { it.pageNumber == pageNum }
                                             ?.numberInSurah ?: 1
                                         lastVisibleAyah = firstAyahOnPage
                                         userHasInteractedWithSurah = true
-                                        viewModel.saveLastRead(primarySurah, firstAyahOnPage)
+                                        viewModel.saveLastRead(primarySurah, firstAyahOnPage, pageNumber = pageNum)
                                     }
                                 },
                                 onToggleAudio = {
@@ -974,19 +1188,19 @@ fun QuranReaderScreen(
                                 onReadFromAyah = { sNum, aNum ->
                                     lastVisibleAyah = aNum
                                     userHasInteractedWithSurah = true
-                                    viewModel.saveLastRead(sNum, aNum)
+                                    viewModel.saveLastRead(sNum, aNum, pageNumber = activeMushafPage)
                                     viewModel.playFromMushafAyah(surahNumber = sNum, startAyah = aNum)
                                 },
                                 onPlaySingleAyah = { sNum, aNum, pageNum ->
                                     lastVisibleAyah = aNum
                                     userHasInteractedWithSurah = true
-                                    viewModel.saveLastRead(sNum, aNum)
+                                    viewModel.saveLastRead(sNum, aNum, pageNumber = pageNum)
                                     viewModel.playSingleMushafAyah(sNum, aNum, pageNum)
                                 },
                                 onRepeatAyahRange = { sNum, fromA, toA ->
                                     lastVisibleAyah = fromA
                                     userHasInteractedWithSurah = true
-                                    viewModel.saveLastRead(sNum, fromA)
+                                    viewModel.saveLastRead(sNum, fromA, pageNumber = activeMushafPage)
                                     viewModel.playFromMushafAyah(
                                         surahNumber = sNum,
                                         startAyah = fromA,

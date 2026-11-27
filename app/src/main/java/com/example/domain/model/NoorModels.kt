@@ -257,7 +257,7 @@ enum class QuranDisplayMode(val key: String) {
 
     companion object {
         fun fromKey(key: String?): QuranDisplayMode =
-            entries.firstOrNull { it.key == key } ?: STUDY
+            entries.firstOrNull { it.key == key } ?: MUSHAF
     }
 }
 

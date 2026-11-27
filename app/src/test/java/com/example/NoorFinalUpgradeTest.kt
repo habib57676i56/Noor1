@@ -36,32 +36,43 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("4.0.1", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v4.0.1", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.1.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.1.0", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v4.0.1 passes default v4.0.1 gate, while older v4.0.0 / v3.9.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.1", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.0", defaultConfig))
+        // New build v4.1.0 passes default v4.1.0 gate, while older v4.0.1 / v3.9.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.1", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "4.0.1", the newly updated v4.0.1 (or v4.1.0) APK opens automatically
-        // while older v4.0.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.0.1")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.1", forcedWithMin))
+        // with minSupportedVersion = "4.1.0", the newly updated v4.1.0 (or v4.2.0) APK opens automatically
+        // while older v4.0.1 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.1.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.1", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.1.0 blocks 4.0.1 until user updates to 4.1.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.1.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.1", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", raisedConfig))
+        // Raising minSupportedVersion to 4.2.0 blocks 4.1.0 until user updates to 4.2.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.2.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.1.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("javascript:alert(1)"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("http://insecure.example"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("https://t.me/Noor_ui"))
+    }
+
+    @Test
+    fun quranDefaults_openMadinahMushafImageModeByDefault() {
+        val defaultPrefs = com.example.data.local.prefs.UserPreferences()
+        assertEquals(com.example.domain.model.QuranDisplayMode.MUSHAF, defaultPrefs.quranDisplayMode)
+        assertEquals(com.example.domain.model.QuranDisplayMode.MUSHAF, com.example.domain.model.QuranDisplayMode.fromKey(null))
+        assertEquals(com.example.domain.model.QuranDisplayMode.MUSHAF, com.example.domain.model.QuranDisplayMode.fromKey("unknown"))
+        assertEquals(com.example.domain.model.QuranDisplayMode.STUDY, com.example.domain.model.QuranDisplayMode.fromKey("study"))
+        assertEquals(com.example.domain.model.QuranDisplayMode.MEMORIZE, com.example.domain.model.QuranDisplayMode.fromKey("memorize"))
+        assertEquals(1, defaultPrefs.lastReadPage)
     }
 
     @Test

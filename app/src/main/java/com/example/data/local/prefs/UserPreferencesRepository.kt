@@ -89,7 +89,7 @@ data class UserPreferences(
     val lastReadPage: Int = 1,
     val quranFontSizeSp: Int = 24,
     val quranReadingTheme: QuranReadingTheme = QuranReadingTheme.AUTO,
-    val quranDisplayMode: QuranDisplayMode = QuranDisplayMode.STUDY,
+    val quranDisplayMode: QuranDisplayMode = QuranDisplayMode.MUSHAF,
     val quranReciter: QuranReciter = QuranReciter.YASSER_AL_DOSARI,
     val audioPlaybackSpeed: Float = 1.0f,
     val audioQualityLabel: String = "128 kbps",
