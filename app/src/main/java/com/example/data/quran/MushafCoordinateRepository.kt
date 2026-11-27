@@ -109,10 +109,13 @@ class MushafCoordinateRepository(private val appContext: Context) {
         pageNumber: Int,
         fallbackVerses: List<QuranVerse> = emptyList(),
         actualImageWidth: Int = 0,
-        actualImageHeight: Int = 0
+        actualImageHeight: Int = 0,
+        loadedBitmap: android.graphics.Bitmap? = null
     ): MushafPageLayout = withContext(Dispatchers.IO) {
         val page = pageNumber.coerceIn(1, MadinahMushafPageCatalog.TOTAL_PAGES)
-        val cacheKey = "${page}_${actualImageWidth}x${actualImageHeight}"
+        val isOpeningPage = (page == 1 || page == 2)
+        val useBitmapCalib = isOpeningPage && loadedBitmap != null && !loadedBitmap.isRecycled
+        val cacheKey = "${page}_${actualImageWidth}x${actualImageHeight}" + if (useBitmapCalib) "_bmp" else ""
 
         layoutCache.get(cacheKey)?.let { cached ->
             // Upgrade from lower-precision cache if exact glyph DB was newly installed
@@ -121,11 +124,20 @@ class MushafCoordinateRepository(private val appContext: Context) {
             }
         }
 
+        fun finalizeOpeningLayout(raw: MushafPageLayout): MushafPageLayout {
+            val calibrated = if (useBitmapCalib && loadedBitmap != null) {
+                OpeningPageBitmapCalibrator.calibrateIfNeeded(raw, loadedBitmap)
+            } else {
+                raw
+            }
+            layoutCache.put(cacheKey, calibrated)
+            return calibrated
+        }
+
         // Tier 1: Exact SQLite Glyph Coordinates (ayahinfo_1024.db) normalized to actual PNG dimensions
         if (hasExactGlyphDb()) {
             queryGlyphDatabaseForPage(page, actualImageWidth, actualImageHeight)?.let { exactLayout ->
-                layoutCache.put(cacheKey, exactLayout)
-                return@withContext exactLayout
+                return@withContext finalizeOpeningLayout(exactLayout)
             }
         }
 
@@ -135,8 +147,7 @@ class MushafCoordinateRepository(private val appContext: Context) {
             runCatching { parseQuranComPageJson(page, localJson.readText(), CoordinatePrecision.EXACT_LINE_LAYOUT_API) }
                 .getOrNull()
                 ?.let { parsed ->
-                    layoutCache.put(cacheKey, parsed)
-                    return@withContext parsed
+                    return@withContext finalizeOpeningLayout(parsed)
                 }
         }
 
@@ -149,15 +160,13 @@ class MushafCoordinateRepository(private val appContext: Context) {
             if (parsed != null && parsed.ayahs.isNotEmpty()) {
                 runCatching { localJson.writeText(remoteJson) }
                 refreshStatus()
-                layoutCache.put(cacheKey, parsed)
-                return@withContext parsed
+                return@withContext finalizeOpeningLayout(parsed)
             }
         }
 
         // Tier 3: Verified bundled 15-line layouts for landmark pages (1, 2, 597, 604)
         buildVerifiedBundledPageLayout(page)?.let { bundled ->
-            layoutCache.put(cacheKey, bundled)
-            return@withContext bundled
+            return@withContext finalizeOpeningLayout(bundled)
         }
 
         // Tier 4: Never invent fake coordinates over blank paper — report missing metadata honestly!
@@ -473,13 +482,14 @@ class MushafCoordinateRepository(private val appContext: Context) {
         const val STANDARD_TOP = 0.024f
         const val STANDARD_BOTTOM = 0.976f
 
-        // Special ornate inner frame on Pages 1 & 2 (Al-Fatiha & opening of Al-Baqarah)
-        // Calibrated to King Fahd Complex `width_1024/page001.png` & `page002.png` inner cartouche
-        // (below the top decorative gilded border & Surah title banner at y ~ 0.00..0.345).
-        const val SPECIAL_P12_LEFT = 0.165f
-        const val SPECIAL_P12_RIGHT = 0.835f
-        const val SPECIAL_P12_TOP = 0.348f
-        const val SPECIAL_P12_BOTTOM = 0.782f
+        // Special opening Pages 1 & 2 (Al-Fatiha & opening of Al-Baqarah) on King Fahd `width_1024`:
+        // Line 1 is the Surah header banner near the top, and lines 2..8 sit in the upper half of the
+        // 15-line page (with blank paper below). Once the PNG decodes, `OpeningPageBitmapCalibrator`
+        // refines all 7 lines pixel-accurately onto the actual Arabic calligraphy in the bitmap!
+        const val SPECIAL_P12_LEFT = 0.065f
+        const val SPECIAL_P12_RIGHT = 0.935f
+        const val SPECIAL_P12_TOP = 0.105f
+        const val SPECIAL_P12_BOTTOM = 0.565f
 
         val GLYPH_DB_MIRRORS = listOf(
             "https://android.quran.com/data/databases/ayahinfo_1024.zip",

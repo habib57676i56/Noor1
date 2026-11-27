@@ -1031,6 +1031,96 @@ class NoorInteractiveMushafVerificationTest {
         assertEquals(4500L, qdcManifest.ayahs.first().startMs)
         assertEquals(2, qdcManifest.ayahs[1].segments.size)
     }
+
+    @Test
+    fun openingPages1And2_bitmapCalibratorLocksExactCalligraphyLinesAndNeverHighlightsBlankPaper() {
+        fun fillRectPixels(bmp: android.graphics.Bitmap, l: Int, t: Int, r: Int, b: Int, color: Int) {
+            val x0 = l.coerceIn(0, bmp.width - 1)
+            val x1 = r.coerceIn(x0, bmp.width - 1)
+            val y0 = t.coerceIn(0, bmp.height - 1)
+            val y1 = b.coerceIn(y0, bmp.height - 1)
+            val rw = x1 - x0 + 1
+            val rh = y1 - y0 + 1
+            val block = IntArray(rw * rh) { color }
+            bmp.setPixels(block, 0, rw, x0, y0, rw, rh)
+        }
+
+        // Case A: Synthetic King Fahd `width_1024` top-aligned transparent PNG (512x828):
+        // Surah banner at y = 40..84, 7 Arabic lines at y = 132..486 (deliberately different from
+        // static SPECIAL_P12_TOP = 0.105!), bottom region (495..828) COMPLETELY BLANK!
+        val w = 512
+        val h = 828
+        val topAlignedBmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        // Line 1: Surah Header Banner
+        fillRectPixels(topAlignedBmp, 30, 40, 482, 84, android.graphics.Color.BLACK)
+        // Lines 2..8 (7 Arabic calligraphy lines in the UPPER HALF ONLY)
+        val expectedLineTops = IntArray(7)
+        val expectedLineBottoms = IntArray(7)
+        for (i in 0 until 7) {
+            val topY = 132 + i * 54
+            val botY = topY + 28
+            expectedLineTops[i] = topY
+            expectedLineBottoms[i] = botY
+            val leftX = if (i == 6) 140 else 36
+            val rightX = if (i == 6) 372 else 476
+            var x = leftX
+            while (x < rightX - 18) {
+                fillRectPixels(topAlignedBmp, x, topY, x + 15, botY, android.graphics.Color.BLACK)
+                x += 26
+            }
+        }
+
+        // Page 1 (Al-Fatihah): lines 2..8 must snap directly onto expectedLineTops[0..6]
+        val rawPage1 = MushafCoordinateRepository.buildVerifiedBundledPageLayout(1)!!
+        val calPage1 = com.example.data.quran.OpeningPageBitmapCalibrator.calibrateIfNeeded(rawPage1, topAlignedBmp)
+        val cal1_1 = calPage1.findAyah(1, 1)!!.lineRegions.first().bounds
+        val cal1_7Final = calPage1.findAyah(1, 7)!!.lineRegions.last().bounds
+        assertEquals(expectedLineTops[0] / h.toFloat(), cal1_1.top, 0.015f)
+        assertEquals(expectedLineBottoms[0] / h.toFloat(), cal1_1.bottom, 0.015f)
+        assertEquals(expectedLineTops[6] / h.toFloat(), cal1_7Final.top, 0.015f)
+        assertEquals(expectedLineBottoms[6] / h.toFloat(), cal1_7Final.bottom, 0.015f)
+        // ZERO highlights may ever spill into the blank lower half (y > 0.61f)!
+        assertTrue(calPage1.ayahs.flatMap { it.lineRegions }.all { it.bounds.bottom < 0.61f })
+
+        // Page 2 (Al-Baqarah 2:1-5): line 2 is unhighlighted Bismillah (slot 0), so Ayah 2:1 (الم) MUST
+        // snap onto expectedLineTops[1] (NOT Bismillah slot 0 and NOT blank lower half!)
+        val rawPage2 = MushafCoordinateRepository.buildVerifiedBundledPageLayout(2)!!
+        val calPage2 = com.example.data.quran.OpeningPageBitmapCalibrator.calibrateIfNeeded(rawPage2, topAlignedBmp)
+        val cal2_1 = calPage2.findAyah(2, 1)!!.lineRegions.first().bounds
+        val cal2_5Final = calPage2.findAyah(2, 5)!!.lineRegions.last().bounds
+        assertEquals(expectedLineTops[1] / h.toFloat(), cal2_1.top, 0.015f)
+        assertEquals(expectedLineBottoms[1] / h.toFloat(), cal2_1.bottom, 0.015f)
+        assertEquals(expectedLineTops[6] / h.toFloat(), cal2_5Final.top, 0.015f)
+        assertTrue(calPage2.ayahs.flatMap { it.lineRegions }.all { it.bounds.bottom < 0.61f })
+
+        // Case B: Synthetic ornate-framed Page 1 (cream paper + top/bottom/side borders + Surah banner + 7 centered inner lines!)
+        val framedBmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+        fillRectPixels(framedBmp, 0, 0, w - 1, h - 1, android.graphics.Color.rgb(253, 247, 226))
+        // Outer decorative top, bottom, left, and right borders
+        fillRectPixels(framedBmp, 20, 20, 492, 120, android.graphics.Color.BLACK)   // Top ornate border
+        fillRectPixels(framedBmp, 20, 700, 492, 805, android.graphics.Color.BLACK)  // Bottom ornate border
+        fillRectPixels(framedBmp, 20, 20, 70, 805, android.graphics.Color.BLACK)    // Left vertical pillar
+        fillRectPixels(framedBmp, 442, 20, 492, 805, android.graphics.Color.BLACK)  // Right vertical pillar
+        // Inner Surah banner at y = 165..205
+        fillRectPixels(framedBmp, 100, 165, 412, 205, android.graphics.Color.BLACK)
+        // 7 inner Arabic calligraphy lines at y = 240..602
+        val innerTops = IntArray(7)
+        for (i in 0 until 7) {
+            val topY = 240 + i * 56
+            innerTops[i] = topY
+            var x = 105
+            while (x < 405) {
+                fillRectPixels(framedBmp, x, topY, x + 13, topY + 26, android.graphics.Color.BLACK)
+                x += 26
+            }
+        }
+        val calFramedPage1 = com.example.data.quran.OpeningPageBitmapCalibrator.calibrateIfNeeded(rawPage1, framedBmp)
+        val framed1_1 = calFramedPage1.findAyah(1, 1)!!.lineRegions.first().bounds
+        val framed1_7 = calFramedPage1.findAyah(1, 7)!!.lineRegions.last().bounds
+        assertEquals(innerTops[0] / h.toFloat(), framed1_1.top, 0.02f)
+        assertEquals(innerTops[6] / h.toFloat(), framed1_7.top, 0.02f)
+        assertTrue("Inner horizontal bounds must stay inside vertical border pillars", framed1_1.left > 0.14f && framed1_1.right < 0.86f)
+    }
 }
 
 

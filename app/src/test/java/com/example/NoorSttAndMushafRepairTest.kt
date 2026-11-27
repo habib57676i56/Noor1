@@ -503,11 +503,11 @@ class NoorSttAndMushafRepairTest {
         assertTrue(page1.hasVerifiedCoordinates)
         assertEquals(7, page1.ayahs.size)
 
-        // Outer margins & top ornate Surah banner (above SPECIAL_P12_TOP = 0.285f) MUST NOT select any Ayah!
-        assertNull(MushafCoordinateTransform.hitTestAyah(page1, 0.50f, 0.12f))
-        assertNull(MushafCoordinateTransform.hitTestAyah(page1, 0.05f, 0.50f))
-        assertNull(MushafCoordinateTransform.hitTestAyah(page1, 0.95f, 0.50f))
-        assertNull(MushafCoordinateTransform.hitTestAyah(page1, 0.50f, 0.88f))
+        // Outer margins, top Surah banner (above SPECIAL_P12_TOP), and blank bottom half MUST NOT select any Ayah!
+        assertNull(MushafCoordinateTransform.hitTestAyah(page1, 0.50f, 0.05f))
+        assertNull(MushafCoordinateTransform.hitTestAyah(page1, 0.02f, 0.30f))
+        assertNull(MushafCoordinateTransform.hitTestAyah(page1, 0.98f, 0.30f))
+        assertNull(MushafCoordinateTransform.hitTestAyah(page1, 0.50f, 0.80f))
 
         // Multi-line Ayah 1:7 spans lines 7 and 8: endMarkerBounds MUST sit strictly on line 8 (bottom > line 7 bottom)!
         val ayah1_7 = page1.findAyah(1, 7)!!

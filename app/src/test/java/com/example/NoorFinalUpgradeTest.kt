@@ -36,25 +36,25 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("4.0.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v4.0.0", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.0.1", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.0.1", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v4.0.0 passes default v4.0.0 gate, while older v3.9.0 / v3.8.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.0", defaultConfig))
+        // New build v4.0.1 passes default v4.0.1 gate, while older v4.0.0 / v3.9.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.1", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.8.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "4.0.0", the newly updated v4.0.0 (or v4.1.0) APK opens automatically
-        // while older v3.9.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.0.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.0", forcedWithMin))
+        // with minSupportedVersion = "4.0.1", the newly updated v4.0.1 (or v4.1.0) APK opens automatically
+        // while older v4.0.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.0.1")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.1", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.1.0 blocks 4.0.0 until user updates to 4.1.0
+        // Raising minSupportedVersion to 4.1.0 blocks 4.0.1 until user updates to 4.1.0
         val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.1.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.0", raisedConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.1", raisedConfig))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
@@ -462,20 +462,22 @@ class NoorFinalUpgradeTest {
             )
         }
 
-        // 2. Page 1 & Page 2 inner frame starts below the gilded Surah banner (>= 0.34f),
-        //    Al-Fatihah 1:1 (Bismillah) exists on line 2 and is highlightable, and Page 2 Ayah 2:1 (الم) sits on the right margin
-        assertTrue(com.example.data.quran.MushafCoordinateRepository.SPECIAL_P12_TOP >= 0.34f)
+        // 2. Page 1 & Page 2 default layout starts in the upper half right below the Surah header
+        //    (never down in the empty bottom half!), Al-Fatihah 1:1 (Bismillah) exists on line 2,
+        //    and Page 2 Ayah 2:1 (الم) sits on the right margin of line 3
+        assertTrue(com.example.data.quran.MushafCoordinateRepository.SPECIAL_P12_TOP in 0.08f..0.15f)
+        assertTrue(com.example.data.quran.MushafCoordinateRepository.SPECIAL_P12_BOTTOM in 0.50f..0.62f)
         val page1 = com.example.data.quran.MushafCoordinateRepository.buildVerifiedBundledPageLayout(1)!!
         val fatiha1_1 = page1.findAyah(1, 1)!!
         assertEquals(2, fatiha1_1.lineRegions.first().lineNumber)
-        assertTrue(fatiha1_1.lineRegions.first().bounds.top >= 0.34f)
+        assertTrue(fatiha1_1.lineRegions.first().bounds.top < 0.16f)
 
         val page2 = com.example.data.quran.MushafCoordinateRepository.buildVerifiedBundledPageLayout(2)!!
         val baqarah2_1 = page2.findAyah(2, 1)!!
         assertEquals(3, baqarah2_1.lineRegions.first().lineNumber)
         assertTrue(
-            "Page 2 Ayah 2:1 (الم) should align near the right margin of the inner frame",
-            baqarah2_1.lineRegions.first().bounds.right >= 0.80f
+            "Page 2 Ayah 2:1 (الم) should align near the right margin",
+            baqarah2_1.lineRegions.first().bounds.right >= 0.88f
         )
 
         // Default highlight style uses calm Quran-for-Android sage/emerald without distracting pulse

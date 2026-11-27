@@ -999,15 +999,16 @@ private fun MadinahMushafSinglePageCard(
     val actualOriginalWidth = readyImage?.originalWidth ?: 0
     val actualOriginalHeight = readyImage?.originalHeight ?: 0
 
-    LaunchedEffect(preloadedLayout, actualOriginalWidth, actualOriginalHeight) {
+    LaunchedEffect(preloadedLayout, actualOriginalWidth, actualOriginalHeight, readyImage?.bitmap) {
         if (preloadedLayout != null && preloadedLayout.pageNumber == pageNumber) {
             val current = pageLayout
             val hasRealDimensions = actualOriginalWidth > 0 && actualOriginalHeight > 0
             val matchesRealHeight = !hasRealDimensions ||
                 (preloadedLayout.imageWidth == actualOriginalWidth && preloadedLayout.imageHeight == actualOriginalHeight)
+            val isOpeningWithBitmap = (pageNumber == 1 || pageNumber == 2) && readyImage?.bitmap != null
             if (current == null || current.pageNumber != pageNumber) {
                 pageLayout = preloadedLayout
-            } else if (matchesRealHeight && preloadedLayout.precision == CoordinatePrecision.EXACT_GLYPH_DB &&
+            } else if (!isOpeningWithBitmap && matchesRealHeight && preloadedLayout.precision == CoordinatePrecision.EXACT_GLYPH_DB &&
                 current.precision != CoordinatePrecision.EXACT_GLYPH_DB
             ) {
                 pageLayout = preloadedLayout
@@ -1020,14 +1021,16 @@ private fun MadinahMushafSinglePageCard(
     }
 
     // CRITICAL FIX: Always re-resolve pageLayout whenever coordReloadNonce increments (e.g. after
-    // ayahinfo_1024.db downloads) OR once the true PNG originalWidth x originalHeight is known!
-    LaunchedEffect(pageNumber, coordReloadNonce, actualOriginalWidth, actualOriginalHeight) {
+    // ayahinfo_1024.db downloads) OR once the true PNG originalWidth x originalHeight / bitmap is ready!
+    // Passing `loadedBitmap` allows Pages 1 & 2 to lock pixel-accurately onto the real Arabic ink lines.
+    LaunchedEffect(pageNumber, coordReloadNonce, actualOriginalWidth, actualOriginalHeight, readyImage?.bitmap) {
         val verses = loadPageVerses(pageNumber)
         pageLayout = coordinateRepository.getPageLayout(
             pageNumber = pageNumber,
             fallbackVerses = verses,
             actualImageWidth = actualOriginalWidth,
-            actualImageHeight = actualOriginalHeight
+            actualImageHeight = actualOriginalHeight,
+            loadedBitmap = readyImage?.bitmap
         )
     }
 
