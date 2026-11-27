@@ -118,10 +118,20 @@ fun PrayerTimesScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
+            val madhhabBadge = if (prefs.asrMadhhab == AsrMadhhab.HANAFI) {
+                L10n.pick(lang, "العصر: حنفي", "Asr: Hanafi", "Asr: Hanafiy", "Аср: Ханафи")
+            } else {
+                L10n.pick(lang, "العصر: شافعي", "Asr: Shafi'i", "Asr: Shofe'iy", "Аср: Шафии")
+            }
+            val syncSuffix = if (dashboard.isOfficialPrayerSyncActive) {
+                L10n.pick(lang, " · متزامن رسمياً", " · Official Sync", " · Rasmiy", " · Офиц.")
+            } else {
+                ""
+            }
             NoorScreenHeader(
                 title = L10n.pick(lang, "مواقيت الصلاة", "Prayer Times"),
-                subtitle = if (isAr) "${prefs.cityNameAr} · ${prefs.calculationMethod.nameAr}"
-                else "${prefs.cityNameEn} · ${prefs.calculationMethod.nameEn}",
+                subtitle = if (isAr) "${prefs.cityNameAr} · ${prefs.calculationMethod.nameAr} · $madhhabBadge$syncSuffix"
+                else "${prefs.cityNameEn} · ${prefs.calculationMethod.nameEn} · $madhhabBadge$syncSuffix",
                 trailing = {
                     IconButton(
                         onClick = onOpenQibla,
@@ -223,6 +233,41 @@ fun PrayerTimesScreen(
                         selected = prefs.iqamahDelays.enabled,
                         icon = Icons.Rounded.Schedule,
                         onClick = { showIqamahDialog = true }
+                    )
+                }
+
+                // 1-tap Asr Juristic Madhhab Switcher (Shafi'i/Standard vs Hanafi)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    LiquidGlassChip(
+                        label = L10n.pick(
+                            lang,
+                            "العصر: الجمهور (الشافعي)",
+                            "Asr: Shafi'i (Standard)",
+                            "Asr: Shofe'iy (Standart)",
+                            "Аср: Шафиитский"
+                        ),
+                        selected = prefs.asrMadhhab == AsrMadhhab.SHAFI,
+                        onClick = { viewModel.setAsrMadhhab(AsrMadhhab.SHAFI) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("asr_madhhab_shafi")
+                    )
+                    LiquidGlassChip(
+                        label = L10n.pick(
+                            lang,
+                            "العصر: الحنفي",
+                            "Asr: Hanafi",
+                            "Asr: Hanafiy",
+                            "Аср: Ханафитский"
+                        ),
+                        selected = prefs.asrMadhhab == AsrMadhhab.HANAFI,
+                        onClick = { viewModel.setAsrMadhhab(AsrMadhhab.HANAFI) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("asr_madhhab_hanafi")
                     )
                 }
 

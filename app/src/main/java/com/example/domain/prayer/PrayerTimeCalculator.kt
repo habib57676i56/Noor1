@@ -99,14 +99,16 @@ object PrayerTimeCalculator {
             isha /= 24.0
         }
 
-        // Convert day fractions to local hours
+        // Convert day fractions to local civil hours (including official method temkin & user offsets)
         val tzAdjust = tzOffsetHours - longitude / 15.0
-        val fajrHours = fajr * 24.0 + tzAdjust + offsets.fajr / 60.0
-        val sunriseHours = sunrise * 24.0 + tzAdjust + offsets.sunrise / 60.0
-        val dhuhrHours = dhuhr * 24.0 + tzAdjust + (1.0 / 60.0) + offsets.dhuhr / 60.0 // +1 min safety after zenith
-        val asrHours = asr * 24.0 + tzAdjust + offsets.asr / 60.0
-        val maghribHours = maghrib * 24.0 + tzAdjust + offsets.maghrib / 60.0
-        val ishaHours = isha * 24.0 + tzAdjust + offsets.isha / 60.0
+        val baseOff = method.defaultOffsets
+        val dhuhrExtraMin = if (baseOff.dhuhr != 0) baseOff.dhuhr.toDouble() else 1.0 // +1 min zenith safety when method has no custom temkin
+        val fajrHours = fajr * 24.0 + tzAdjust + (baseOff.fajr + offsets.fajr) / 60.0
+        val sunriseHours = sunrise * 24.0 + tzAdjust + (baseOff.sunrise + offsets.sunrise) / 60.0
+        val dhuhrHours = dhuhr * 24.0 + tzAdjust + (dhuhrExtraMin + offsets.dhuhr) / 60.0
+        val asrHours = asr * 24.0 + tzAdjust + (baseOff.asr + offsets.asr) / 60.0
+        val maghribHours = maghrib * 24.0 + tzAdjust + (baseOff.maghrib + offsets.maghrib) / 60.0
+        val ishaHours = isha * 24.0 + tzAdjust + (baseOff.isha + offsets.isha) / 60.0
 
         val dateKey = String.format(Locale.US, "%04d-%02d-%02d", year, month, day)
         val epochDay = midnightMillis / 86_400_000L
@@ -114,12 +116,12 @@ object PrayerTimeCalculator {
         return DailyPrayerSchedule(
             dateKey = dateKey,
             epochDay = epochDay,
-            fajrMillis = hoursToMillis(midnightMillis, fajrHours),
-            sunriseMillis = hoursToMillis(midnightMillis, sunriseHours),
-            dhuhrMillis = hoursToMillis(midnightMillis, dhuhrHours),
-            asrMillis = hoursToMillis(midnightMillis, asrHours),
-            maghribMillis = hoursToMillis(midnightMillis, maghribHours),
-            ishaMillis = hoursToMillis(midnightMillis, ishaHours)
+            fajrMillis = civilHoursToMillis(year, month, day, timeZone, fajrHours),
+            sunriseMillis = civilHoursToMillis(year, month, day, timeZone, sunriseHours),
+            dhuhrMillis = civilHoursToMillis(year, month, day, timeZone, dhuhrHours),
+            asrMillis = civilHoursToMillis(year, month, day, timeZone, asrHours),
+            maghribMillis = civilHoursToMillis(year, month, day, timeZone, maghribHours),
+            ishaMillis = civilHoursToMillis(year, month, day, timeZone, ishaHours)
         )
     }
 
@@ -225,7 +227,9 @@ object PrayerTimeCalculator {
         val e = 23.439 - 0.00000036 * d
 
         val ra = atan2Deg(cosDeg(e) * sinDeg(l), cosDeg(l)) / 15.0
-        val eqTime = q / 15.0 - fixHour(ra)
+        var eqTime = q / 15.0 - fixHour(ra)
+        if (eqTime > 12.0) eqTime -= 24.0
+        if (eqTime < -12.0) eqTime += 24.0
         val decl = asinDeg(sinDeg(e) * sinDeg(l))
         return decl to eqTime
     }
@@ -256,9 +260,35 @@ object PrayerTimeCalculator {
         return computeSunAngleTime(jd, -angle, latitude, ccw = false)
     }
 
-    private fun hoursToMillis(midnightMillis: Long, hours: Double): Long {
-        val minutesRounded = kotlin.math.round(hours * 60.0).toLong()
-        return midnightMillis + minutesRounded * 60_000L
+    /**
+     * Converts local civil wall-clock hours (e.g. 15.033 -> 15:02) into exact epoch milliseconds
+     * in [timeZone], avoiding 1-hour shifts on DST transition days.
+     */
+    private fun civilHoursToMillis(
+        year: Int,
+        month: Int,
+        day: Int,
+        timeZone: TimeZone,
+        hours: Double
+    ): Long {
+        val totalMinutes = kotlin.math.round(hours * 60.0).toInt()
+        val cal = Calendar.getInstance(timeZone).apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month - 1)
+            set(Calendar.DAY_OF_MONTH, day)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val dayOffset = Math.floorDiv(totalMinutes, 1440)
+        val minuteOfDay = Math.floorMod(totalMinutes, 1440)
+        if (dayOffset != 0) {
+            cal.add(Calendar.DAY_OF_MONTH, dayOffset)
+        }
+        cal.set(Calendar.HOUR_OF_DAY, minuteOfDay / 60)
+        cal.set(Calendar.MINUTE, minuteOfDay % 60)
+        return cal.timeInMillis
     }
 
     private fun normalizeHours(h: Double): Double {

@@ -61,17 +61,30 @@ enum class CalculationMethod(
     val nameEn: String,
     val fajrAngle: Double,
     val ishaAngle: Double,
-    val ishaIntervalMinutes: Int = 0
+    val ishaIntervalMinutes: Int = 0,
+    val aladhanMethodId: Int = 3,
+    val defaultOffsets: PrayerMinuteOffsets = PrayerMinuteOffsets()
 ) {
-    UMM_AL_QURA("umm_al_qura", "أم القرى (مكة المكرمة)", "Umm al-Qura (Makkah)", 18.5, 0.0, 90),
-    MWL("mwl", "رابطة العالم الإسلامي", "Muslim World League", 18.0, 17.0, 0),
-    EGYPT("egypt", "الهيئة المصرية العامة للمساحة", "Egyptian General Authority", 19.5, 17.5, 0),
-    KARACHI("karachi", "جامعة العلوم الإسلامية بكراتشي", "Univ. of Islamic Sciences, Karachi", 18.0, 18.0, 0),
-    ISNA("isna", "الجمعية الإسلامية لأمريكا الشمالية", "ISNA (North America)", 15.0, 15.0, 0),
-    DUBAI("dubai", "دائرة الشؤون الإسلامية بدبي", "Dubai / UAE", 18.2, 18.2, 0),
-    QATAR("qatar", "قطر", "Qatar", 18.0, 0.0, 90),
-    KUWAIT("kuwait", "الكويت", "Kuwait", 18.0, 17.5, 0),
-    TURKEY("turkey", "رئاسة الشؤون الدينية التركية", "Diyanet (Turkey)", 18.0, 17.0, 0);
+    UMM_AL_QURA("umm_al_qura", "أم القرى (مكة المكرمة)", "Umm al-Qura (Makkah)", 18.5, 0.0, 90, 4),
+    MWL("mwl", "رابطة العالم الإسلامي", "Muslim World League", 18.0, 17.0, 0, 3),
+    EGYPT("egypt", "الهيئة المصرية العامة للمساحة", "Egyptian General Authority", 19.5, 17.5, 0, 5),
+    KARACHI("karachi", "جامعة العلوم الإسلامية بكراتشي", "Univ. of Islamic Sciences, Karachi", 18.0, 18.0, 0, 1),
+    ISNA("isna", "الجمعية الإسلامية لأمريكا الشمالية", "ISNA (North America)", 15.0, 15.0, 0, 2),
+    DUBAI("dubai", "دائرة الشؤون الإسلامية بدبي", "Dubai / UAE", 18.2, 18.2, 0, 16),
+    QATAR("qatar", "قطر", "Qatar", 18.0, 0.0, 90, 10),
+    KUWAIT("kuwait", "الكويت", "Kuwait", 18.0, 17.5, 0, 9),
+    TURKEY(
+        "turkey",
+        "رئاسة الشؤون الدينية التركية (ديانت)",
+        "Diyanet (Turkey)",
+        18.0,
+        17.0,
+        0,
+        13,
+        PrayerMinuteOffsets(sunrise = -7, dhuhr = 5, asr = 4, maghrib = 7)
+    ),
+    RUSSIA("russia", "الإدارة الدينية لمسلمي روسيا", "Spiritual Admin. of Muslims of Russia", 16.0, 15.0, 0, 14),
+    UZBEKISTAN("uzbekistan", "إدارة مسلمي أوزبكستان وآسيا الوسطى", "Muslim Board of Uzbekistan", 15.0, 15.0, 0, 1);
 
     companion object {
         fun fromKey(key: String?): CalculationMethod =
@@ -79,9 +92,15 @@ enum class CalculationMethod(
     }
 }
 
-enum class AsrMadhhab(val key: String, val shadowFactor: Double, val nameAr: String, val nameEn: String) {
-    SHAFI("shafi", 1.0, "الجمهور (الشافعي والمالكي والحنبلي)", "Standard (Shafi'i, Maliki, Hanbali)"),
-    HANAFI("hanafi", 2.0, "المذهب الحنفي", "Hanafi");
+enum class AsrMadhhab(
+    val key: String,
+    val shadowFactor: Double,
+    val aladhanSchool: Int,
+    val nameAr: String,
+    val nameEn: String
+) {
+    SHAFI("shafi", 1.0, 0, "الجمهور (الشافعي والمالكي والحنبلي)", "Standard (Shafi'i, Maliki, Hanbali)"),
+    HANAFI("hanafi", 2.0, 1, "المذهب الحنفي", "Hanafi");
 
     companion object {
         fun fromKey(key: String?): AsrMadhhab =

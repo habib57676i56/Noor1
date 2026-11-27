@@ -229,6 +229,8 @@ class UserPreferencesRepository(private val context: Context) {
 
     val preferencesFlow: Flow<UserPreferences> = context.noorDataStore.data.map { p ->
         val storedLang = p[Keys.LANGUAGE]
+        val tzFallbackCity = CityCatalog.defaultCityForTimeZone()
+        val (tzRecommendedMethod, tzRecommendedMadhhab) = CityCatalog.recommendedSettingsFor(tzFallbackCity)
         UserPreferences(
             userName = p[Keys.USER_NAME] ?: "",
             customAvatarUri = p[Keys.CUSTOM_AVATAR_URI] ?: "",
@@ -238,17 +240,17 @@ class UserPreferencesRepository(private val context: Context) {
                 AppLanguage.fromCode(storedLang)
             },
             themeMode = ThemeMode.fromKey(p[Keys.THEME_MODE]),
-            cityId = p[Keys.CITY_ID] ?: CityCatalog.defaultCity.id,
-            cityNameAr = p[Keys.CITY_NAME_AR] ?: CityCatalog.defaultCity.nameAr,
-            cityNameEn = p[Keys.CITY_NAME_EN] ?: CityCatalog.defaultCity.nameEn,
-            countryAr = p[Keys.COUNTRY_AR] ?: CityCatalog.defaultCity.countryAr,
-            countryEn = p[Keys.COUNTRY_EN] ?: CityCatalog.defaultCity.countryEn,
-            latitude = p[Keys.LATITUDE] ?: CityCatalog.defaultCity.latitude,
-            longitude = p[Keys.LONGITUDE] ?: CityCatalog.defaultCity.longitude,
-            timezoneId = p[Keys.TIMEZONE_ID] ?: CityCatalog.defaultCity.timezoneId,
+            cityId = p[Keys.CITY_ID] ?: tzFallbackCity.id,
+            cityNameAr = p[Keys.CITY_NAME_AR] ?: tzFallbackCity.nameAr,
+            cityNameEn = p[Keys.CITY_NAME_EN] ?: tzFallbackCity.nameEn,
+            countryAr = p[Keys.COUNTRY_AR] ?: tzFallbackCity.countryAr,
+            countryEn = p[Keys.COUNTRY_EN] ?: tzFallbackCity.countryEn,
+            latitude = p[Keys.LATITUDE] ?: tzFallbackCity.latitude,
+            longitude = p[Keys.LONGITUDE] ?: tzFallbackCity.longitude,
+            timezoneId = p[Keys.TIMEZONE_ID] ?: tzFallbackCity.timezoneId,
             isAutoLocation = p[Keys.IS_AUTO_LOCATION] ?: false,
-            calculationMethod = CalculationMethod.fromKey(p[Keys.CALC_METHOD]),
-            asrMadhhab = AsrMadhhab.fromKey(p[Keys.ASR_MADHHAB]),
+            calculationMethod = p[Keys.CALC_METHOD]?.let { CalculationMethod.fromKey(it) } ?: tzRecommendedMethod,
+            asrMadhhab = p[Keys.ASR_MADHHAB]?.let { AsrMadhhab.fromKey(it) } ?: tzRecommendedMadhhab,
             offsets = PrayerMinuteOffsets(
                 fajr = p[Keys.OFFSET_FAJR] ?: 0,
                 sunrise = p[Keys.OFFSET_SUNRISE] ?: 0,

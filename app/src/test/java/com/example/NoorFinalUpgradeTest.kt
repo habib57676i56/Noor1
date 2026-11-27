@@ -36,25 +36,25 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("4.2.2", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v4.2.2", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.2.3", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.2.3", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v4.2.2 passes default v4.2.2 gate, while older v4.2.1 / v3.9.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.2", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.1", defaultConfig))
+        // New build v4.2.3 passes default v4.2.3 gate, while older v4.2.2 / v3.9.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.3", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.2", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "4.2.2", the newly updated v4.2.2 (or v4.3.0) APK opens automatically
-        // while older v4.2.1 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.2")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.1", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.2", forcedWithMin))
+        // with minSupportedVersion = "4.2.3", the newly updated v4.2.3 (or v4.3.0) APK opens automatically
+        // while older v4.2.2 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.3")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.2", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.3", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.3.0 blocks 4.2.2 until user updates to 4.3.0
+        // Raising minSupportedVersion to 4.3.0 blocks 4.2.3 until user updates to 4.3.0
         val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.3.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.2", raisedConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.3", raisedConfig))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
@@ -596,5 +596,115 @@ class NoorFinalUpgradeTest {
                 )
             }
         }
+    }
+
+    @Test
+    fun alAdhanOfficialSync_buildsValidUrlParsesTimingsWithTzSuffixAndAppliesOffsets() {
+        val url = com.example.data.remote.AlAdhanPrayerApiService.buildTimingsUrl(
+            year = 2026,
+            month = 11,
+            day = 27,
+            latitude = 33.5138,
+            longitude = 36.2765,
+            method = com.example.domain.model.CalculationMethod.EGYPT,
+            madhhab = com.example.domain.model.AsrMadhhab.SHAFI
+        )
+        assertTrue(url.contains("27-11-2026"))
+        assertTrue(url.contains("method=5"))
+        assertTrue(url.contains("school=0"))
+
+        val sampleJson = """
+            {
+              "code": 200,
+              "data": {
+                "timings": {
+                  "Fajr": "04:55 (+03)",
+                  "Sunrise": "06:24 (+03)",
+                  "Dhuhr": "12:23 (+03)",
+                  "Asr": "15:02 (+03)",
+                  "Maghrib": "17:20 (+03)",
+                  "Isha": "18:41 (+03)"
+                }
+              }
+            }
+        """.trimIndent()
+        val tz = java.util.TimeZone.getTimeZone("Asia/Damascus")
+        val parsed = com.example.data.remote.AlAdhanPrayerApiService.parseTimingsResponse(
+            jsonBody = sampleJson,
+            year = 2026,
+            month = 11,
+            day = 27,
+            timeZone = tz
+        )!!
+        assertEquals("2026-11-27", parsed.dateKey)
+        val asrCal = java.util.Calendar.getInstance(tz).apply { timeInMillis = parsed.asrMillis }
+        assertEquals(15, asrCal.get(java.util.Calendar.HOUR_OF_DAY))
+        assertEquals(2, asrCal.get(java.util.Calendar.MINUTE))
+
+        val adjusted = com.example.data.remote.AlAdhanPrayerApiService.applyOffsets(
+            parsed,
+            com.example.domain.model.PrayerMinuteOffsets(asr = 3)
+        )
+        assertEquals(parsed.asrMillis + 3 * 60_000L, adjusted.asrMillis)
+    }
+
+    @Test
+    fun regionalPrayerDefaultsAndDiyanetTemkin_computeAccurateAsrAcrossRegions() {
+        // Timezone auto-selection & regional Method + Asr Madhhab recommendations
+        val damascus = com.example.domain.prayer.CityCatalog.defaultCityForTimeZone("Asia/Damascus")
+        assertEquals("damascus", damascus.id)
+        assertEquals(
+            com.example.domain.model.CalculationMethod.EGYPT to com.example.domain.model.AsrMadhhab.SHAFI,
+            com.example.domain.prayer.CityCatalog.recommendedSettingsFor(damascus)
+        )
+
+        val tashkent = com.example.domain.prayer.CityCatalog.defaultCityForTimeZone("Asia/Tashkent")
+        assertEquals("tashkent", tashkent.id)
+        assertEquals(
+            com.example.domain.model.CalculationMethod.UZBEKISTAN to com.example.domain.model.AsrMadhhab.HANAFI,
+            com.example.domain.prayer.CityCatalog.recommendedSettingsFor(tashkent)
+        )
+
+        val istanbul = com.example.domain.prayer.CityCatalog.findById("istanbul")
+        assertEquals(
+            com.example.domain.model.CalculationMethod.TURKEY to com.example.domain.model.AsrMadhhab.SHAFI,
+            com.example.domain.prayer.CityCatalog.recommendedSettingsFor(istanbul)
+        )
+
+        val moscow = com.example.domain.prayer.CityCatalog.findById("moscow")
+        assertEquals(
+            com.example.domain.model.CalculationMethod.RUSSIA to com.example.domain.model.AsrMadhhab.HANAFI,
+            com.example.domain.prayer.CityCatalog.recommendedSettingsFor(moscow)
+        )
+
+        val grozny = com.example.domain.prayer.CityCatalog.findById("grozny")
+        assertEquals(
+            com.example.domain.model.CalculationMethod.RUSSIA to com.example.domain.model.AsrMadhhab.SHAFI,
+            com.example.domain.prayer.CityCatalog.recommendedSettingsFor(grozny)
+        )
+
+        // Diyanet Turkey applies official +4 min temkin on Asr compared to raw MWL Shafi'i at same coordinates
+        val istTz = java.util.TimeZone.getTimeZone("Europe/Istanbul")
+        val diyanet = com.example.domain.prayer.PrayerTimeCalculator.calculateForDate(
+            year = 2026,
+            month = 11,
+            day = 27,
+            latitude = istanbul.latitude,
+            longitude = istanbul.longitude,
+            timeZone = istTz,
+            method = com.example.domain.model.CalculationMethod.TURKEY,
+            madhhab = com.example.domain.model.AsrMadhhab.SHAFI
+        )
+        val mwl = com.example.domain.prayer.PrayerTimeCalculator.calculateForDate(
+            year = 2026,
+            month = 11,
+            day = 27,
+            latitude = istanbul.latitude,
+            longitude = istanbul.longitude,
+            timeZone = istTz,
+            method = com.example.domain.model.CalculationMethod.MWL,
+            madhhab = com.example.domain.model.AsrMadhhab.SHAFI
+        )
+        assertEquals(4L, (diyanet.asrMillis - mwl.asrMillis) / 60_000L)
     }
 }

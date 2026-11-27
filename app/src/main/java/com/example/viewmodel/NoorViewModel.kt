@@ -66,6 +66,7 @@ import com.example.data.quran.MushafPageImageManager
 import com.example.data.quran.QuranLinguisticRepository
 import com.example.data.quran.QuranWordTimingRepository
 import com.example.domain.prayer.PrayerTimeGate
+import com.example.data.remote.AlAdhanPrayerApiService
 import com.example.data.remote.MosqueSearchResult
 import com.example.data.repository.NoorRepository
 import com.example.data.repository.SurahLoadResult
@@ -90,6 +91,7 @@ import com.example.domain.model.QuranReadingTheme
 import com.example.domain.model.QuranReciter
 import com.example.domain.model.QuranVerse
 import com.example.domain.model.ThemeMode
+import com.example.domain.prayer.CityCatalog
 import com.example.domain.prayer.PrayerTimeCalculator
 import com.example.location.LocationHelper
 import com.example.notifications.NoorAlarmScheduler
@@ -130,7 +132,8 @@ data class PrayerDashboardState(
     val gregorianCal: Calendar,
     val dailyDhikr: DhikrItem,
     val dailyAyah: DailyAyahItem,
-    val dailyHadith: AuthenticHadith
+    val dailyHadith: AuthenticHadith,
+    val isOfficialPrayerSyncActive: Boolean = false
 )
 
 sealed class SurahReaderState {
@@ -458,23 +461,62 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     private val _nowMillis = MutableStateFlow(System.currentTimeMillis())
     val nowMillis: StateFlow<Long> = _nowMillis.asStateFlow()
 
-    val prayerDashboard: StateFlow<PrayerDashboardState> = combine(preferences, _nowMillis) { prefs, now ->
+    // Official AlAdhan verified daily timings (today & tomorrow) keyed by location/date/method/madhhab
+    private val _officialPrayerSchedules =
+        MutableStateFlow<Pair<String, Pair<DailyPrayerSchedule, DailyPrayerSchedule?>>?>(null)
+
+    private fun buildPrayerSyncKey(dateKey: String, prefs: UserPreferences): String =
+        "$dateKey|${String.format(Locale.US, "%.3f", prefs.latitude)}|${String.format(Locale.US, "%.3f", prefs.longitude)}|${prefs.timezoneId}|${prefs.calculationMethod.key}|${prefs.asrMadhhab.key}"
+
+    val prayerDashboard: StateFlow<PrayerDashboardState> = combine(
+        preferences,
+        _nowMillis,
+        _officialPrayerSchedules
+    ) { prefs, now, officialPair ->
         val tz = TimeZone.getTimeZone(prefs.timezoneId)
         val todayCal = Calendar.getInstance(tz).apply { timeInMillis = now }
         val tomorrowCal = (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 1) }
 
-        val todaySchedule = PrayerTimeCalculator.calculateForCalendar(
+        val offlineToday = PrayerTimeCalculator.calculateForCalendar(
             todayCal, prefs.latitude, prefs.longitude, prefs.calculationMethod, prefs.asrMadhhab, prefs.offsets
         )
-        val tomorrowSchedule = PrayerTimeCalculator.calculateForCalendar(
+        val offlineTomorrow = PrayerTimeCalculator.calculateForCalendar(
             tomorrowCal, prefs.latitude, prefs.longitude, prefs.calculationMethod, prefs.asrMadhhab, prefs.offsets
         )
-        val weekly = PrayerTimeCalculator.calculateRange(
+
+        val expectedKey = buildPrayerSyncKey(offlineToday.dateKey, prefs)
+        val matchedOfficial = officialPair?.takeIf {
+            it.first == expectedKey && it.second.first.dateKey == offlineToday.dateKey
+        }?.second
+
+        val isOfficialSync = matchedOfficial != null
+        val todaySchedule = if (matchedOfficial != null) {
+            AlAdhanPrayerApiService.applyOffsets(matchedOfficial.first, prefs.offsets)
+        } else {
+            offlineToday
+        }
+        val tomorrowSchedule = if (matchedOfficial?.second != null) {
+            AlAdhanPrayerApiService.applyOffsets(matchedOfficial.second!!, prefs.offsets)
+        } else {
+            offlineTomorrow
+        }
+
+        val weeklyRaw = PrayerTimeCalculator.calculateRange(
             todayCal, 7, prefs.latitude, prefs.longitude, prefs.calculationMethod, prefs.asrMadhhab, prefs.offsets
         )
-        val monthly = PrayerTimeCalculator.calculateRange(
+        val monthlyRaw = PrayerTimeCalculator.calculateRange(
             todayCal, 30, prefs.latitude, prefs.longitude, prefs.calculationMethod, prefs.asrMadhhab, prefs.offsets
         )
+        val weekly = if (isOfficialSync && weeklyRaw.isNotEmpty()) {
+            listOf(todaySchedule) + weeklyRaw.drop(1)
+        } else {
+            weeklyRaw
+        }
+        val monthly = if (isOfficialSync && monthlyRaw.isNotEmpty()) {
+            listOf(todaySchedule) + monthlyRaw.drop(1)
+        } else {
+            monthlyRaw
+        }
         val nextInfo = PrayerTimeCalculator.computeNextPrayer(now, todaySchedule, tomorrowSchedule)
         val hijri = HijriCalendarEngine.gregorianToHijri(
             todayCal.get(Calendar.YEAR),
@@ -493,7 +535,8 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             gregorianCal = todayCal,
             dailyDhikr = AdhkarCatalog.dailyDhikr(dayOfYear),
             dailyAyah = AdhkarCatalog.dailyAyah(dayOfYear),
-            dailyHadith = AdhkarCatalog.dailyHadith(dayOfYear)
+            dailyHadith = AdhkarCatalog.dailyHadith(dayOfYear),
+            isOfficialPrayerSyncActive = isOfficialSync
         )
     }.stateIn(
         scope = viewModelScope,
@@ -724,6 +767,58 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 delay(1000L)
             }
         }
+        // Sync verified official daily prayer timings from AlAdhan API whenever date, location, method, or Asr madhhab changes
+        viewModelScope.launch {
+            combine(
+                preferences,
+                _nowMillis.map { ms ->
+                    val tz = TimeZone.getTimeZone(preferences.value.timezoneId)
+                    val c = Calendar.getInstance(tz).apply { timeInMillis = ms }
+                    String.format(
+                        Locale.US,
+                        "%04d-%02d-%02d",
+                        c.get(Calendar.YEAR),
+                        c.get(Calendar.MONTH) + 1,
+                        c.get(Calendar.DAY_OF_MONTH)
+                    )
+                }.distinctUntilChanged()
+            ) { prefs, dateKey ->
+                buildPrayerSyncKey(dateKey, prefs) to prefs
+            }
+                .distinctUntilChanged { a, b -> a.first == b.first }
+                .collect { (syncKey, prefs) ->
+                    val tz = TimeZone.getTimeZone(prefs.timezoneId)
+                    val todayCal = Calendar.getInstance(tz)
+                    val tomorrowCal = (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 1) }
+
+                    val officialToday = AlAdhanPrayerApiService.fetchOfficialSchedule(
+                        year = todayCal.get(Calendar.YEAR),
+                        month = todayCal.get(Calendar.MONTH) + 1,
+                        day = todayCal.get(Calendar.DAY_OF_MONTH),
+                        latitude = prefs.latitude,
+                        longitude = prefs.longitude,
+                        timeZone = tz,
+                        method = prefs.calculationMethod,
+                        madhhab = prefs.asrMadhhab
+                    )
+                    if (officialToday != null) {
+                        val officialTomorrow = AlAdhanPrayerApiService.fetchOfficialSchedule(
+                            year = tomorrowCal.get(Calendar.YEAR),
+                            month = tomorrowCal.get(Calendar.MONTH) + 1,
+                            day = tomorrowCal.get(Calendar.DAY_OF_MONTH),
+                            latitude = prefs.latitude,
+                            longitude = prefs.longitude,
+                            timeZone = tz,
+                            method = prefs.calculationMethod,
+                            madhhab = prefs.asrMadhhab
+                        )
+                        _officialPrayerSchedules.value = syncKey to (officialToday to officialTomorrow)
+                    } else if (_officialPrayerSchedules.value?.first != syncKey) {
+                        _officialPrayerSchedules.value = null
+                    }
+                }
+        }
+
         viewModelScope.launch {
             preferences.collect { prefs ->
                 if (!tasbihHydrated) {
@@ -827,7 +922,10 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- Location, Prayer Config & Iqamah ---
     fun selectCity(city: CityLocation) = viewModelScope.launch {
+        val (recommendedMethod, recommendedMadhhab) = CityCatalog.recommendedSettingsFor(city)
         repo.prefs.setCity(city, isAuto = false)
+        repo.prefs.setCalculationMethod(recommendedMethod)
+        repo.prefs.setAsrMadhhab(recommendedMadhhab)
     }
 
     fun detectLocationAutomatically() = viewModelScope.launch {
@@ -836,8 +934,11 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
         _isDetectingLocation.value = false
         val isAr = preferences.value.language == AppLanguage.ARABIC
         if (detected != null) {
+            val (recommendedMethod, recommendedMadhhab) = CityCatalog.recommendedSettingsFor(detected)
             repo.prefs.setCity(detected, isAuto = true)
-            _statusBanner.value = if (isAr) "تم تحديث الموقع: ${detected.nameAr}" else "Location updated: ${detected.nameEn}"
+            repo.prefs.setCalculationMethod(recommendedMethod)
+            repo.prefs.setAsrMadhhab(recommendedMadhhab)
+            _statusBanner.value = if (isAr) "تم تحديث الموقع والمواقيت: ${detected.nameAr}" else "Location & timings updated: ${detected.nameEn}"
         } else {
             _statusBanner.value = if (isAr) {
                 "تعذّر تحديد الموقع تلقائياً. يمكنك اختيار مدينتك يدوياً."
