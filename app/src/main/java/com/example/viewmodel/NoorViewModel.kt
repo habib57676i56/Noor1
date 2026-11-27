@@ -1581,12 +1581,29 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // Engine A: Continuous Uninterrupted Full-Surah Stream + Verified Millisecond Timestamps
-            val manifest = if (quranWordTimingRepository.supportsVerifiedWordTimings(reciter)) {
-                quranWordTimingRepository.getContinuousSurahManifest(reciter, surahNumber)
+            // Supports ALL 7 reciters (Quran.com v4, MP3Quran.net v3 ayat_timing for Yasser Al-Dosari & Maher, and QDC)!
+            val verifiedManifest = quranWordTimingRepository.getContinuousSurahManifest(reciter, surahNumber)
+            if (myToken != playbackRequestToken.get()) return@launch
+
+            // If timing API is unreachable during normal listening (!repeatRange), STILL play the Sheikh's
+            // single uninterrupted continuous full-Surah MP3 (`reciter.fullSurahUrl`) with proportional Ayah
+            // sync (rescaled to exact duration on prepare) so the Sheikh's voice NEVER chops or stutters between Ayahs!
+            val manifest = verifiedManifest ?: if (!repeatRange) {
+                val ayahWeights = if (surahVerses.isNotEmpty()) {
+                    surahVerses.map { it.numberInSurah to it.textUthmani.length.coerceAtLeast(15) }
+                } else {
+                    (1..sMeta.verseCount).map { it to 40 }
+                }
+                QuranWordTimingRepository.buildProportionalSurahManifest(
+                    reciterId = reciter.id,
+                    surahNumber = surahNumber,
+                    audioSource = reciter.fullSurahUrl(surahNumber),
+                    ayahWeights = ayahWeights,
+                    openingBismillahLeadMs = if (surahNumber != 1 && surahNumber != 9) 4_200L else 0L
+                )
             } else {
                 null
             }
-            if (myToken != playbackRequestToken.get()) return@launch
 
             if (manifest != null && manifest.ayahs.isNotEmpty() && manifest.audioUrl.isNotBlank()) {
                 val rangeLabel = if (repeatRange && clampedEndAyah != null) {
@@ -1617,7 +1634,7 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            // Engine B: Gapless pre-buffered per-Ayah queue (used by Sheikh Yasser Al-Dosari & others)
+            // Engine B: Gapless pre-buffered per-Ayah queue (fallback for offline Ayah-range looping)
             val tracks = mutableListOf<AudioTrackItem>()
 
             suspend fun appendSurahTracks(

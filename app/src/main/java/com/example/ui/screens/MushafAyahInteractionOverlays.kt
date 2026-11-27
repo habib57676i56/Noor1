@@ -83,8 +83,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathOperation
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -96,14 +99,17 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.catalog.SurahCatalog
+import com.example.data.quran.AyahLineRegion
 import com.example.data.quran.AyahLinguisticAnalysis
 import com.example.data.quran.AyahPageRegion
+import com.example.data.quran.FittedImageRect
 import com.example.data.quran.LinguisticVerificationStatus
 import com.example.data.quran.MushafCoordinatePackStatus
 import com.example.data.quran.MushafCoordinateTransform
 import com.example.data.quran.MushafHighlightColor
 import com.example.data.quran.MushafHighlightStyle
 import com.example.data.quran.MushafPageLayout
+import com.example.data.quran.NormalizedRect
 import com.example.data.quran.WordLinguisticAnalysis
 import com.example.ui.i18n.L10n
 import com.example.ui.i18n.LocalAppLanguage
@@ -119,6 +125,81 @@ enum class LinguisticSheetTab(val index: Int) {
     IRAB(0),
     SARF(1),
     TAFSIR(2)
+}
+
+/**
+ * Computes seamless, vertically-connected pixel rectangles for a single- or multi-line Ayah
+ * so consecutive lines touch cleanly at their exact midpoint with ZERO white gap between lines
+ * (matching the clean unified connected-block highlight style of King Fahd / Quran for Android).
+ */
+internal fun buildSeamlessConnectedHighlightRects(
+    lineRegions: List<AyahLineRegion>,
+    endMarkerBounds: NormalizedRect?,
+    fitted: FittedImageRect
+): List<FittedImageRect> {
+    if (lineRegions.isEmpty() || fitted.width <= 0f || fitted.height <= 0f) return emptyList()
+    val sorted = lineRegions.sortedBy { it.lineNumber }
+    val lineNumbers = mutableListOf<Int>()
+    val rawRects = mutableListOf<FittedImageRect>()
+
+    for (seg in sorted) {
+        val clipped = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
+            segBounds = seg.bounds,
+            endMarkerBounds = endMarkerBounds
+        )
+        // Never drop a short single-word Ayah (e.g. "الم" 2:1) if endMarker overlap trimmed too aggressively
+        val effectiveBounds = if (clipped != null && clipped.width >= 0.012f) clipped else seg.bounds
+        val pxRect = MushafCoordinateTransform.normalizedRectToFittedRect(effectiveBounds, fitted)
+        if (pxRect.width <= 1f || pxRect.height <= 1f) continue
+        lineNumbers += seg.lineNumber
+        rawRects += pxRect
+    }
+    if (rawRects.isEmpty()) return emptyList()
+
+    val avgLineH = rawRects.map { it.height }.average().toFloat().coerceAtLeast(8f)
+    val outerPadY = (avgLineH * 0.06f).coerceIn(1.5f, 6f)
+    val padX = (fitted.width * 0.004f).coerceIn(1.5f, 5f)
+
+    // First expand horizontal edges gently and outer top/bottom edges
+    val tops = FloatArray(rawRects.size) { i -> (rawRects[i].top - outerPadY).coerceAtLeast(fitted.top) }
+    val bottoms = FloatArray(rawRects.size) { i -> (rawRects[i].bottom + outerPadY).coerceAtMost(fitted.bottom) }
+    val lefts = FloatArray(rawRects.size) { i -> (rawRects[i].left - padX).coerceAtLeast(fitted.left) }
+    val rights = FloatArray(rawRects.size) { i -> (rawRects[i].right + padX).coerceAtMost(fitted.right) }
+
+    // Bridge EVERY consecutive pair of lines in the same Ayah seamlessly at their exact vertical midpoint
+    // with a 1px overlap so PathOperation.Union produces ONE solid connected shape with ZERO gaps!
+    for (i in 0 until rawRects.lastIndex) {
+        val consecutiveLine = (lineNumbers[i + 1] - lineNumbers[i]) <= 1
+        if (consecutiveLine) {
+            val midY = (rawRects[i].bottom + rawRects[i + 1].top) * 0.5f
+            bottoms[i] = maxOf(bottoms[i], midY + 1.0f)
+            tops[i + 1] = minOf(tops[i + 1], midY - 1.0f)
+        }
+    }
+
+    return List(rawRects.size) { i ->
+        FittedImageRect(
+            left = lefts[i],
+            top = tops[i],
+            width = (rights[i] - lefts[i]).coerceAtLeast(1f),
+            height = (bottoms[i] - tops[i]).coerceAtLeast(1f)
+        )
+    }
+}
+
+private fun buildUnifiedHighlightPath(rects: List<FittedImageRect>): Path {
+    val combined = Path()
+    for (r in rects) {
+        val segPath = Path().apply {
+            addRect(Rect(r.left, r.top, r.right, r.bottom))
+        }
+        if (combined.isEmpty) {
+            combined.addPath(segPath)
+        } else {
+            combined.op(combined, segPath, PathOperation.Union)
+        }
+    }
+    return combined
 }
 
 /**
@@ -143,7 +224,7 @@ fun MushafAyahHighlightOverlay(
 
     val pulseTransition = rememberInfiniteTransition(label = "mushaf_highlight_pulse")
     val pulseFactor by pulseTransition.animateFloat(
-        initialValue = 0.86f,
+        initialValue = 0.88f,
         targetValue = 1.0f,
         animationSpec = infiniteRepeatable(
             animation = tween(durationMillis = 1200, easing = FastOutSlowInEasing),
@@ -152,15 +233,14 @@ fun MushafAyahHighlightOverlay(
         label = "pulse_alpha"
     )
     val effectivePulse = if (highlightStyle.pulseAnimated && activeRecitedAyah != null) pulseFactor else 1f
-    val baseAlpha = highlightStyle.alpha.coerceIn(0.14f, 0.55f)
+    val baseAlpha = highlightStyle.alpha.coerceIn(0.16f, 0.55f)
     val preset = highlightStyle.colorPreset
 
     val activeRegion = remember(layout, activeRecitedAyah) {
         activeRecitedAyah?.let { (s, a) ->
-            // Do not highlight Bismillah during recitation playback:
-            // - On Al-Fatihah (1:1), highlighting starts cleanly on Ayah 1:2 (الحمد لله رب العالمين)
-            // - On Surah Bismillah headers (ayahNumber <= 0), wait until Ayah 1 begins!
-            if (a <= 0 || (s == 1 && a == 1)) null else layout.findAyah(s, a)
+            // In Surah Al-Fatihah (Surah 1), Bismillah IS Ayah 1 (1:1) and MUST be highlighted!
+            // On Surahs 2..114, opening Bismillah headers use ayahNumber <= 0 so they are NOT highlighted.
+            if (a <= 0) null else layout.findAyah(s, a)
         }
     }
     val activeWordRegion = remember(activeRegion, activeWordPosition) {
@@ -182,27 +262,22 @@ fun MushafAyahHighlightOverlay(
             imageWidth = imageWidth.toFloat(),
             imageHeight = imageHeight.toFloat()
         )
-        val cornerPx = (fitted.width * 0.008f).coerceIn(3f, 10f)
+        val cornerPx = (fitted.width * 0.005f).coerceIn(2f, 6f)
 
-        // 1. Real-Time Active Recited Ayah Highlight — clean soft translucent fill ONLY over Ayah text
-        // (strictly clipped away from original printed Mushaf Ayah number circles!)
+        // 1. Real-Time Active Recited Ayah Highlight — ONE single unified connected translucent block
+        // across all lines of the Ayah with ZERO vertical gaps and ZERO double-blended seams!
         if (activeRegion != null) {
             val fillColor = preset.ayahFillColor.copy(
-                alpha = (baseAlpha * effectivePulse * (if (nightMode) 1.12f else 0.90f)).coerceIn(0.12f, 0.42f)
+                alpha = (baseAlpha * effectivePulse * (if (nightMode) 1.15f else 0.96f)).coerceIn(0.16f, 0.44f)
             )
-            for (seg in activeRegion.lineRegions) {
-                val safeBounds = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
-                    segBounds = seg.bounds,
-                    endMarkerBounds = activeRegion.endMarkerBounds
-                ) ?: continue
-                val rect = MushafCoordinateTransform.normalizedRectToFittedRect(safeBounds, fitted)
-                if (rect.width <= 1f || rect.height <= 1f) continue
-                drawRoundRect(
-                    color = fillColor,
-                    topLeft = Offset(rect.left, rect.top),
-                    size = Size(rect.width, rect.height),
-                    cornerRadius = CornerRadius(cornerPx, cornerPx)
-                )
+            val connectedRects = buildSeamlessConnectedHighlightRects(
+                lineRegions = activeRegion.lineRegions,
+                endMarkerBounds = activeRegion.endMarkerBounds,
+                fitted = fitted
+            )
+            if (connectedRects.isNotEmpty()) {
+                val unifiedPath = buildUnifiedHighlightPath(connectedRects)
+                drawPath(path = unifiedPath, color = fillColor)
             }
 
             // 2. Verified Word-by-Word Audio Highlight (ONLY when verified millisecond timestamps exist)
@@ -215,7 +290,7 @@ fun MushafAyahHighlightOverlay(
                     val wRect = MushafCoordinateTransform.normalizedRectToFittedRect(safeWordBounds, fitted)
                     if (wRect.width > 1f && wRect.height > 1f) {
                         drawRoundRect(
-                            color = preset.wordFillColor.copy(alpha = (baseAlpha + 0.14f).coerceAtMost(0.50f)),
+                            color = preset.wordFillColor.copy(alpha = (baseAlpha + 0.14f).coerceAtMost(0.48f)),
                             topLeft = Offset(wRect.left, wRect.top),
                             size = Size(wRect.width, wRect.height),
                             cornerRadius = CornerRadius(cornerPx, cornerPx)
@@ -225,39 +300,20 @@ fun MushafAyahHighlightOverlay(
             }
         }
 
-        // 3. User-Selected Ayah Highlight — distinct cool teal tint + subtle bottom underline so
-        // user selection NEVER visually conflicts with the active recited Ayah highlight and NEVER
-        // covers the original printed decorative Mushaf Ayah number circle!
+        // 3. User-Selected Ayah Highlight — unified seamless connected block (zero gaps between lines!)
         if (selectedAyah != null) {
             val isSameAsActive = activeRegion != null &&
                 activeRegion.surahNumber == selectedAyah.surahNumber &&
                 activeRegion.ayahNumber == selectedAyah.ayahNumber
-            val selectionFill = Color(0xFF0D9488).copy(alpha = if (nightMode) 0.26f else 0.18f)
-            val selectionUnderline = Color(0xFF0F766E).copy(alpha = if (nightMode) 0.85f else 0.65f)
-            val underlineThickness = (fitted.height * 0.0022f).coerceIn(2f, 4f)
-
-            for (seg in selectedAyah.lineRegions) {
-                val safeBounds = MushafCoordinateTransform.clipBoundsExcludingEndMarker(
-                    segBounds = seg.bounds,
-                    endMarkerBounds = selectedAyah.endMarkerBounds
-                ) ?: continue
-                val rect = MushafCoordinateTransform.normalizedRectToFittedRect(safeBounds, fitted)
-                if (rect.width <= 1f || rect.height <= 1f) continue
-                if (!isSameAsActive) {
-                    drawRoundRect(
-                        color = selectionFill,
-                        topLeft = Offset(rect.left, rect.top),
-                        size = Size(rect.width, rect.height),
-                        cornerRadius = CornerRadius(cornerPx, cornerPx)
-                    )
-                }
-                // Subtle underline beneath the selected Ayah text lines (no box borders!)
-                drawRoundRect(
-                    color = selectionUnderline,
-                    topLeft = Offset(rect.left + cornerPx * 0.5f, rect.top + rect.height - underlineThickness),
-                    size = Size((rect.width - cornerPx).coerceAtLeast(2f), underlineThickness),
-                    cornerRadius = CornerRadius(underlineThickness, underlineThickness)
-                )
+            val selectionFill = preset.ayahFillColor.copy(alpha = if (nightMode) 0.30f else 0.24f)
+            val connectedRects = buildSeamlessConnectedHighlightRects(
+                lineRegions = selectedAyah.lineRegions,
+                endMarkerBounds = selectedAyah.endMarkerBounds,
+                fitted = fitted
+            )
+            if (connectedRects.isNotEmpty() && !isSameAsActive) {
+                val unifiedPath = buildUnifiedHighlightPath(connectedRects)
+                drawPath(path = unifiedPath, color = selectionFill)
             }
         }
     }

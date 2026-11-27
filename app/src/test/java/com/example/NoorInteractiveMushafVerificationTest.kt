@@ -950,6 +950,87 @@ class NoorInteractiveMushafVerificationTest {
             clipped!!.left > marker2_10.right
         )
     }
+
+    @Test
+    fun mushafV4_mp3QuranAndQdcContinuousParsersAndNaturalOpeningBismillahPlayback() {
+        // 1. MP3Quran.net v3 ayat_timing JSON parser skips ayah=0 (Bismillah) so Ayah 1 starts cleanly after Bismillah
+        val mp3QuranJson = """
+            [
+              {"ayah": 0, "polygon": "", "start_time": 0, "end_time": 4300},
+              {"ayah": 1, "polygon": "", "start_time": 4300, "end_time": 9100},
+              {"ayah": 2, "polygon": "", "start_time": 9100, "end_time": 16400}
+            ]
+        """.trimIndent()
+        val mp3Manifest = QuranWordTimingRepository.parseMp3QuranAyatTimingJson(
+            reciterId = QuranReciter.YASSER_AL_DOSARI.id,
+            surahNumber = 2,
+            audioUrl = "https://server11.mp3quran.net/yasser/002.mp3",
+            rawJson = mp3QuranJson
+        )!!
+        assertEquals(2, mp3Manifest.ayahs.size)
+        assertEquals(1, mp3Manifest.ayahs.first().ayahNumber)
+        assertEquals(4300L, mp3Manifest.ayahs.first().startMs)
+        assertNull(mp3Manifest.findAyahAt(2000L))
+        assertEquals(1, mp3Manifest.findAyahAt(6000L)?.ayahNumber)
+        assertEquals(2, mp3Manifest.findAyahAt(12000L)?.ayahNumber)
+
+        // Verify QuranAudioPlayer starts at 0ms for natural opening Bismillah on Surah 2 Ayah 1,
+        // keeps playingAyah == null during Bismillah (0..4300ms), then smoothly highlights Ayah 1 at 4300ms+!
+        val player = QuranAudioPlayer(context)
+        player.playContinuousSurahManifest(
+            manifest = mp3Manifest,
+            surahTitleAr = "سورة البقرة",
+            surahTitleEn = "Al-Baqarah",
+            reciterNameAr = QuranReciter.YASSER_AL_DOSARI.nameAr,
+            reciterNameEn = QuranReciter.YASSER_AL_DOSARI.nameEn,
+            pageResolver = { _, _ -> 2 },
+            startAyah = 1
+        )
+        assertEquals(0L, player.state.value.currentPositionMs)
+        assertNull("Opening Bismillah on Surah 2 must NOT pre-highlight Ayah 1", player.state.value.playingAyah)
+        player.simulateContinuousPositionForTest(2000L)
+        assertNull(player.state.value.playingAyah)
+        player.simulateContinuousPositionForTest(5000L)
+        assertEquals(1, player.state.value.playingAyah)
+        player.simulateContinuousPositionForTest(11000L)
+        assertEquals(2, player.state.value.playingAyah)
+        assertEquals(1, player.playerCreationCountForTest)
+        player.stop()
+
+        // 2. Quran.com QDC audio_files JSON parser handles verse_timings + word segments
+        val qdcJson = """
+            {
+              "audio_files": [
+                {
+                  "audio_url": "https://download.quranicaudio.com/qdc/yasser_ad_dussary/murattal/002.mp3",
+                  "verse_timings": [
+                    {
+                      "verse_key": "2:1",
+                      "timestamp_from": 4500,
+                      "timestamp_to": 8500,
+                      "segments": [[1, 4500, 8500]]
+                    },
+                    {
+                      "verse_key": "2:2",
+                      "timestamp_from": 8500,
+                      "timestamp_to": 15000,
+                      "segments": [[1, 8500, 11000], [2, 11000, 15000]]
+                    }
+                  ]
+                }
+              ]
+            }
+        """.trimIndent()
+        val qdcManifest = QuranWordTimingRepository.parseQdcAudioFilesJson(
+            reciterId = QuranReciter.YASSER_AL_DOSARI.id,
+            qdcReciterId = 174,
+            surahNumber = 2,
+            rawJson = qdcJson
+        )!!
+        assertEquals(2, qdcManifest.ayahs.size)
+        assertEquals(4500L, qdcManifest.ayahs.first().startMs)
+        assertEquals(2, qdcManifest.ayahs[1].segments.size)
+    }
 }
 
 

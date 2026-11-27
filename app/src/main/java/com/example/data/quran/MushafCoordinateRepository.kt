@@ -56,18 +56,21 @@ class MushafCoordinateRepository(private val appContext: Context) {
 
     private val _packStatus = MutableStateFlow(scanStatus())
     val packStatus: StateFlow<MushafCoordinatePackStatus> = _packStatus.asStateFlow()
-    private val autoDownloadAttempted = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val lastAutoDownloadAttemptMs = java.util.concurrent.atomic.AtomicLong(0L)
 
     fun hasExactGlyphDb(): Boolean = glyphDbFile.exists() && glyphDbFile.length() > 100_000L
 
     /**
      * Silently downloads the official 604-page King Fahd Complex glyph database (`ayahinfo_1024.db`)
-     * once in the background if not yet installed locally, upgrading every Mushaf page to exact
-     * pixel-level Ayah boundaries without disrupting reading or requiring manual menu steps.
+     * in the background if not yet installed locally, retrying cleanly after transient offline failures
+     * (25s cooldown) so every Mushaf page upgrades to exact pixel-level Ayah boundaries.
      */
     suspend fun ensureExactGlyphDbInBackground(): Boolean {
         if (hasExactGlyphDb()) return true
-        if (!autoDownloadAttempted.compareAndSet(false, true)) return false
+        val now = System.currentTimeMillis()
+        val prev = lastAutoDownloadAttemptMs.get()
+        if (now - prev < 25_000L) return false
+        if (!lastAutoDownloadAttemptMs.compareAndSet(prev, now)) return false
         return downloadExactGlyphDatabase()
     }
 
@@ -472,10 +475,11 @@ class MushafCoordinateRepository(private val appContext: Context) {
 
         // Special ornate inner frame on Pages 1 & 2 (Al-Fatiha & opening of Al-Baqarah)
         // Calibrated to King Fahd Complex `width_1024/page001.png` & `page002.png` inner cartouche
-        const val SPECIAL_P12_LEFT = 0.160f
-        const val SPECIAL_P12_RIGHT = 0.840f
-        const val SPECIAL_P12_TOP = 0.268f
-        const val SPECIAL_P12_BOTTOM = 0.736f
+        // (below the top decorative gilded border & Surah title banner at y ~ 0.00..0.345).
+        const val SPECIAL_P12_LEFT = 0.165f
+        const val SPECIAL_P12_RIGHT = 0.835f
+        const val SPECIAL_P12_TOP = 0.348f
+        const val SPECIAL_P12_BOTTOM = 0.782f
 
         val GLYPH_DB_MIRRORS = listOf(
             "https://android.quran.com/data/databases/ayahinfo_1024.zip",
@@ -608,7 +612,8 @@ class MushafCoordinateRepository(private val appContext: Context) {
             val maxLine = if (isOpening) maxOf(8, usedLines.maxOrNull() ?: 8) else 15
             val lineSlots = (maxLine - minLine + 1).coerceAtLeast(1)
             val lineHeight = (bottomBound - topBound) / lineSlots.toFloat()
-            val lineInsetY = lineHeight * 0.06f
+            // Zero vertical inset between consecutive lines so multi-line Ayahs form one seamless connected block!
+            val lineInsetY = 0f
 
             // Detect empty lines between Surahs (Surah header banners & Bismillah lines)
             val occupiedLineSet = usedLines.toSet()
@@ -642,10 +647,10 @@ class MushafCoordinateRepository(private val appContext: Context) {
                 val totalWeight = weights.sum().coerceAtLeast(1f)
                 val fullWidth = rightBound - leftBound
 
-                // On opening framed pages (Page 1 Al-Fatiha & Page 2 Al-Baqarah), shorter lines are
-                // centered horizontally inside the ornate frame rather than stretched across blank paper!
-                val (lineLeftBound, lineRightBound) = if (isOpening && totalWeight < maxOpeningLineWeight * 0.92f) {
-                    val fillRatio = (totalWeight / maxOpeningLineWeight).coerceIn(0.45f, 1.0f)
+                // On opening framed pages (Page 1 Al-Fatiha & Page 2 Al-Baqarah), lines 2..7 are fully
+                // justified across the ornate inner frame, while ONLY the shorter final line (line 8) is centered!
+                val (lineLeftBound, lineRightBound) = if (isOpening && lineNum == maxLine && totalWeight < maxOpeningLineWeight * 0.85f) {
+                    val fillRatio = (totalWeight / maxOpeningLineWeight).coerceIn(0.45f, 0.80f)
                     val centeredWidth = fullWidth * fillRatio
                     val centerX = (leftBound + rightBound) * 0.5f
                     (centerX - centeredWidth * 0.5f) to (centerX + centeredWidth * 0.5f)

@@ -36,26 +36,26 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("3.9.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v3.9.0", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.0.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.0.0", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v3.9.0 passes default v3.9.0 gate, while older v3.8.0 / v3.7.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
+        // New build v4.0.0 passes default v4.0.0 gate, while older v3.9.0 / v3.8.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.8.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.7.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "3.9.0", the newly updated v3.9.0 (or v4.0.0) APK opens automatically
-        // while older v3.8.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.9.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.8.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.9.0", forcedWithMin))
+        // with minSupportedVersion = "4.0.0", the newly updated v4.0.0 (or v4.1.0) APK opens automatically
+        // while older v3.9.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.0.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.0.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.0.0 blocks 3.9.0 until user updates to 4.0.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.0.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.0.0", raisedConfig))
+        // Raising minSupportedVersion to 4.1.0 blocks 4.0.0 until user updates to 4.1.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.1.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.0.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.1.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
@@ -417,5 +417,86 @@ class NoorFinalUpgradeTest {
         )
         assertEquals(1, tawbahTracks.size)
         assertEquals(1, tawbahTracks.first().ayahNumber)
+    }
+
+    @Test
+    fun mushafV4_seamlessConnectedMultiLineHighlightAndPage12ExactAlignment() {
+        // 1. Seamless multi-line Ayah highlight MUST have ZERO vertical gap between consecutive lines
+        val fitted = com.example.data.quran.FittedImageRect(left = 0f, top = 0f, width = 1000f, height = 1600f)
+        val multiLineRegions = listOf(
+            com.example.data.quran.AyahLineRegion(
+                surahNumber = 3,
+                ayahNumber = 7,
+                lineNumber = 8,
+                bounds = com.example.data.quran.NormalizedRect(left = 0.05f, top = 0.48f, right = 0.14f, bottom = 0.535f)
+            ),
+            com.example.data.quran.AyahLineRegion(
+                surahNumber = 3,
+                ayahNumber = 7,
+                lineNumber = 9,
+                bounds = com.example.data.quran.NormalizedRect(left = 0.05f, top = 0.545f, right = 0.95f, bottom = 0.600f)
+            ),
+            com.example.data.quran.AyahLineRegion(
+                surahNumber = 3,
+                ayahNumber = 7,
+                lineNumber = 10,
+                bounds = com.example.data.quran.NormalizedRect(left = 0.05f, top = 0.610f, right = 0.95f, bottom = 0.665f)
+            ),
+            com.example.data.quran.AyahLineRegion(
+                surahNumber = 3,
+                ayahNumber = 7,
+                lineNumber = 11,
+                bounds = com.example.data.quran.NormalizedRect(left = 0.62f, top = 0.675f, right = 0.95f, bottom = 0.730f)
+            )
+        )
+        val connected = com.example.ui.screens.buildSeamlessConnectedHighlightRects(
+            lineRegions = multiLineRegions,
+            endMarkerBounds = null,
+            fitted = fitted
+        )
+        assertEquals(4, connected.size)
+        for (i in 0 until connected.lastIndex) {
+            assertTrue(
+                "Expected zero gap between line ${i + 8} bottom (${connected[i].bottom}) and line ${i + 9} top (${connected[i + 1].top})",
+                connected[i].bottom >= connected[i + 1].top
+            )
+        }
+
+        // 2. Page 1 & Page 2 inner frame starts below the gilded Surah banner (>= 0.34f),
+        //    Al-Fatihah 1:1 (Bismillah) exists on line 2 and is highlightable, and Page 2 Ayah 2:1 (الم) sits on the right margin
+        assertTrue(com.example.data.quran.MushafCoordinateRepository.SPECIAL_P12_TOP >= 0.34f)
+        val page1 = com.example.data.quran.MushafCoordinateRepository.buildVerifiedBundledPageLayout(1)!!
+        val fatiha1_1 = page1.findAyah(1, 1)!!
+        assertEquals(2, fatiha1_1.lineRegions.first().lineNumber)
+        assertTrue(fatiha1_1.lineRegions.first().bounds.top >= 0.34f)
+
+        val page2 = com.example.data.quran.MushafCoordinateRepository.buildVerifiedBundledPageLayout(2)!!
+        val baqarah2_1 = page2.findAyah(2, 1)!!
+        assertEquals(3, baqarah2_1.lineRegions.first().lineNumber)
+        assertTrue(
+            "Page 2 Ayah 2:1 (الم) should align near the right margin of the inner frame",
+            baqarah2_1.lineRegions.first().bounds.right >= 0.80f
+        )
+
+        // Default highlight style uses calm Quran-for-Android sage/emerald without distracting pulse
+        val defaultStyle = com.example.data.quran.MushafHighlightStyle()
+        assertEquals(com.example.data.quran.MushafHighlightColor.EMERALD, defaultStyle.colorPreset)
+        assertFalse(defaultStyle.pulseAnimated)
+    }
+
+    @Test
+    fun mushafV4_continuousProportionalBismillahLeadIn() {
+        // Continuous proportional fallback preserves opening Bismillah lead-in cleanly (0..4200ms = Bismillah, 4200ms+ = Ayah 1)
+        val proportional = QuranWordTimingRepository.buildProportionalSurahManifest(
+            reciterId = QuranReciter.YASSER_AL_DOSARI.id,
+            surahNumber = 112,
+            audioSource = "https://server11.mp3quran.net/yasser/112.mp3",
+            ayahWeights = listOf(1 to 25, 2 to 25, 3 to 25, 4 to 25),
+            totalDurationMs = 24_200L,
+            openingBismillahLeadMs = 4_200L
+        )
+        assertEquals(4_200L, proportional.ayahs.first().startMs)
+        assertEquals(null, proportional.findAyahAt(2_000L))
+        assertEquals(1, proportional.findAyahAt(5_000L)?.ayahNumber)
     }
 }

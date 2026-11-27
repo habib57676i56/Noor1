@@ -169,9 +169,9 @@ enum class MushafHighlightColor(
         key = "emerald",
         labelAr = "زمردي هادئ",
         labelEn = "Calm Emerald",
-        ayahFillColor = Color(0xFF1E8E6A),
-        wordFillColor = Color(0xFF14B881),
-        borderColor = Color(0xFF0E6B4E)
+        ayahFillColor = Color(0xFF4CAF50),
+        wordFillColor = Color(0xFF2E9E44),
+        borderColor = Color(0xFF2E7D32)
     ),
     SAPPHIRE(
         key = "sapphire",
@@ -192,14 +192,14 @@ enum class MushafHighlightColor(
 
     companion object {
         fun fromKey(key: String?): MushafHighlightColor =
-            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: GOLD
+            entries.firstOrNull { it.key.equals(key, ignoreCase = true) } ?: EMERALD
     }
 }
 
 data class MushafHighlightStyle(
-    val colorPreset: MushafHighlightColor = MushafHighlightColor.GOLD,
+    val colorPreset: MushafHighlightColor = MushafHighlightColor.EMERALD,
     val alpha: Float = 0.28f,
-    val pulseAnimated: Boolean = true
+    val pulseAnimated: Boolean = false
 )
 
 data class FittedImageRect(

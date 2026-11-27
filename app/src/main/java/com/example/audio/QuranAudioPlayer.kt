@@ -278,8 +278,14 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         onContinuousSurahCompletedCallback = onSurahCompleted
 
         val startRange = manifest.findAyahRange(startAyah) ?: manifest.ayahs.first()
+        val playOpeningBismillah = startAyah == 1 &&
+            repeatRangeStartAyah == null &&
+            manifest.surahNumber != 1 &&
+            manifest.surahNumber != 9 &&
+            startRange.startMs > 400L
+        val effectiveInitialSeekMs = if (playOpeningBismillah) 0L else startRange.startMs
         val initialPage = pageResolver(manifest.surahNumber, startRange.ayahNumber)
-        lastReportedContinuousAyah = startRange.ayahNumber
+        lastReportedContinuousAyah = if (playOpeningBismillah) null else startRange.ayahNumber
 
         val localTrackKey = "continuous_${manifest.reciterId}_s${manifest.surahNumber}"
         val localPath = localFileResolver?.invoke(localTrackKey)
@@ -293,15 +299,15 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                 isContinuousStream = true,
                 currentTrack = null,
                 playingSurah = manifest.surahNumber,
-                playingAyah = startRange.ayahNumber,
+                playingAyah = if (playOpeningBismillah) null else startRange.ayahNumber,
                 playingPageNumber = initialPage,
-                activeWordPosition = startRange.findWordPositionAtStreamMs(startRange.startMs),
+                activeWordPosition = if (playOpeningBismillah) null else startRange.findWordPositionAtStreamMs(startRange.startMs),
                 repeatRangeLabel = repeatRangeLabelActive,
-                titleAr = "$surahTitleAr • آية ${startRange.ayahNumber}",
-                titleEn = "$surahTitleEn • Ayah ${startRange.ayahNumber}",
+                titleAr = if (playOpeningBismillah) "$surahTitleAr • بسم الله الرحمن الرحيم" else "$surahTitleAr • آية ${startRange.ayahNumber}",
+                titleEn = if (playOpeningBismillah) "$surahTitleEn • Bismillah" else "$surahTitleEn • Ayah ${startRange.ayahNumber}",
                 subtitleAr = reciterNameAr,
                 subtitleEn = reciterNameEn,
-                currentPositionMs = startRange.startMs,
+                currentPositionMs = effectiveInitialSeekMs,
                 durationMs = manifest.ayahs.lastOrNull()?.endMs ?: 0L,
                 playbackSpeed = initialSpeed,
                 isOfflineFile = isLocal,
@@ -313,7 +319,7 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
         onAyahChanged?.invoke(manifest.surahNumber, startRange.ayahNumber, initialPage)
 
         val mySessionId = activeSessionId.incrementAndGet()
-        pendingSeekTargetMs = startRange.startMs.takeIf { it > 0L }
+        pendingSeekTargetMs = effectiveInitialSeekMs.takeIf { it > 0L }
 
         fun beginContinuousPlayback(player: MediaPlayer) {
             if (mySessionId != activeSessionId.get() || mediaPlayer !== player) {
@@ -335,8 +341,8 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                     isPlaying = true,
                     isBuffering = false,
                     playingSurah = manifest.surahNumber,
-                    playingAyah = startRange.ayahNumber,
-                    currentPositionMs = startRange.startMs,
+                    playingAyah = if (playOpeningBismillah) null else startRange.ayahNumber,
+                    currentPositionMs = effectiveInitialSeekMs,
                     durationMs = totalDur
                 )
             }
@@ -358,20 +364,32 @@ class QuranAudioPlayer(private val appContext: Context? = null) {
                         safelyDisposeOrphanPlayer(player)
                         return@setOnPreparedListener
                     }
-                    // For custom uploaded reciters (proportional manifest), rescale Ayah timestamps
-                    // to the exact real audio file duration now that MediaPlayer has decoded headers!
-                    var resolvedStartMs = startRange.startMs
+                    // For proportional continuous manifests, rescale Ayah timestamps to the exact real
+                    // audio file duration now that MediaPlayer has decoded headers (preserving natural Bismillah lead-in).
+                    var resolvedStartMs = effectiveInitialSeekMs
                     val preparedDur = runCatching { player.duration.toLong() }.getOrDefault(0L)
                     if (manifest.quranComReciterId == -1 && preparedDur > 1_000L && manifest.ayahs.isNotEmpty()) {
-                        val origTotal = manifest.ayahs.last().endMs.coerceAtLeast(1L)
+                        val origFirstStart = manifest.ayahs.first().startMs
+                        val preservedLead = if (origFirstStart > 400L) {
+                            origFirstStart.coerceAtMost((preparedDur / 4L).coerceAtLeast(400L))
+                        } else {
+                            0L
+                        }
+                        val origBodyTotal = (manifest.ayahs.last().endMs - origFirstStart).coerceAtLeast(1L)
+                        val newBodyTotal = (preparedDur - preservedLead).coerceAtLeast(500L)
                         val rescaledAyahs = manifest.ayahs.map { r ->
-                            val newStart = (r.startMs * preparedDur) / origTotal
-                            val newEnd = ((r.endMs * preparedDur) / origTotal).coerceAtLeast(newStart + 100L)
+                            val newStart = preservedLead + ((r.startMs - origFirstStart) * newBodyTotal) / origBodyTotal
+                            val newEnd = (preservedLead + ((r.endMs - origFirstStart) * newBodyTotal) / origBodyTotal)
+                                .coerceAtLeast(newStart + 100L)
                             r.copy(startMs = newStart, endMs = newEnd.coerceAtMost(preparedDur))
                         }
                         val updatedManifest = manifest.copy(ayahs = rescaledAyahs)
                         activeContinuousManifest = updatedManifest
-                        resolvedStartMs = updatedManifest.findAyahRange(startRange.ayahNumber)?.startMs ?: 0L
+                        resolvedStartMs = if (playOpeningBismillah) {
+                            0L
+                        } else {
+                            updatedManifest.findAyahRange(startRange.ayahNumber)?.startMs ?: 0L
+                        }
                         pendingSeekTargetMs = resolvedStartMs.takeIf { it > 0L }
                     }
                     if (resolvedStartMs > 0L) {

@@ -517,6 +517,7 @@ fun QuranReaderScreen(
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = !isFullScreenActive,
             contentPadding = if (isFullScreenActive) {
                 PaddingValues(0.dp)
             } else {
@@ -1013,7 +1014,8 @@ fun QuranReaderScreen(
                                 onSwitchToTextMushaf = {
                                     isMushafFullScreen = false
                                     useMushafPageImages = false
-                                }
+                                },
+                                modifier = if (isFullScreenActive) Modifier.fillParentMaxSize() else Modifier.fillMaxWidth()
                             )
                         }
                     } else if (prefs.quranDisplayMode == QuranDisplayMode.MUSHAF) {

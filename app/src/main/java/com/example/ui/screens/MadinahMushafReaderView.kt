@@ -22,9 +22,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -71,6 +73,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
@@ -82,11 +85,13 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -117,7 +122,8 @@ import com.example.ui.theme.LocalNoorColors
 import com.example.ui.theme.SemanticSuccess
 import kotlinx.coroutines.launch
 
-private val MushafPaperBg = Color(0xFFFCF8EE)
+// Warm King Fahd Complex parchment matching width_1024 PNGs seamlessly edge-to-edge (zero bottom void!)
+private val MushafPaperBg = Color(0xFFFDF7E2)
 private val MushafBorderGold = Color(0xFFC9A24B)
 private val MushafNightPaper = Color(0xFF0A1411)
 
@@ -368,11 +374,21 @@ fun MadinahMushafReaderView(
         showContextualMenu = false
     }
 
+    val fullScreenPaperBg = if (nightInvertEnabled) MushafNightPaper else MushafPaperBg
+
     Column(
         modifier = modifier
-            .fillMaxWidth()
+            .then(
+                if (isFullScreen) {
+                    Modifier
+                        .fillMaxSize()
+                        .background(fullScreenPaperBg)
+                } else {
+                    Modifier.fillMaxWidth()
+                }
+            )
             .testTag("madinah_mushaf_image_reader"),
-        verticalArrangement = Arrangement.spacedBy(if (isFullScreen) 4.dp else 8.dp)
+        verticalArrangement = Arrangement.spacedBy(if (isFullScreen) 0.dp else 8.dp)
     ) {
         // Top Mushaf Toolbar — hidden cleanly in Full-Screen Mushaf Mode
         if (!isFullScreen) {
@@ -569,12 +585,13 @@ fun MadinahMushafReaderView(
         }
 
         // Authentic Printed Madinah Mushaf 604-Page Interactive Swipeable Viewer
-        // Zero artificial extra borders or dividers — clean authentic printed page edge-to-edge!
+        // In full-screen mode fills 100% of screen height edge-to-edge (ZERO empty void at bottom!)
         HorizontalPager(
             state = pagerState,
             userScrollEnabled = zoomScale <= 1.05f,
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (isFullScreen) Modifier.weight(1f) else Modifier)
                 .testTag("madinah_mushaf_pager")
         ) { pageIndex ->
             val pageNum = pageIndex + 1
@@ -583,7 +600,9 @@ fun MadinahMushafReaderView(
 
             MadinahMushafSinglePageCard(
                 pageNumber = pageNum,
+                juzNumber = meta.juzNumber,
                 surahNameAr = meta.primarySurahNameAr,
+                isRightPage = meta.isRightPage,
                 imageManager = imageManager,
                 coordinateRepository = coordinateRepository,
                 coordReloadNonce = coordReloadNonce,
@@ -595,11 +614,27 @@ fun MadinahMushafReaderView(
                 highlightStyle = highlightStyle,
                 nightInvertEnabled = nightInvertEnabled,
                 isFullScreen = isFullScreen,
+                isAudioPlaying = isAudioPlaying,
+                onToggleAudio = onToggleAudio,
                 zoomScale = if (isCurrentPage) zoomScale else 1f,
                 zoomOffset = if (isCurrentPage) zoomOffset else Offset.Zero,
                 onZoomChange = { newScale, newOffset ->
                     zoomScale = newScale
                     zoomOffset = newOffset
+                },
+                onSwipeNextPage = {
+                    if (pagerState.currentPage < MadinahMushafPageCatalog.TOTAL_PAGES - 1) {
+                        zoomScale = 1f
+                        zoomOffset = Offset.Zero
+                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
+                    }
+                },
+                onSwipePrevPage = {
+                    if (pagerState.currentPage > 0) {
+                        zoomScale = 1f
+                        zoomOffset = Offset.Zero
+                        scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+                    }
                 },
                 onAyahTapped = { hit ->
                     if (hit == null) {
@@ -926,7 +961,9 @@ fun MadinahMushafReaderView(
 @Composable
 private fun MadinahMushafSinglePageCard(
     pageNumber: Int,
+    juzNumber: Int,
     surahNameAr: String,
+    isRightPage: Boolean,
     imageManager: MushafPageImageManager,
     coordinateRepository: MushafCoordinateRepository,
     coordReloadNonce: Int,
@@ -938,15 +975,20 @@ private fun MadinahMushafSinglePageCard(
     highlightStyle: MushafHighlightStyle,
     nightInvertEnabled: Boolean,
     isFullScreen: Boolean,
+    isAudioPlaying: Boolean,
+    onToggleAudio: () -> Unit,
     zoomScale: Float,
     zoomOffset: Offset,
     onZoomChange: (Float, Offset) -> Unit,
+    onSwipeNextPage: () -> Unit,
+    onSwipePrevPage: () -> Unit,
     onAyahTapped: (AyahPageRegion?) -> Unit,
     onAyahLongPressed: (AyahPageRegion) -> Unit,
     onExitFullScreen: () -> Unit,
     onSwitchToTextMushaf: () -> Unit
 ) {
     val lang = LocalAppLanguage.current
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val haptics = LocalHapticFeedback.current
     var reloadNonce by remember(pageNumber) { mutableIntStateOf(0) }
     var loadResult by remember(pageNumber, reloadNonce) { mutableStateOf<MushafPageLoadResult?>(null) }
@@ -998,6 +1040,8 @@ private fun MadinahMushafSinglePageCard(
     val latestOnTap by rememberUpdatedState(onAyahTapped)
     val latestOnLongPress by rememberUpdatedState(onAyahLongPressed)
     val latestOnZoomChange by rememberUpdatedState(onZoomChange)
+    val latestOnSwipeNext by rememberUpdatedState(onSwipeNextPage)
+    val latestOnSwipePrev by rememberUpdatedState(onSwipePrevPage)
 
     fun resolveHitAt(offset: Offset): AyahPageRegion? {
         val layout = latestLayout ?: return null
@@ -1025,6 +1069,7 @@ private fun MadinahMushafSinglePageCard(
 
     val paperBg = if (nightInvertEnabled) MushafNightPaper else MushafPaperBg
     val statusInk = if (nightInvertEnabled) GoldBright else EmeraldDeep
+    val runningMetaInk = if (nightInvertEnabled) Color(0xFFB5C7BF) else Color(0xFF6B5D4A)
     val effectiveAspectRatio = remember(actualOriginalWidth, actualOriginalHeight) {
         if (actualOriginalWidth > 0 && actualOriginalHeight > 0) {
             (actualOriginalWidth.toFloat() / actualOriginalHeight.toFloat()).coerceIn(0.52f, 0.80f)
@@ -1033,194 +1078,301 @@ private fun MadinahMushafSinglePageCard(
         }
     }
 
-    // Clean, unobstructed authentic printed Madinah Mushaf page (NO artificial double borders or extra dividers!)
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .aspectRatio(effectiveAspectRatio)
-            .clip(RoundedCornerShape(if (isFullScreen) 0.dp else 12.dp))
-            .background(paperBg)
-            .onSizeChanged { containerSize = it }
-            // Tap / Double-Tap / Long-Press handler (does NOT consume drags, so scrolling works everywhere!)
-            .pointerInput(pageNumber) {
-                detectTapGestures(
-                    onTap = { tapOffset ->
-                        val hit = resolveHitAt(tapOffset)
-                        latestOnTap(hit)
-                    },
-                    onDoubleTap = {
-                        if (latestZoomScale > 1.1f) {
-                            latestOnZoomChange(1f, Offset.Zero)
-                        } else {
-                            latestOnZoomChange(1.85f, Offset.Zero)
+    val pageSurfaceModifier = Modifier
+        .fillMaxWidth()
+        .then(if (isFullScreen) Modifier.fillMaxHeight() else Modifier.aspectRatio(effectiveAspectRatio))
+        .clip(RoundedCornerShape(if (isFullScreen) 0.dp else 12.dp))
+        .background(paperBg)
+        .testTag("mushaf_interactive_page_$pageNumber")
+
+    Box(modifier = pageSurfaceModifier) {
+        // Authentic subtle Mushaf book-spine edge shadow (matching Quran for Android page feel)
+        val spineGradient = remember(nightInvertEnabled, isRightPage) {
+            val darkEdge = if (nightInvertEnabled) Color(0x88000000) else Color(0x2A3D3428)
+            val midEdge = if (nightInvertEnabled) Color(0x33000000) else Color(0x103D3428)
+            if (isRightPage) {
+                Brush.horizontalGradient(listOf(darkEdge, midEdge, Color.Transparent))
+            } else {
+                Brush.horizontalGradient(listOf(Color.Transparent, midEdge, darkEdge))
+            }
+        }
+        Box(
+            modifier = Modifier
+                .align(if (isRightPage) Alignment.CenterStart else Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(12.dp)
+                .background(spineGradient)
+        )
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (isFullScreen) Modifier.navigationBarsPadding() else Modifier)
+        ) {
+            // In Full-Screen Mode, show authentic subtle Quran-for-Android running Mushaf header
+            // (`الجزء X` on one side, `سورة ...` on the other) + unobtrusive audio/exit icon buttons
+            if (isFullScreen) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        IconButton(
+                            onClick = onExitFullScreen,
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(runningMetaInk.copy(alpha = 0.12f))
+                                .testTag("mushaf_exit_fullscreen_btn")
+                        ) {
+                            Icon(
+                                Icons.Rounded.FullscreenExit,
+                                contentDescription = L10n.pick(lang, "إظهار الأدوات", "Exit Full-Screen"),
+                                tint = runningMetaInk,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
-                    },
-                    onLongPress = { pressOffset ->
-                        val hit = resolveHitAt(pressOffset)
-                        if (hit != null) {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            latestOnLongPress(hit)
+                        Text(
+                            text = "سورة $surahNameAr",
+                            fontFamily = AmiriFontFamily,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = runningMetaInk,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "الجزء $juzNumber",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Medium,
+                            color = runningMetaInk
+                        )
+                        IconButton(
+                            onClick = onToggleAudio,
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(runningMetaInk.copy(alpha = 0.12f))
+                        ) {
+                            Icon(
+                                imageVector = if (isAudioPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = L10n.pick(lang, "تشغيل/إيقاف التلاوة", "Play/Pause"),
+                                tint = runningMetaInk,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
-                )
+                }
             }
-            // Pinch-to-Zoom & Zoomed-Pan ONLY — NEVER consumes single-finger vertical/horizontal drags at 1.0x!
-            // This guarantees smooth touch-anywhere scrolling and page swiping across the ENTIRE Mushaf page!
-            .pointerInput(pageNumber) {
-                awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
-                    do {
-                        val event = awaitPointerEvent()
-                        val pressedCount = event.changes.count { it.pressed }
-                        val isMultiTouch = pressedCount >= 2
-                        val isZoomedPan = pressedCount == 1 && latestZoomScale > 1.02f
 
-                        if (isMultiTouch || isZoomedPan) {
-                            val zoomChange = if (isMultiTouch) event.calculateZoom() else 1f
-                            val panChange = event.calculatePan()
-                            val nextScale = (latestZoomScale * zoomChange).coerceIn(1f, 2.8f)
-                            val cSize = latestContainerSize
-                            val maxPanX = ((cSize.width * (nextScale - 1f)) * 0.5f).coerceAtLeast(0f)
-                            val maxPanY = ((cSize.height * (nextScale - 1f)) * 0.5f).coerceAtLeast(0f)
-                            val nextOffset = if (nextScale > 1.02f) {
-                                Offset(
-                                    (latestZoomOffset.x + panChange.x).coerceIn(-maxPanX, maxPanX),
-                                    (latestZoomOffset.y + panChange.y).coerceIn(-maxPanY, maxPanY)
-                                )
-                            } else {
-                                Offset.Zero
+            // Interactive Page Canvas (Image + Seamless Connected Highlight Overlay)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .onSizeChanged { containerSize = it }
+                    // Tap / Double-Tap / Long-Press handler (never blocks horizontal page swiping!)
+                    .pointerInput(pageNumber) {
+                        detectTapGestures(
+                            onTap = { tapOffset ->
+                                val hit = resolveHitAt(tapOffset)
+                                latestOnTap(hit)
+                            },
+                            onDoubleTap = {
+                                if (latestZoomScale > 1.1f) {
+                                    latestOnZoomChange(1f, Offset.Zero)
+                                } else {
+                                    latestOnZoomChange(1.75f, Offset.Zero)
+                                }
+                            },
+                            onLongPress = { pressOffset ->
+                                val hit = resolveHitAt(pressOffset)
+                                if (hit != null) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    latestOnLongPress(hit)
+                                }
                             }
-                            if (nextScale != latestZoomScale || nextOffset != latestZoomOffset) {
-                                latestOnZoomChange(nextScale, nextOffset)
-                            }
-                            if (isMultiTouch || panChange != Offset.Zero) {
-                                event.changes.forEach { change ->
-                                    if (change.pressed) change.consume()
+                        )
+                    }
+                    // Pinch-to-Zoom, Zoomed-Pan, AND Edge-Swipe Page Turning while zoomed!
+                    // NEVER consumes single-finger swipes at 1.0x so HorizontalPager flips smoothly anywhere!
+                    .pointerInput(pageNumber, isRtl) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            var edgeOverscrollX = 0f
+                            var flippedThisGesture = false
+                            do {
+                                val event = awaitPointerEvent()
+                                val pressedCount = event.changes.count { it.pressed }
+                                val isMultiTouch = pressedCount >= 2
+                                val isZoomedPan = pressedCount == 1 && latestZoomScale > 1.02f
+
+                                if (isMultiTouch || isZoomedPan) {
+                                    val zoomChange = if (isMultiTouch) event.calculateZoom() else 1f
+                                    val panChange = event.calculatePan()
+                                    val nextScale = (latestZoomScale * zoomChange).coerceIn(1f, 2.8f)
+                                    val cSize = latestContainerSize
+                                    val maxPanX = ((cSize.width * (nextScale - 1f)) * 0.5f).coerceAtLeast(0f)
+                                    val maxPanY = ((cSize.height * (nextScale - 1f)) * 0.5f).coerceAtLeast(0f)
+                                    val rawNextX = latestZoomOffset.x + panChange.x
+                                    val clampedX = rawNextX.coerceIn(-maxPanX, maxPanX)
+                                    val clampedY = (latestZoomOffset.y + panChange.y).coerceIn(-maxPanY, maxPanY)
+                                    val nextOffset = if (nextScale > 1.02f) {
+                                        Offset(clampedX, clampedY)
+                                    } else {
+                                        Offset.Zero
+                                    }
+
+                                    // If zoomed and dragging horizontally past the page edge, smoothly flip page!
+                                    if (!isMultiTouch && !flippedThisGesture && nextScale > 1.02f && kotlin.math.abs(panChange.x) > kotlin.math.abs(panChange.y)) {
+                                        val overflowX = rawNextX - clampedX
+                                        if (kotlin.math.abs(overflowX) > 0.5f) {
+                                            edgeOverscrollX += overflowX
+                                            val thresholdPx = (cSize.width * 0.14f).coerceIn(85f, 160f)
+                                            if (kotlin.math.abs(edgeOverscrollX) >= thresholdPx) {
+                                                flippedThisGesture = true
+                                                val goNext = if (isRtl) edgeOverscrollX > 0f else edgeOverscrollX < 0f
+                                                if (goNext) latestOnSwipeNext() else latestOnSwipePrev()
+                                            }
+                                        } else {
+                                            edgeOverscrollX = 0f
+                                        }
+                                    }
+
+                                    if (!flippedThisGesture && (nextScale != latestZoomScale || nextOffset != latestZoomOffset)) {
+                                        latestOnZoomChange(nextScale, nextOffset)
+                                    }
+                                    if (isMultiTouch || panChange != Offset.Zero) {
+                                        event.changes.forEach { change ->
+                                            if (change.pressed) change.consume()
+                                        }
+                                    }
+                                }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                when (val result = loadResult) {
+                    null -> {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator(color = GoldPrimary)
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = L10n.pick(lang, "جارٍ تحميل صفحة المصحف $pageNumber...", "Loading Madinah Mushaf page $pageNumber..."),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = statusInk
+                            )
+                        }
+                    }
+
+                    is MushafPageLoadResult.Ready -> {
+                        val imageBitmap = remember(result.bitmap) { result.bitmap.asImageBitmap() }
+                        val sharedTransform = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = zoomScale,
+                                scaleY = zoomScale,
+                                translationX = zoomOffset.x,
+                                translationY = zoomOffset.y
+                            )
+
+                        // Layer 1: Untouched authentic printed Madinah Mushaf page image
+                        Image(
+                            bitmap = imageBitmap,
+                            contentDescription = "Madinah Mushaf Page $pageNumber — Surah $surahNameAr",
+                            contentScale = ContentScale.Fit,
+                            colorFilter = if (nightInvertEnabled) MushafNightColorFilter else null,
+                            modifier = sharedTransform
+                        )
+
+                        // Layer 2: Seamless connected translucent Ayah highlight overlay (zero inter-line gaps!)
+                        MushafAyahHighlightOverlay(
+                            layout = pageLayout,
+                            imageWidth = result.bitmap.width,
+                            imageHeight = result.bitmap.height,
+                            activeRecitedAyah = activeRecitedAyah,
+                            activeWordPosition = activeWordPosition,
+                            selectedAyah = selectedAyah,
+                            highlightStyle = highlightStyle,
+                            nightMode = nightInvertEnabled,
+                            modifier = sharedTransform
+                        )
+
+                        if (zoomScale > 1.05f) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(8.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(EmeraldDeep.copy(alpha = 0.85f))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Rounded.ZoomIn, contentDescription = null, tint = GoldBright, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("${(zoomScale * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelSmall)
                                 }
                             }
                         }
-                    } while (event.changes.any { it.pressed })
-                }
-            }
-            .testTag("mushaf_interactive_page_$pageNumber"),
-        contentAlignment = Alignment.Center
-    ) {
-        when (val result = loadResult) {
-            null -> {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    CircularProgressIndicator(color = GoldPrimary)
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = L10n.pick(lang, "جارٍ تحميل صفحة المصحف $pageNumber...", "Loading Madinah Mushaf page $pageNumber..."),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = statusInk
-                    )
-                }
-            }
+                    }
 
-            is MushafPageLoadResult.Ready -> {
-                val imageBitmap = remember(result.bitmap) { result.bitmap.asImageBitmap() }
-                val sharedTransform = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(
-                        scaleX = zoomScale,
-                        scaleY = zoomScale,
-                        translationX = zoomOffset.x,
-                        translationY = zoomOffset.y
-                    )
-
-                // Layer 1: Untouched authentic printed Madinah Mushaf page image
-                Image(
-                    bitmap = imageBitmap,
-                    contentDescription = "Madinah Mushaf Page $pageNumber — Surah $surahNameAr",
-                    contentScale = ContentScale.Fit,
-                    colorFilter = if (nightInvertEnabled) MushafNightColorFilter else null,
-                    modifier = sharedTransform
-                )
-
-                // Layer 2: Clean translucent Ayah & verified word highlight overlay (NO harsh borders!)
-                MushafAyahHighlightOverlay(
-                    layout = pageLayout,
-                    imageWidth = result.bitmap.width,
-                    imageHeight = result.bitmap.height,
-                    activeRecitedAyah = activeRecitedAyah,
-                    activeWordPosition = activeWordPosition,
-                    selectedAyah = selectedAyah,
-                    highlightStyle = highlightStyle,
-                    nightMode = nightInvertEnabled,
-                    modifier = sharedTransform
-                )
-
-                if (zoomScale > 1.05f) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(EmeraldDeep.copy(alpha = 0.85f))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.ZoomIn, contentDescription = null, tint = GoldBright, modifier = Modifier.size(14.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text("${(zoomScale * 100).toInt()}%", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    is MushafPageLoadResult.Unavailable -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(18.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.MenuBook,
+                                contentDescription = null,
+                                tint = GoldPrimary,
+                                modifier = Modifier.size(44.dp)
+                            )
+                            Text(
+                                text = L10n.pick(lang, result.reasonAr, result.reasonEn),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (nightInvertEnabled) Color(0xFFD6E6DF) else IvoryInk,
+                                textAlign = TextAlign.Center
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { reloadNonce++ },
+                                    colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = Color.White)
+                                ) {
+                                    Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(L10n.pick(lang, "إعادة التحميل", "Retry"))
+                                }
+                                OutlinedButton(onClick = onSwitchToTextMushaf) {
+                                    Text(L10n.pick(lang, "النص العثماني", "Uthmani Text"))
+                                }
+                            }
                         }
                     }
                 }
-
-                if (isFullScreen) {
-                    IconButton(
-                        onClick = onExitFullScreen,
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(8.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(EmeraldDeep.copy(alpha = 0.55f))
-                            .testTag("mushaf_exit_fullscreen_btn")
-                    ) {
-                        Icon(
-                            Icons.Rounded.FullscreenExit,
-                            contentDescription = L10n.pick(lang, "إظهار الأدوات", "Exit Full-Screen"),
-                            tint = Color.White
-                        )
-                    }
-                }
             }
 
-            is MushafPageLoadResult.Unavailable -> {
-                Column(
+            // Authentic centered page number footer in Full-Screen Mode (matches Quran for Android)
+            if (isFullScreen) {
+                Text(
+                    text = pageNumber.toString(),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Medium,
+                    color = runningMetaInk,
+                    textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.MenuBook,
-                        contentDescription = null,
-                        tint = GoldPrimary,
-                        modifier = Modifier.size(44.dp)
-                    )
-                    Text(
-                        text = L10n.pick(lang, result.reasonAr, result.reasonEn),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (nightInvertEnabled) Color(0xFFD6E6DF) else IvoryInk,
-                        textAlign = TextAlign.Center
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { reloadNonce++ },
-                            colors = ButtonDefaults.buttonColors(containerColor = EmeraldPrimary, contentColor = Color.White)
-                        ) {
-                            Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(4.dp))
-                            Text(L10n.pick(lang, "إعادة التحميل", "Retry"))
-                        }
-                        OutlinedButton(onClick = onSwitchToTextMushaf) {
-                            Text(L10n.pick(lang, "النص العثماني", "Uthmani Text"))
-                        }
-                    }
-                }
+                        .padding(vertical = 8.dp)
+                )
             }
         }
     }
