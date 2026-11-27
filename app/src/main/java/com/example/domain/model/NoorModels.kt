@@ -1,5 +1,7 @@
 package com.example.domain.model
 
+import java.util.Locale
+
 enum class AppLanguage(val code: String) {
     ARABIC("ar"),
     ENGLISH("en"),
@@ -8,8 +10,20 @@ enum class AppLanguage(val code: String) {
     val isRtl: Boolean get() = this == ARABIC
 
     companion object {
-        fun fromCode(code: String?): AppLanguage =
-            entries.firstOrNull { it.code == code } ?: ARABIC
+        fun fromSystemLocale(locale: Locale = Locale.getDefault()): AppLanguage {
+            val lang = locale.language.lowercase(Locale.US)
+            return when {
+                lang == "ar" || lang.startsWith("ar-") || lang.startsWith("ar_") -> ARABIC
+                lang == "uz" || lang.startsWith("uz-") || lang.startsWith("uz_") -> UZBEK
+                else -> ENGLISH
+            }
+        }
+
+        fun fromCode(code: String?): AppLanguage {
+            if (code.isNullOrBlank()) return fromSystemLocale()
+            return entries.firstOrNull { it.code.equals(code, ignoreCase = true) }
+                ?: fromSystemLocale()
+        }
     }
 }
 

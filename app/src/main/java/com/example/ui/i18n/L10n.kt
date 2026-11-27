@@ -4,7 +4,7 @@ import androidx.compose.runtime.compositionLocalOf
 import com.example.domain.model.AppLanguage
 import com.example.domain.model.PrayerName
 
-val LocalAppLanguage = compositionLocalOf { AppLanguage.ARABIC }
+val LocalAppLanguage = compositionLocalOf { AppLanguage.fromSystemLocale() }
 
 object L10n {
     fun pick(lang: AppLanguage, ar: String, en: String, uz: String): String = when (lang) {

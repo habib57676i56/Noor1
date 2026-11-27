@@ -35,7 +35,7 @@ private val Context.noorDataStore: DataStore<Preferences> by preferencesDataStor
 data class UserPreferences(
     val userName: String = "",
     val customAvatarUri: String = "",
-    val language: AppLanguage = AppLanguage.ARABIC,
+    val language: AppLanguage = AppLanguage.fromSystemLocale(),
     val themeMode: ThemeMode = ThemeMode.DARK,
     val cityId: String = CityCatalog.defaultCity.id,
     val cityNameAr: String = CityCatalog.defaultCity.nameAr,
@@ -222,11 +222,21 @@ class UserPreferencesRepository(private val context: Context) {
         val BACKGROUND_AURORA_ENABLED = booleanPreferencesKey("background_aurora_enabled")
     }
 
+    private fun resolveSystemLocale(): java.util.Locale {
+        val cfgLocales = context.resources.configuration.locales
+        return if (!cfgLocales.isEmpty) cfgLocales[0] else java.util.Locale.getDefault()
+    }
+
     val preferencesFlow: Flow<UserPreferences> = context.noorDataStore.data.map { p ->
+        val storedLang = p[Keys.LANGUAGE]
         UserPreferences(
             userName = p[Keys.USER_NAME] ?: "",
             customAvatarUri = p[Keys.CUSTOM_AVATAR_URI] ?: "",
-            language = AppLanguage.fromCode(p[Keys.LANGUAGE]),
+            language = if (storedLang.isNullOrBlank()) {
+                AppLanguage.fromSystemLocale(resolveSystemLocale())
+            } else {
+                AppLanguage.fromCode(storedLang)
+            },
             themeMode = ThemeMode.fromKey(p[Keys.THEME_MODE]),
             cityId = p[Keys.CITY_ID] ?: CityCatalog.defaultCity.id,
             cityNameAr = p[Keys.CITY_NAME_AR] ?: CityCatalog.defaultCity.nameAr,

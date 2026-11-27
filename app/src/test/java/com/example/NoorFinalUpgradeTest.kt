@@ -4,6 +4,8 @@ import com.example.data.cloud.AppVersionGate
 import com.example.data.cloud.GlobalAppConfigDoc
 import com.example.data.cloud.NoorPlatformConstants
 import com.example.data.quran.QuranWordTimingRepository
+import com.example.data.remote.OverpassApiService
+import com.example.domain.model.AppLanguage
 import com.example.domain.model.QuranReciter
 import com.example.ui.components.Ios27LiquidGlassDockMath
 import com.example.ui.screens.ecosystem.AsbabAlNuzulCatalog
@@ -34,32 +36,86 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("3.7.0", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v3.7.0", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("3.8.0", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v3.8.0", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v3.7.0 passes default v3.7.0 gate, while older v3.6.0 / v3.5.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.7.0", defaultConfig))
+        // New build v3.8.0 passes default v3.8.0 gate, while older v3.7.0 / v3.6.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.8.0", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.7.0", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.6.0", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.5.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "3.7.0", the newly updated v3.7.0 (or v3.8.0) APK opens automatically
-        // while older v3.6.0 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.7.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.6.0", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.7.0", forcedWithMin))
+        // with minSupportedVersion = "3.8.0", the newly updated v3.8.0 (or v3.9.0) APK opens automatically
+        // while older v3.7.0 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "3.8.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.7.0", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("3.8.0", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.9.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 3.8.0 blocks 3.7.0 until user updates to 3.8.0
-        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.8.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("3.7.0", raisedConfig))
-        assertFalse(AppVersionGate.isForceUpdateRequired("3.8.0", raisedConfig))
+        // Raising minSupportedVersion to 3.9.0 blocks 3.8.0 until user updates to 3.9.0
+        val raisedConfig = defaultConfig.copy(minSupportedVersion = "3.9.0")
+        assertTrue(AppVersionGate.isForceUpdateRequired("3.8.0", raisedConfig))
+        assertFalse(AppVersionGate.isForceUpdateRequired("3.9.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl(""))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("javascript:alert(1)"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("http://insecure.example"))
         assertEquals("https://t.me/Noor_ui", AppVersionGate.resolveSafeUpdateUrl("https://t.me/Noor_ui"))
+    }
+
+    @Test
+    fun systemLocaleAutoDetection_mapsDeviceLanguageDirectlyOnFirstLaunch() {
+        assertEquals(AppLanguage.ARABIC, AppLanguage.fromSystemLocale(java.util.Locale.forLanguageTag("ar-SA")))
+        assertEquals(AppLanguage.ARABIC, AppLanguage.fromSystemLocale(java.util.Locale.forLanguageTag("ar-SY")))
+        assertEquals(AppLanguage.UZBEK, AppLanguage.fromSystemLocale(java.util.Locale.forLanguageTag("uz-UZ")))
+        assertEquals(AppLanguage.ENGLISH, AppLanguage.fromSystemLocale(java.util.Locale.US))
+        assertEquals(AppLanguage.ENGLISH, AppLanguage.fromSystemLocale(java.util.Locale.FRANCE))
+        assertEquals(AppLanguage.ENGLISH, AppLanguage.fromCode("en"))
+        assertEquals(AppLanguage.ARABIC, AppLanguage.fromCode("ar"))
+        assertEquals(AppLanguage.UZBEK, AppLanguage.fromCode("uz"))
+    }
+
+    @Test
+    fun overpassMosqueFinder_buildsExpandedQueryAndDeduplicatesNearbyMosques() {
+        val q = OverpassApiService.buildOverpassQuery(21.4225, 39.8262, 5000)
+        assertTrue(q.contains("""nwr["amenity"="place_of_worship"]["religion"="muslim"]"""))
+        assertTrue(q.contains("""nwr["building"="mosque"]"""))
+        assertTrue(OverpassApiService.OVERPASS_MIRRORS.size >= 3)
+
+        val mosques = listOf(
+            com.example.domain.model.NearbyMosque(
+                id = 2L,
+                name = "مسجد / Mosque",
+                latitude = 21.42305,
+                longitude = 39.82652,
+                distanceMeters = OverpassApiService.haversineMeters(21.4225, 39.8262, 21.42305, 39.82652),
+                bearingDegrees = OverpassApiService.bearingDegrees(21.4225, 39.8262, 21.42305, 39.82652),
+                address = ""
+            ),
+            com.example.domain.model.NearbyMosque(
+                id = 1L,
+                name = "مسجد النور",
+                latitude = 21.4230,
+                longitude = 39.8265,
+                distanceMeters = OverpassApiService.haversineMeters(21.4225, 39.8262, 21.4230, 39.8265),
+                bearingDegrees = OverpassApiService.bearingDegrees(21.4225, 39.8262, 21.4230, 39.8265),
+                address = "شارع الملك"
+            ),
+            com.example.domain.model.NearbyMosque(
+                id = 3L,
+                name = "Masjid Al-Rahmah",
+                latitude = 21.4300,
+                longitude = 39.8300,
+                distanceMeters = OverpassApiService.haversineMeters(21.4225, 39.8262, 21.4300, 39.8300),
+                bearingDegrees = OverpassApiService.bearingDegrees(21.4225, 39.8262, 21.4300, 39.8300),
+                address = ""
+            )
+        )
+        val deduped = OverpassApiService.deduplicateAndSort(mosques)
+        assertEquals(2, deduped.size)
+        assertEquals("مسجد النور", deduped.first().name)
+        assertTrue(deduped[0].distanceMeters < deduped[1].distanceMeters)
     }
 
     @Test
