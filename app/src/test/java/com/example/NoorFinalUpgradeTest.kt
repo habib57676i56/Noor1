@@ -36,25 +36,25 @@ class NoorFinalUpgradeTest {
         val defaultConfig = GlobalAppConfigDoc()
         assertEquals("https://t.me/Noor_ui", NoorPlatformConstants.DEFAULT_UPDATE_CHANNEL_URL)
         assertEquals("https://t.me/Noor_ui", defaultConfig.updateChannelUrl)
-        assertEquals("4.2.5", NoorPlatformConstants.APP_VERSION_NAME)
-        assertEquals("v4.2.5", NoorPlatformConstants.APP_VERSION_TAG)
+        assertEquals("4.2.6", NoorPlatformConstants.APP_VERSION_NAME)
+        assertEquals("v4.2.6", NoorPlatformConstants.APP_VERSION_TAG)
 
-        // New build v4.2.5 passes default v4.2.5 gate, while older v4.2.4 / v3.9.0 APKs are blocked!
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.5", defaultConfig))
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.4", defaultConfig))
+        // New build v4.2.6 passes default v4.2.6 gate, while older v4.2.5 / v3.9.0 APKs are blocked!
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.6", defaultConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.5", defaultConfig))
         assertTrue(AppVersionGate.isForceUpdateRequired("3.9.0", defaultConfig))
 
         // CRITICAL AUTO-DISMISS AFTER UPDATE: even if forceUpdateEnabled was left ON in Firestore
-        // with minSupportedVersion = "4.2.5", the newly updated v4.2.5 (or v4.3.0) APK opens automatically
-        // while older v4.2.4 remains blocked!
-        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.5")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.4", forcedWithMin))
-        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.5", forcedWithMin))
+        // with minSupportedVersion = "4.2.6", the newly updated v4.2.6 (or v4.3.0) APK opens automatically
+        // while older v4.2.5 remains blocked!
+        val forcedWithMin = defaultConfig.copy(forceUpdateEnabled = true, minSupportedVersion = "4.2.6")
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.5", forcedWithMin))
+        assertFalse(AppVersionGate.isForceUpdateRequired("4.2.6", forcedWithMin))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", forcedWithMin))
 
-        // Raising minSupportedVersion to 4.3.0 blocks 4.2.5 until user updates to 4.3.0
+        // Raising minSupportedVersion to 4.3.0 blocks 4.2.6 until user updates to 4.3.0
         val raisedConfig = defaultConfig.copy(minSupportedVersion = "4.3.0")
-        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.5", raisedConfig))
+        assertTrue(AppVersionGate.isForceUpdateRequired("4.2.6", raisedConfig))
         assertFalse(AppVersionGate.isForceUpdateRequired("4.3.0", raisedConfig))
 
         // Safe URL resolver enforces https:// and falls back to https://t.me/Noor_ui
@@ -778,10 +778,33 @@ class NoorFinalUpgradeTest {
 
         // All 4 supported languages include the official Telegram channel URL and APK instructions
         for (lang in AppLanguage.entries) {
-            val caption = com.example.util.AppApkShareHelper.buildShareCaption(lang, "v4.2.5", "")
+            val caption = com.example.util.AppApkShareHelper.buildShareCaption(lang, "v4.2.6", "")
             assertTrue("Caption for $lang must include official Telegram URL", caption.contains("https://t.me/Noor_ui"))
             assertTrue("Caption for $lang must mention APK", caption.contains("APK"))
-            assertTrue("Caption for $lang must include version tag", caption.contains("v4.2.5"))
+            assertTrue("Caption for $lang must include version tag", caption.contains("v4.2.6"))
         }
+    }
+
+    @Test
+    fun adhanBackgroundReliability_bypassesDndByDefaultAndPreservesPerPrayerCustomVoice() {
+        val defaultPrefs = com.example.data.local.prefs.UserPreferences()
+        assertTrue(defaultPrefs.adhanSoundEnabled)
+        assertFalse(defaultPrefs.adhanNotificationOnly)
+        // Must default to FALSE so Adhan plays even in Do Not Disturb / Silent / Locked screen
+        assertFalse(defaultPrefs.adhanRespectSilentMode)
+
+        val customRecord = com.example.audio.CustomAdhanRecord(
+            id = "adhan_custom_123",
+            displayName = "My Custom Adhan",
+            localFilePath = "/tmp/nonexistent.mp3",
+            extension = "mp3",
+            importedAtMillis = 123456L
+        )
+        val config = com.example.audio.PerPrayerAdhanConfig(
+            defaultVoiceId = "adhan_makkah",
+            fajrVoiceId = customRecord.id
+        )
+        assertEquals("adhan_custom_123", config.voiceIdForPrayer(com.example.domain.model.PrayerName.FAJR))
+        assertEquals("adhan_makkah", config.voiceIdForPrayer(com.example.domain.model.PrayerName.ASR))
     }
 }

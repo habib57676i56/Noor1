@@ -101,7 +101,7 @@ data class UserPreferences(
     val adhanSoundEnabled: Boolean = true,
     val adhanNotificationOnly: Boolean = false,
     val adhanVolume: Float = 1.0f,
-    val adhanRespectSilentMode: Boolean = true,
+    val adhanRespectSilentMode: Boolean = false,
     val adhanConfig: PerPrayerAdhanConfig = PerPrayerAdhanConfig(),
     val customAdhanRecords: List<CustomAdhanRecord> = emptyList(),
     val persistentPrayerNotificationEnabled: Boolean = true,
@@ -323,7 +323,7 @@ class UserPreferencesRepository(private val context: Context) {
             adhanSoundEnabled = p[Keys.ADHAN_SOUND_ENABLED] ?: true,
             adhanNotificationOnly = p[Keys.ADHAN_NOTIFICATION_ONLY] ?: false,
             adhanVolume = (p[Keys.ADHAN_VOLUME] ?: 1.0f).coerceIn(0.1f, 1.0f),
-            adhanRespectSilentMode = p[Keys.ADHAN_RESPECT_SILENT] ?: true,
+            adhanRespectSilentMode = p[Keys.ADHAN_RESPECT_SILENT] ?: false,
             adhanConfig = PerPrayerAdhanConfig(
                 defaultVoiceId = p[Keys.ADHAN_DEFAULT_VOICE] ?: AdhanCatalog.DEFAULT_VOICE_ID,
                 fajrVoiceId = p[Keys.ADHAN_FAJR_VOICE] ?: "",
@@ -614,7 +614,7 @@ class UserPreferencesRepository(private val context: Context) {
             it[Keys.ADHAN_SOUND_ENABLED] = true
             it[Keys.ADHAN_NOTIFICATION_ONLY] = false
             it[Keys.ADHAN_VOLUME] = 1.0f
-            it[Keys.ADHAN_RESPECT_SILENT] = true
+            it[Keys.ADHAN_RESPECT_SILENT] = false
             it[Keys.ADHAN_DEFAULT_VOICE] = AdhanCatalog.DEFAULT_VOICE_ID
             it[Keys.ADHAN_FAJR_VOICE] = ""
             it[Keys.ADHAN_DHUHR_VOICE] = ""

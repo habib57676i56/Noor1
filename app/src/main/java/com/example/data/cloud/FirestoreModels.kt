@@ -11,8 +11,8 @@ import com.google.firebase.firestore.ServerTimestamp
  */
 object NoorPlatformConstants {
     const val PRIMARY_OWNER_EMAIL = "mustafa20090520@gmail.com"
-    const val APP_VERSION_NAME = "4.2.5"
-    const val APP_VERSION_TAG = "v4.2.5"
+    const val APP_VERSION_NAME = "4.2.6"
+    const val APP_VERSION_TAG = "v4.2.6"
 
     // Part 4 — Official Founder Profile (exact verified biography, no invented achievements)
     const val FOUNDER_NAME = "Osama"

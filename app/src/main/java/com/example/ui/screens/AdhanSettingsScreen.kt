@@ -77,6 +77,7 @@ import com.example.audio.AdhanDownloadState
 import com.example.audio.AdhanVoiceOption
 import com.example.domain.model.AppLanguage
 import com.example.domain.model.PrayerName
+import com.example.notifications.NoorAlarmScheduler
 import com.example.notifications.NoorNotificationHelper
 import com.example.shortcuts.NoorShortcutManager
 import com.example.ui.components.LiquidGlassCard
@@ -214,14 +215,18 @@ fun AdhanSettingsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = L10n.pick(lang, "احترام الوضع الصامت والاهتزاز", "Respect Silent & Vibrate Mode"),
+                            text = L10n.pick(lang, "كتم الأذان عند الصامت / عدم الإزعاج", "Mute Adhan in Silent / DND Mode"),
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium
                         )
                         Text(
-                            text = L10n.pick(lang, "كتم صوت الأذان تلقائياً عندما يكون الهاتف صامتاً", "Automatically mute Adhan when phone is on silent"),
+                            text = if (prefs.adhanRespectSilentMode) {
+                                L10n.pick(lang, "سيتم كتم الأذان عند تفعيل الصامت أو عدم الإزعاج", "Adhan will stay muted when phone is silent or on DND")
+                            } else {
+                                L10n.pick(lang, "الأذان يعمل دائماً حتى مع تفعيل عدم الإزعاج أو إغلاق الشاشة ✓", "Adhan always plays even during Do Not Disturb or locked screen ✓")
+                            },
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (prefs.adhanRespectSilentMode) MaterialTheme.colorScheme.onSurfaceVariant else SemanticSuccess
                         )
                     }
                     Switch(
@@ -578,7 +583,12 @@ fun AdhanSettingsScreen(
 
         // Background Reliability & Battery Optimization Notice
         item {
-            LiquidGlassCard(modifier = Modifier.padding(horizontal = 16.dp)) {
+            val exactAlarmOk = NoorAlarmScheduler.hasExactAlarmPermission(context)
+            val batteryExemptOk = NoorAlarmScheduler.isIgnoringBatteryOptimizations(context)
+            LiquidGlassCard(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                goldBorder = !exactAlarmOk || !batteryExemptOk
+            ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Rounded.BatteryAlert, contentDescription = null, tint = noorColors.goldAccent)
                     Spacer(modifier = Modifier.width(8.dp))
@@ -592,8 +602,19 @@ fun AdhanSettingsScreen(
                 Text(
                     text = L10n.pick(
                         lang,
-                        "لضمان دقة الأذان في الخلفية على أندرويد، يُنصح باستثناء «نور» من تحسين البطارية ومنح إذن المنبهات الدقيقة. ملاحظة: إذا تم عمل «إيقاف إجباري / Force Stop» للتطبيق من إعدادات النظام، يمنع أندرويد تشغيل أي منبهات حتى تفتح التطبيق مجدداً.",
-                        "For accurate background Adhan alarms, exempt NOOR from battery optimization and allow Exact Alarms. Note: Android blocks all alarms if an app is manually Force-Stopped until reopened."
+                        "• المنبهات الدقيقة (عند إطفاء الشاشة): ${if (exactAlarmOk) "مفعّل ✓" else "يرجى التفعيل ⚠️"}\n• استثناء البطارية (عدم إيقاف الخلفية): ${if (batteryExemptOk) "مفعّل ✓" else "مُوصى بالتفعيل ⚠️"}",
+                        "• Exact Alarms (Screen Off): ${if (exactAlarmOk) "Active ✓" else "Action Needed ⚠️"}\n• Battery Exemption (Background): ${if (batteryExemptOk) "Active ✓" else "Recommended ⚠️"}"
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (exactAlarmOk && batteryExemptOk) SemanticSuccess else noorColors.goldAccent
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = L10n.pick(
+                        lang,
+                        "لضمان عمل الأذان بصوتك المختار حتى عند إغلاق التطبيق وإطفاء الشاشة وتفعيل عدم الإزعاج، تأكد من تفعيل المنبهات الدقيقة واستثناء «نور» من تحسين البطارية.",
+                        "To guarantee Adhan plays with your chosen voice when closed, screen-off, or in Do Not Disturb, allow Exact Alarms and exempt NOOR from battery optimization."
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

@@ -1,6 +1,7 @@
 package com.example.notifications
 
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -28,6 +29,8 @@ object NoorNotificationHelper {
             ).apply {
                 description = context.getString(R.string.notification_channel_prayer_desc)
                 enableVibration(true)
+                setBypassDnd(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
             val reminderChannel = NotificationChannel(
@@ -37,6 +40,7 @@ object NoorNotificationHelper {
             ).apply {
                 description = context.getString(R.string.notification_channel_reminder_desc)
                 enableVibration(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
             manager.createNotificationChannel(prayerChannel)
@@ -60,7 +64,8 @@ object NoorNotificationHelper {
         notificationId: Int,
         channelId: String,
         title: String,
-        body: String
+        body: String,
+        silentBecauseAdhanPlays: Boolean = false
     ): Boolean {
         createChannels(context)
         if (!hasNotificationPermission(context)) return false
@@ -75,18 +80,29 @@ object NoorNotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val notification = NotificationCompat.Builder(context, channelId)
+        val isPrayer = channelId == CHANNEL_PRAYER
+        val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setCategory(
+                if (isPrayer) NotificationCompat.CATEGORY_ALARM
+                else NotificationCompat.CATEGORY_REMINDER
+            )
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(
-                if (channelId == CHANNEL_PRAYER) NotificationCompat.PRIORITY_HIGH
+                if (isPrayer) NotificationCompat.PRIORITY_MAX
                 else NotificationCompat.PRIORITY_DEFAULT
             )
             .setAutoCancel(true)
             .setContentIntent(contentPendingIntent)
-            .build()
+
+        if (silentBecauseAdhanPlays) {
+            builder.setSilent(true)
+        }
+
+        val notification = builder.build()
 
         return try {
             NotificationManagerCompat.from(context).notify(notificationId, notification)

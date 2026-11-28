@@ -1,7 +1,11 @@
 package com.example.ui.screens
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.pm.PackageManager
+import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -89,6 +93,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -134,6 +139,12 @@ private enum class AutoScrollMode {
     PAUSED
 }
 
+private tailrec fun Context.findHostActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findHostActivity()
+    else -> null
+}
+
 @Composable
 fun QuranReaderScreen(
     surahNumber: Int,
@@ -148,8 +159,21 @@ fun QuranReaderScreen(
     onOpenSurahIndex: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val currentView = LocalView.current
     val lang = LocalAppLanguage.current
     val noorColors = LocalNoorColors.current
+
+    // Keep the phone screen awake continuously while reading the Holy Quran (Mushaf, Tafsir & Memorize modes)
+    DisposableEffect(currentView, context) {
+        val prevKeepOn = currentView.keepScreenOn
+        currentView.keepScreenOn = true
+        val hostActivity = context.findHostActivity()
+        hostActivity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            currentView.keepScreenOn = prevKeepOn
+            hostActivity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val readerState by viewModel.surahReaderState.collectAsStateWithLifecycle()
     val bookmarks by viewModel.quranBookmarks.collectAsStateWithLifecycle()

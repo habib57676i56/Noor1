@@ -121,6 +121,7 @@ class NoorApplication : Application() {
             runCatching { ecosystemRepository.ensureSeeded() }
             runCatching {
                 val p = prefs.getPreferencesOnce()
+                com.example.notifications.NoorAlarmScheduler.rescheduleAll(applicationContext, p)
                 NoorShortcutManager.publishShortcuts(applicationContext, p)
             }
         }

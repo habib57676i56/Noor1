@@ -815,6 +815,9 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
                             madhhab = prefs.asrMadhhab
                         )
                         _officialPrayerSchedules.value = syncKey to (officialToday to officialTomorrow)
+                        val appCtx = getApplication<Application>()
+                        NoorAlarmScheduler.saveOfficialSchedules(appCtx, prefs, officialToday, officialTomorrow)
+                        NoorAlarmScheduler.rescheduleAll(appCtx, prefs)
                     } else if (_officialPrayerSchedules.value?.first != syncKey) {
                         _officialPrayerSchedules.value = null
                     }
@@ -2078,17 +2081,33 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setDefaultAdhanVoice(voiceId: String) = viewModelScope.launch {
         repo.prefs.setDefaultAdhanVoice(voiceId)
-        val isAr = preferences.value.language == AppLanguage.ARABIC
-        val voice = AdhanCatalog.resolveVoice(voiceId, preferences.value.customAdhanRecords, getApplication())
+        val updatedPrefs = repo.prefs.getPreferencesOnce()
+        val appCtx = getApplication<Application>()
+        NoorAlarmScheduler.rescheduleAll(appCtx, updatedPrefs)
+        val isAr = updatedPrefs.language == AppLanguage.ARABIC
+        val voice = AdhanCatalog.resolveVoice(voiceId, updatedPrefs.customAdhanRecords, appCtx)
         _statusBanner.value = if (isAr) {
             "تم اعتماد صوت الأذان: ${voice.nameAr}"
         } else {
             "Default Adhan voice saved: ${voice.nameEn}"
         }
+        // Auto-cache selected built-in voice locally so background/locked-screen Adhan works offline without Doze network issues
+        if (!voice.isSystemDefault && !voice.isCustomImported && !voice.isDownloadedOffline) {
+            downloadAdhanForOffline(voice)
+        }
     }
 
     fun setPrayerSpecificAdhanVoice(prayer: PrayerName, voiceId: String) = viewModelScope.launch {
         repo.prefs.setPrayerSpecificAdhanVoice(prayer, voiceId)
+        val updatedPrefs = repo.prefs.getPreferencesOnce()
+        val appCtx = getApplication<Application>()
+        NoorAlarmScheduler.rescheduleAll(appCtx, updatedPrefs)
+        if (voiceId.isNotBlank()) {
+            val voice = AdhanCatalog.resolveVoice(voiceId, updatedPrefs.customAdhanRecords, appCtx)
+            if (!voice.isSystemDefault && !voice.isCustomImported && !voice.isDownloadedOffline) {
+                downloadAdhanForOffline(voice)
+            }
+        }
     }
 
     fun downloadAdhanForOffline(voice: AdhanVoiceOption) = viewModelScope.launch {
@@ -2142,24 +2161,45 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun testAdhanPlaybackNow(prayer: PrayerName = PrayerName.FAJR) {
-        val isAr = preferences.value.language == AppLanguage.ARABIC
+        val prefs = preferences.value
+        val isAr = prefs.language == AppLanguage.ARABIC
         val label = PrayerNotificationController.prayerLabel(prayer, isAr)
+        val voice = AdhanCatalog.resolveVoice(
+            prefs.adhanConfig.voiceIdForPrayer(prayer),
+            prefs.customAdhanRecords,
+            getApplication()
+        )
         AdhanPlaybackService.startAdhan(
             context = getApplication(),
             prayer = prayer,
             title = if (isAr) "تجربة أذان $label" else "Adhan Preview · $label",
             body = if (isAr) "اضغط إيقاف الأذان لإنهاء التجربة" else "Tap Stop Adhan to end test",
-            isTestAlarm = true
+            isTestAlarm = true,
+            voiceId = voice.id,
+            customLocalPath = voice.localFilePath
         )
     }
 
     fun scheduleTestAdhanInSeconds(prayer: PrayerName = PrayerName.FAJR, delaySeconds: Int = 15) {
-        val isAr = preferences.value.language == AppLanguage.ARABIC
-        NoorAlarmScheduler.scheduleTestPrayerAlarm(getApplication(), prayer, delaySeconds, isAr)
+        val prefs = preferences.value
+        val isAr = prefs.language == AppLanguage.ARABIC
+        val voice = AdhanCatalog.resolveVoice(
+            prefs.adhanConfig.voiceIdForPrayer(prayer),
+            prefs.customAdhanRecords,
+            getApplication()
+        )
+        NoorAlarmScheduler.scheduleTestPrayerAlarm(
+            context = getApplication(),
+            prayer = prayer,
+            delaySeconds = delaySeconds,
+            isArabic = isAr,
+            customVoiceId = voice.id,
+            customLocalPath = voice.localFilePath
+        )
         _statusBanner.value = if (isAr) {
-            "تم جدولة أذان تجريبي بعد $delaySeconds ثانية — يمكنك إغلاق الشاشة الآن لاختبار التشغيل الخلفي"
+            "تم جدولة أذان تجريبي بصوتك المختار بعد $delaySeconds ثانية — يمكنك إغلاق التطبيق والشاشة الآن"
         } else {
-            "Test Adhan alarm scheduled in ${delaySeconds}s — you may background the app now"
+            "Test Adhan scheduled with your selected voice in ${delaySeconds}s — you may close the app & lock the screen now"
         }
     }
 
@@ -2188,10 +2228,11 @@ class NoorViewModel(application: Application) : AndroidViewModel(application) {
             is AdhanImportResult.Success -> {
                 repo.prefs.addCustomAdhanRecord(result.record)
                 repo.prefs.setDefaultAdhanVoice(result.record.id)
+                NoorAlarmScheduler.rescheduleAll(getApplication(), repo.prefs.getPreferencesOnce())
                 _statusBanner.value = if (isAr) {
-                    "تم استيراد صوت الأذان بنجاح: ${result.record.displayName}"
+                    "تم استيراد صوت الأذان واعتماده لجميع الصلوات: ${result.record.displayName}"
                 } else {
-                    "Imported Adhan audio: ${result.record.displayName}"
+                    "Imported & scheduled custom Adhan audio: ${result.record.displayName}"
                 }
             }
             is AdhanImportResult.Error -> {

@@ -5,11 +5,19 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.os.PowerManager
+import com.example.MainActivity
+import com.example.audio.AdhanCatalog
+import com.example.audio.AdhanPlaybackService
 import com.example.data.local.prefs.UserPreferences
+import com.example.data.remote.AlAdhanPrayerApiService
 import com.example.domain.model.AppLanguage
+import com.example.domain.model.DailyPrayerSchedule
 import com.example.domain.model.PrayerName
 import com.example.domain.prayer.PrayerTimeCalculator
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 import java.util.TimeZone
 
 object NoorAlarmScheduler {
@@ -23,15 +31,126 @@ object NoorAlarmScheduler {
     const val EXTRA_PRAYER_KEY = "extra_prayer_key"
     const val EXTRA_REMINDER_TYPE = "extra_reminder_type"
     const val EXTRA_CUSTOM_VOICE_ID = "extra_custom_voice_id"
+    const val EXTRA_CUSTOM_LOCAL_PATH = "extra_custom_local_path"
 
+    private const val OFFICIAL_CACHE_PREFS = "noor_official_prayer_alarm_cache"
     private const val REQ_PRAYER_BASE = 2000
     private const val REQ_PRE_PRAYER_BASE = 2100
+    private const val REQ_ALARM_CLOCK_SHOW_OFFSET = 10_000
     const val REQ_MORNING_ADHKAR = 2201
     const val REQ_EVENING_ADHKAR = 2202
     const val REQ_QURAN_REMINDER = 2203
     const val REQ_TASBIH_REMINDER = 2204
     const val REQ_TAHAJJUD_REMINDER = 2205
     private const val REQ_TEST_ADHAN = 2299
+
+    fun hasExactAlarmPermission(context: Context): Boolean {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return false
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            alarmManager.canScheduleExactAlarms()
+        } else {
+            true
+        }
+    }
+
+    fun isIgnoringBatteryOptimizations(context: Context): Boolean {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
+        return pm.isIgnoringBatteryOptimizations(context.packageName)
+    }
+
+    /**
+     * Caches official synced AlAdhan schedules so background alarm reschedules (including after reboot
+     * or midnight rollover) trigger at the exact official prayer time shown in the UI.
+     */
+    fun saveOfficialSchedules(
+        context: Context,
+        prefs: UserPreferences,
+        today: DailyPrayerSchedule,
+        tomorrow: DailyPrayerSchedule?
+    ) {
+        val sp = context.getSharedPreferences(OFFICIAL_CACHE_PREFS, Context.MODE_PRIVATE)
+        val scopeKey = buildOfficialScopeKey(prefs)
+        val editor = sp.edit()
+        editor.putString("scope_key", scopeKey)
+        writeSchedule(editor, "today", today)
+        if (tomorrow != null) {
+            writeSchedule(editor, "tomorrow", tomorrow)
+        }
+        editor.apply()
+    }
+
+    private fun buildOfficialScopeKey(prefs: UserPreferences): String =
+        "${prefs.cityId}|${"%.3f".format(Locale.US, prefs.latitude)}|${"%.3f".format(Locale.US, prefs.longitude)}|" +
+            "${prefs.calculationMethod.name}|${prefs.asrMadhhab.name}|${prefs.timezoneId}"
+
+    private fun writeSchedule(
+        editor: android.content.SharedPreferences.Editor,
+        prefix: String,
+        schedule: DailyPrayerSchedule
+    ) {
+        editor.putString("${prefix}_date", schedule.dateKey)
+        editor.putLong("${prefix}_epoch_day", schedule.epochDay)
+        editor.putLong("${prefix}_fajr", schedule.fajrMillis)
+        editor.putLong("${prefix}_sunrise", schedule.sunriseMillis)
+        editor.putLong("${prefix}_dhuhr", schedule.dhuhrMillis)
+        editor.putLong("${prefix}_asr", schedule.asrMillis)
+        editor.putLong("${prefix}_maghrib", schedule.maghribMillis)
+        editor.putLong("${prefix}_isha", schedule.ishaMillis)
+    }
+
+    fun loadCachedOfficialSchedule(
+        context: Context,
+        prefs: UserPreferences,
+        targetDateKey: String
+    ): DailyPrayerSchedule? {
+        val sp = context.getSharedPreferences(OFFICIAL_CACHE_PREFS, Context.MODE_PRIVATE)
+        if (sp.getString("scope_key", null) != buildOfficialScopeKey(prefs)) return null
+        for (prefix in listOf("today", "tomorrow")) {
+            if (sp.getString("${prefix}_date", null) == targetDateKey) {
+                val fajr = sp.getLong("${prefix}_fajr", 0L)
+                val dhuhr = sp.getLong("${prefix}_dhuhr", 0L)
+                val asr = sp.getLong("${prefix}_asr", 0L)
+                val maghrib = sp.getLong("${prefix}_maghrib", 0L)
+                val isha = sp.getLong("${prefix}_isha", 0L)
+                if (fajr > 0L && dhuhr > 0L && asr > 0L && maghrib > 0L && isha > 0L) {
+                    return DailyPrayerSchedule(
+                        dateKey = targetDateKey,
+                        epochDay = sp.getLong("${prefix}_epoch_day", fajr / 86_400_000L),
+                        fajrMillis = fajr,
+                        sunriseMillis = sp.getLong("${prefix}_sunrise", fajr + 3600_000L),
+                        dhuhrMillis = dhuhr,
+                        asrMillis = asr,
+                        maghribMillis = maghrib,
+                        ishaMillis = isha
+                    )
+                }
+            }
+        }
+        return null
+    }
+
+    /**
+     * Resolves the highest-accuracy day schedule: merges cached official AlAdhan minute with
+     * VSOP87 astronomical sub-second timing + user offsets, or falls back to pure VSOP87 calculation.
+     */
+    fun resolveAccurateSchedule(
+        context: Context,
+        prefs: UserPreferences,
+        cal: Calendar
+    ): DailyPrayerSchedule {
+        val astro = PrayerTimeCalculator.calculateForCalendar(
+            cal, prefs.latitude, prefs.longitude, prefs.calculationMethod, prefs.asrMadhhab, prefs.offsets
+        )
+        val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = cal.timeZone
+        }.format(cal.time)
+        val officialRaw = loadCachedOfficialSchedule(context, prefs, dateKey) ?: return astro
+        val astroNoOffset = PrayerTimeCalculator.calculateForCalendar(
+            cal, prefs.latitude, prefs.longitude, prefs.calculationMethod, prefs.asrMadhhab
+        )
+        val merged = AlAdhanPrayerApiService.mergeOfficialWithSubSecondPrecision(officialRaw, astroNoOffset)
+        return AlAdhanPrayerApiService.applyOffsets(merged, prefs.offsets)
+    }
 
     /**
      * Pure deterministic helper that computes the next daily trigger timestamp for (hour, minute).
@@ -99,14 +218,10 @@ object NoorAlarmScheduler {
         val todayCal = Calendar.getInstance(tz)
         val tomorrowCal = (todayCal.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 1) }
 
-        val todaySchedule = PrayerTimeCalculator.calculateForCalendar(
-            todayCal, prefs.latitude, prefs.longitude, prefs.calculationMethod, prefs.asrMadhhab, prefs.offsets
-        )
-        val tomorrowSchedule = PrayerTimeCalculator.calculateForCalendar(
-            tomorrowCal, prefs.latitude, prefs.longitude, prefs.calculationMethod, prefs.asrMadhhab, prefs.offsets
-        )
+        val todaySchedule = resolveAccurateSchedule(context, prefs, todayCal)
+        val tomorrowSchedule = resolveAccurateSchedule(context, prefs, tomorrowCal)
 
-        // Schedule each Fard prayer & optional pre-prayer alert
+        // Schedule each Fard prayer (using setAlarmClock for Deep Doze wakeup + Android 12-16 FGS exemption!)
         PrayerName.fardPrayers.forEachIndexed { idx, prayer ->
             val exactReq = REQ_PRAYER_BASE + idx
             val preReq = REQ_PRE_PRAYER_BASE + idx
@@ -125,6 +240,10 @@ object NoorAlarmScheduler {
                     AppLanguage.ENGLISH -> "Time for $pName Prayer" to "It is time for $pName in ${prefs.cityNameEn}"
                 }
 
+                // Embed selected voice ID and verified local custom/offline file path right into the alarm Intent
+                val selectedVoiceId = prefs.adhanConfig.voiceIdForPrayer(prayer)
+                val resolvedVoice = AdhanCatalog.resolveVoice(selectedVoiceId, prefs.customAdhanRecords, context)
+
                 scheduleSingleAlarm(
                     context = context,
                     alarmManager = alarmManager,
@@ -134,7 +253,9 @@ object NoorAlarmScheduler {
                     title = prayerTitle,
                     body = prayerBody,
                     isExactPrayer = true,
-                    prayerKey = prayer.name
+                    prayerKey = prayer.name,
+                    customVoiceId = resolvedVoice.id,
+                    customLocalPath = resolvedVoice.localFilePath
                 )
 
                 if (prefs.prePrayerAlertMinutes > 0) {
@@ -279,7 +400,9 @@ object NoorAlarmScheduler {
         context: Context,
         prayer: PrayerName,
         delaySeconds: Int,
-        isArabic: Boolean
+        isArabic: Boolean,
+        customVoiceId: String? = null,
+        customLocalPath: String? = null
     ): Long {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return 0L
         val triggerAtMillis = System.currentTimeMillis() + delaySeconds.coerceIn(5, 600) * 1000L
@@ -295,7 +418,9 @@ object NoorAlarmScheduler {
             body = if (isArabic) "اختبار الأذان التلقائي في الخلفية بصوت المؤذن المختار" else "Background Adhan verification with selected voice",
             isExactPrayer = true,
             prayerKey = prayer.name,
-            isTestAlarm = true
+            isTestAlarm = true,
+            customVoiceId = customVoiceId,
+            customLocalPath = customLocalPath
         )
         return triggerAtMillis
     }
@@ -312,7 +437,8 @@ object NoorAlarmScheduler {
         prayerKey: String? = null,
         isTestAlarm: Boolean = false,
         reminderType: String? = null,
-        customVoiceId: String? = null
+        customVoiceId: String? = null,
+        customLocalPath: String? = null
     ) {
         val intent = Intent(context, NoorAlarmReceiver::class.java).apply {
             putExtra(EXTRA_TITLE, title)
@@ -330,6 +456,9 @@ object NoorAlarmScheduler {
             if (!customVoiceId.isNullOrBlank()) {
                 putExtra(EXTRA_CUSTOM_VOICE_ID, customVoiceId)
             }
+            if (!customLocalPath.isNullOrBlank()) {
+                putExtra(EXTRA_CUSTOM_LOCAL_PATH, customLocalPath)
+            }
         }
         val pendingIntent = PendingIntent.getBroadcast(
             context,
@@ -338,20 +467,35 @@ object NoorAlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val canUseExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            alarmManager.canScheduleExactAlarms()
-        } else {
-            true
-        }
+        val canUseExact = hasExactAlarmPermission(context)
 
         try {
-            if (canUseExact) {
+            if (isExactPrayer && canUseExact) {
+                // setAlarmClock is Android's highest-priority wakeup API:
+                // 1) Wakes device out of Deep Doze at the exact second even with screen locked
+                // 2) Automatically grants background Foreground Service launch exemption on Android 12–16
+                val showIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra(AdhanPlaybackService.EXTRA_SHORTCUT_ROUTE, "prayers")
+                }
+                val showPendingIntent = PendingIntent.getActivity(
+                    context,
+                    requestCode + REQ_ALARM_CLOCK_SHOW_OFFSET,
+                    showIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val clockInfo = AlarmManager.AlarmClockInfo(triggerAtMillis, showPendingIntent)
+                alarmManager.setAlarmClock(clockInfo, pendingIntent)
+            } else if (canUseExact) {
                 alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
             } else {
                 alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
             }
         } catch (_: SecurityException) {
-            alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            try {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
+            } catch (_: Exception) {
+            }
         }
     }
 
